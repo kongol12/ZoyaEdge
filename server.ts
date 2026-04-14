@@ -1,0 +1,475 @@
+import express from 'express';
+import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
+import fs from 'fs';
+import path from 'path';
+import admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+import rateLimit from 'express-rate-limit';
+
+const app = express();
+const PORT = 3000;
+
+// Trust proxy is required for express-rate-limit to work correctly behind the AI Studio proxy
+app.set('trust proxy', 1);
+
+// Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: { error: "Trop de requêtes, veuillez réessayer plus tard." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Use X-Forwarded-For or Forwarded if available, otherwise fallback to IP
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (Array.isArray(forwardedFor)) return forwardedFor[0];
+    if (typeof forwardedFor === 'string') return forwardedFor.split(',')[0].trim();
+    
+    const forwarded = req.headers['forwarded'];
+    if (typeof forwarded === 'string') {
+      const match = forwarded.match(/for="?([^";, ]+)"?/i);
+      if (match) return match[1];
+    }
+    
+    return req.ip || 'unknown';
+  }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // limit each IP to 10 requests per hour for sensitive ops
+  message: { error: "Trop de tentatives, veuillez réessayer plus tard." },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (Array.isArray(forwardedFor)) return forwardedFor[0];
+    if (typeof forwardedFor === 'string') return forwardedFor.split(',')[0].trim();
+    
+    const forwarded = req.headers['forwarded'];
+    if (typeof forwarded === 'string') {
+      const match = forwarded.match(/for="?([^";, ]+)"?/i);
+      if (match) return match[1];
+    }
+    
+    return req.ip || 'unknown';
+  }
+});
+
+app.use(express.json());
+app.use('/api/', limiter);
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Initialize Firebase Admin lazily or safely
+let db: admin.firestore.Firestore | null = null;
+
+async function initFirebaseAdmin() {
+  try {
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+    if (!fs.existsSync(configPath)) {
+      console.warn("firebase-applet-config.json not found. Webhook will not work.");
+      return;
+    }
+
+    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    console.log(`[Firebase] Initializing with Project ID: ${firebaseConfig.projectId}`);
+
+    if (admin.apps.length > 0) {
+      console.log("[Firebase] Cleaning up existing apps...");
+      await Promise.all(admin.apps.map(app => app?.delete()));
+    }
+
+    // Initialize Firebase Admin with explicit project ID to match client tokens
+    if (admin.apps.length > 0) {
+      await Promise.all(admin.apps.map(app => app?.delete()));
+    }
+
+    admin.initializeApp({
+      projectId: firebaseConfig.projectId,
+    });
+    
+    const currentProject = admin.app().options.projectId || 'unknown';
+    console.log(`[Firebase] Server initialized with Project ID: ${currentProject}`);
+
+    if (firebaseConfig.firestoreDatabaseId) {
+      console.log(`[Firebase] Connecting to Database: ${firebaseConfig.firestoreDatabaseId}`);
+      db = getFirestore(admin.app(), firebaseConfig.firestoreDatabaseId);
+    } else {
+      db = getFirestore(admin.app());
+    }
+
+    // Startup test for Firestore (non-blocking)
+    console.log("[Firebase] Testing Firestore connection in background...");
+    db.collection('app_settings').doc('health').set({ 
+      lastCheck: admin.firestore.FieldValue.serverTimestamp(),
+      status: 'ok'
+    }, { merge: true }).then(() => {
+      console.log("[Firebase] Firestore connection test successful");
+    }).catch((testError) => {
+      console.error("[Firebase] Firestore connection test FAILED:", testError);
+    });
+    
+    console.log("Firebase Admin initialized successfully");
+  } catch (error) {
+    console.error("Failed to initialize Firebase Admin:", error);
+  }
+}
+
+// Webhook for MT5 EA
+app.post('/api/webhook/mt5', async (req, res) => {
+  const { syncKey, pair, direction, lotSize, exitPrice, pnl, timestamp } = req.body;
+
+  if (!syncKey) {
+    return res.status(400).json({ error: "Missing syncKey" });
+  }
+
+  if (!db) {
+    return res.status(503).json({ error: "Database service unavailable" });
+  }
+
+  try {
+    // Find the connection by syncKey
+    const connectionsRef = db.collection('broker_connections');
+    const q = await connectionsRef.where('syncKey', '==', syncKey).limit(1).get();
+
+    if (q.empty) {
+      return res.status(404).json({ error: "Invalid syncKey" });
+    }
+
+    const connectionDoc = q.docs[0];
+    const connectionData = connectionDoc.data();
+    const userId = connectionData.userId;
+
+    // Check user subscription
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const userData = userDoc.data();
+    const subscription = userData?.subscription || 'free';
+    const subscriptionStatus = userData?.subscriptionStatus || 'active';
+    const subscriptionEndDate = userData?.subscriptionEndDate?.toDate();
+
+    let isSubscriptionValid = false;
+
+    if (subscription === 'pro' || subscription === 'premium') {
+      if (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
+        if (!subscriptionEndDate || subscriptionEndDate > new Date()) {
+          isSubscriptionValid = true;
+        }
+      }
+    }
+
+    if (!isSubscriptionValid) {
+      // Update connection status to error
+      await connectionDoc.ref.update({
+        status: 'error',
+      });
+      return res.status(403).json({ error: "Subscription expired or invalid. Please upgrade to Pro or Premium." });
+    }
+
+    // Add the trade to the user's trades collection
+    const tradesRef = db.collection('users').doc(userId).collection('trades');
+    await tradesRef.add({
+      userId,
+      pair,
+      direction,
+      entryPrice: exitPrice, // Simplified: we use exitPrice as entry for now
+      exitPrice,
+      lotSize,
+      pnl,
+      strategy: "EA Sync",
+      emotion: "😐",
+      session: "EA",
+      date: admin.firestore.Timestamp.fromMillis(timestamp * 1000),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Update connection status
+    await connectionDoc.ref.update({
+      status: 'active',
+      lastSync: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Webhook error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Manual Sync Endpoint
+app.post('/api/connections/:connectionId/sync', async (req, res) => {
+  const { connectionId } = req.params;
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: "Missing userId" });
+  }
+
+  if (!db) {
+    return res.status(503).json({ error: "Database service unavailable" });
+  }
+
+  try {
+    const connectionRef = db.collection('broker_connections').doc(connectionId);
+    const connectionDoc = await connectionRef.get();
+
+    if (!connectionDoc.exists) {
+      return res.status(404).json({ error: "Connection not found" });
+    }
+
+    const connectionData = connectionDoc.data();
+    if (connectionData?.userId !== userId) {
+      return res.status(403).json({ error: "Unauthorized" });
+    }
+
+    // Check user subscription
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const userData = userDoc.data();
+    const subscription = userData?.subscription || 'free';
+    const subscriptionStatus = userData?.subscriptionStatus || 'active';
+    const subscriptionEndDate = userData?.subscriptionEndDate?.toDate();
+
+    let isSubscriptionValid = false;
+
+    if (subscription === 'pro' || subscription === 'premium') {
+      if (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
+        if (!subscriptionEndDate || subscriptionEndDate > new Date()) {
+          isSubscriptionValid = true;
+        }
+      }
+    }
+
+    if (!isSubscriptionValid) {
+      await connectionRef.update({ status: 'error' });
+      return res.status(403).json({ error: "Abonnement expiré ou invalide. Veuillez vous réabonner." });
+    }
+
+    // Update status to syncing (waiting)
+    await connectionRef.update({ status: 'waiting' });
+
+    // Simulate EA responding after 3 seconds
+    setTimeout(async () => {
+      try {
+        // In a real scenario, the EA would push data to the webhook.
+        // Here we just simulate a successful sync.
+        await connectionRef.update({
+          status: 'active',
+          lastSync: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        console.error("Simulation error:", e);
+      }
+    }, 3000);
+
+    res.json({ success: true, message: "Demande de synchronisation envoyée à l'EA." });
+  } catch (error) {
+    console.error("Manual sync error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get('/api/config/coach-instructions', (req, res) => {
+  try {
+    const systemInstruction = fs.readFileSync(path.join(process.cwd(), 'AGENTS.md'), 'utf-8');
+    res.json({ instruction: systemInstruction });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to read instructions" });
+  }
+});
+
+// Middleware to verify Admin/Agent role
+async function verifyAdmin(req: any, res: any, next: any) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: "Unauthorized: No token provided" });
+  }
+
+  const idToken = authHeader.split('Bearer ')[1];
+  try {
+    const currentProjectId = admin.app().options.projectId;
+    console.log(`[Auth] Verifying ID Token for project: ${currentProjectId}...`);
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const userId = decodedToken.uid;
+    const email = decodedToken.email?.toLowerCase();
+    console.log(`[Auth] Token verified for: ${email} (${userId}) on project: ${currentProjectId}`);
+
+    if (!db) return res.status(503).json({ error: "Database unavailable" });
+
+    let userData: any = null;
+    let isSuperAdmin = false;
+
+    try {
+      const userDoc = await db.collection('users').doc(userId).get();
+      userData = userDoc.data();
+
+      const settingsSnap = await db.collection('app_settings').doc('global').get();
+      const superAdmins = settingsSnap.data()?.superAdmins || ['kongolmandf@gmail.com'];
+      isSuperAdmin = superAdmins.includes(email);
+    } catch (dbError) {
+      console.error("Firestore check failed in verifyAdmin, falling back to hardcoded check:", dbError);
+      isSuperAdmin = email === 'kongolmandf@gmail.com';
+    }
+
+    if (isSuperAdmin || userData?.role === 'admin' || userData?.role === 'agent') {
+      req.user = decodedToken;
+      next();
+    } else {
+      res.status(403).json({ error: "Forbidden: Admin access required" });
+    }
+  } catch (error) {
+    console.error("Auth verification failed:", error);
+    res.status(401).json({ error: "Unauthorized: Invalid token" });
+  }
+}
+
+// Middleware to verify Super Admin role
+async function verifySuperAdmin(req: any, res: any, next: any) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: "Unauthorized: No token provided" });
+  }
+
+  const idToken = authHeader.split('Bearer ')[1];
+  try {
+    const currentProjectId = admin.app().options.projectId;
+    console.log(`[SuperAdmin] Verifying ID Token for project: ${currentProjectId}...`);
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const email = decodedToken.email;
+    console.log(`[SuperAdmin] Token verified for: ${email} on project: ${currentProjectId}`);
+
+    if (!db) return res.status(503).json({ error: "Database unavailable" });
+
+    try {
+      const settingsSnap = await db.collection('app_settings').doc('global').get();
+      const superAdmins = settingsSnap.data()?.superAdmins || ['kongolmandf@gmail.com'];
+
+      if (superAdmins.includes(email?.toLowerCase())) {
+        req.user = decodedToken;
+        next();
+      } else {
+        res.status(403).json({ error: "Forbidden: Super Admin access required" });
+      }
+    } catch (dbError) {
+      console.error("Firestore check failed in verifySuperAdmin, falling back to hardcoded check:", dbError);
+      if (email?.toLowerCase() === 'kongolmandf@gmail.com') {
+        req.user = decodedToken;
+        next();
+      } else {
+        res.status(403).json({ error: "Forbidden: Super Admin access required" });
+      }
+    }
+  } catch (error) {
+    console.error("Super Admin verification failed:", error);
+    res.status(401).json({ error: "Unauthorized: Invalid token" });
+  }
+}
+
+// Admin User Creation Endpoint (Super Admin Only)
+app.post('/api/admin/users/create', authLimiter, verifySuperAdmin, async (req, res) => {
+  const { email, password, displayName, role } = req.body;
+
+  if (!email || !password || !displayName || !role) {
+    return res.status(400).json({ error: "Champs requis manquants" });
+  }
+
+  if (!db) return res.status(503).json({ error: "Service de base de données indisponible" });
+
+  try {
+    // Basic validation
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Le mot de passe doit faire au moins 8 caractères" });
+    }
+
+    // Create user in Firebase Auth
+    const userRecord = await admin.auth().createUser({
+      email,
+      password,
+      displayName,
+    });
+
+    // Create profile in Firestore
+    await db.collection('users').doc(userRecord.uid).set({
+      email: email.toLowerCase(),
+      displayName,
+      role,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      onboarded: false,
+      subscription: 'free',
+      aiCredits: 10,
+    });
+
+    res.json({ success: true, userId: userRecord.uid });
+  } catch (error: any) {
+    console.error("Error creating user:", error);
+    const message = error.code === 'auth/email-already-exists' 
+      ? "Cet e-mail est déjà utilisé" 
+      : "Échec de la création de l'utilisateur";
+    res.status(500).json({ error: message });
+  }
+});
+
+// Admin Notification Endpoint (Email Simulation)
+app.post('/api/admin/notify', verifyAdmin, async (req, res) => {
+  const { title, message, severity, userId } = req.body;
+// ... existing code ...
+});
+
+// Admin User Management Endpoint
+app.post('/api/admin/users/:userId/update', verifyAdmin, async (req, res) => {
+// ... existing code ...
+});
+
+async function startServer() {
+  await initFirebaseAdmin();
+
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+    
+    // SPA Fallback for dev mode
+    app.get('*', async (req, res, next) => {
+      const url = req.originalUrl;
+      console.log(`[Server] SPA Fallback for URL: ${url}`);
+      try {
+        let template = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        vite.ssrFixStacktrace(e as Error);
+        next(e);
+      }
+    });
+  } else {
+    const distPath = path.resolve(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send('Application not built. Please try again in a few moments.');
+      }
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();
