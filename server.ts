@@ -20,20 +20,6 @@ const limiter = rateLimit({
   message: { error: "Trop de requêtes, veuillez réessayer plus tard." },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Use X-Forwarded-For or Forwarded if available, otherwise fallback to IP
-    const forwardedFor = req.headers['x-forwarded-for'];
-    if (Array.isArray(forwardedFor)) return forwardedFor[0];
-    if (typeof forwardedFor === 'string') return forwardedFor.split(',')[0].trim();
-    
-    const forwarded = req.headers['forwarded'];
-    if (typeof forwarded === 'string') {
-      const match = forwarded.match(/for="?([^";, ]+)"?/i);
-      if (match) return match[1];
-    }
-    
-    return req.ip || 'unknown';
-  }
 });
 
 const authLimiter = rateLimit({
@@ -42,19 +28,6 @@ const authLimiter = rateLimit({
   message: { error: "Trop de tentatives, veuillez réessayer plus tard." },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const forwardedFor = req.headers['x-forwarded-for'];
-    if (Array.isArray(forwardedFor)) return forwardedFor[0];
-    if (typeof forwardedFor === 'string') return forwardedFor.split(',')[0].trim();
-    
-    const forwarded = req.headers['forwarded'];
-    if (typeof forwarded === 'string') {
-      const match = forwarded.match(/for="?([^";, ]+)"?/i);
-      if (match) return match[1];
-    }
-    
-    return req.ip || 'unknown';
-  }
 });
 
 app.use(express.json());
@@ -89,7 +62,19 @@ async function initFirebaseAdmin() {
       await Promise.all(admin.apps.map(app => app?.delete()));
     }
 
+    let credential = admin.credential.applicationDefault();
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+      try {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+        credential = admin.credential.cert(serviceAccount);
+        console.log("[Firebase] Using custom service account key from environment.");
+      } catch (e) {
+        console.error("[Firebase] Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY:", e);
+      }
+    }
+
     admin.initializeApp({
+      credential,
       projectId: firebaseConfig.projectId,
     });
     
@@ -105,13 +90,14 @@ async function initFirebaseAdmin() {
 
     // Startup test for Firestore (non-blocking)
     console.log("[Firebase] Testing Firestore connection in background...");
-    db.collection('app_settings').doc('health').set({ 
-      lastCheck: admin.firestore.FieldValue.serverTimestamp(),
-      status: 'ok'
-    }, { merge: true }).then(() => {
+    db.collection('app_settings').doc('health').get().then(() => {
       console.log("[Firebase] Firestore connection test successful");
-    }).catch((testError) => {
-      console.error("[Firebase] Firestore connection test FAILED:", testError);
+    }).catch((testError: any) => {
+      if (testError.code === 7) {
+        console.warn("[Firebase] WARNING: Permission Denied. If you are using a custom Firebase project, you need to provide a FIREBASE_SERVICE_ACCOUNT_KEY environment variable for the server to access Firestore.");
+      } else {
+        console.error("[Firebase] Firestore connection test FAILED:", testError);
+      }
     });
     
     console.log("Firebase Admin initialized successfully");

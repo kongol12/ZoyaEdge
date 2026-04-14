@@ -93,27 +93,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      if (currentUser) {
-        let p = await fetchProfile(currentUser.uid);
-        if (!p) {
-          const newProfile = {
-            email: currentUser.email || '',
-            displayName: currentUser.displayName || '',
-            createdAt: serverTimestamp(),
-            onboarded: false,
-            subscription: 'free',
-            subscriptionStatus: 'trialing',
-            aiCredits: 10,
-            role: 'user',
-          };
-          await setDoc(doc(db, 'users', currentUser.uid), newProfile);
-          setProfile(newProfile as UserProfile);
+      try {
+        if (currentUser) {
+          let p = await fetchProfile(currentUser.uid);
+          if (!p) {
+            try {
+              const newProfile = {
+                email: currentUser.email || '',
+                displayName: currentUser.displayName || '',
+                createdAt: serverTimestamp(),
+                onboarded: false,
+                subscription: 'free',
+                subscriptionStatus: 'trialing',
+                aiCredits: 10,
+                role: 'user',
+              };
+              await setDoc(doc(db, 'users', currentUser.uid), newProfile);
+              setProfile(newProfile as UserProfile);
+            } catch (createError) {
+              console.error("Error creating profile:", createError);
+              // Set a fallback profile so the app doesn't break completely
+              setProfile({
+                email: currentUser.email || '',
+                displayName: currentUser.displayName || '',
+                createdAt: new Date(),
+                onboarded: false,
+                subscription: 'free',
+                role: 'user',
+              } as UserProfile);
+            }
+          }
+        } else {
+          setProfile(null);
         }
-      } else {
-        setProfile(null);
+        setUser(currentUser);
+      } catch (err) {
+        console.error("Auth state change error:", err);
+      } finally {
+        setLoading(false);
       }
-      setUser(currentUser);
-      setLoading(false);
     });
 
     return unsubscribe;

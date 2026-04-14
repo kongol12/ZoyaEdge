@@ -44,10 +44,22 @@ import SystemReports from './pages/admin/SystemReports';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminSettings from './pages/admin/AdminSettings';
 
+const LoadingScreen = () => (
+  <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-zinc-950">
+    <div className="relative flex items-center justify-center">
+      <div className="w-16 h-16 border-4 border-gray-200 dark:border-gray-800 rounded-full"></div>
+      <div className="w-16 h-16 border-4 border-rose-500 rounded-full border-t-transparent animate-spin absolute top-0 left-0"></div>
+      <div className="absolute w-6 h-6 bg-rose-500 rounded-full animate-pulse"></div>
+    </div>
+    <h2 className="mt-8 text-xl font-bold text-gray-900 dark:text-white font-poppins tracking-tight">ZoyaEdge</h2>
+    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 animate-pulse">Chargement de votre espace...</p>
+  </div>
+);
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   
-  if (loading) return <div className="min-h-screen flex items-center justify-center dark:bg-zinc-950 dark:text-white">Loading...</div>;
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/auth" />;
   
   // Redirect to onboarding if not completed
@@ -86,7 +98,7 @@ function AppRoutes() {
     return () => unsubscribe();
   }, []);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center dark:bg-zinc-950 dark:text-white">Loading...</div>;
+  if (loading) return <LoadingScreen />;
 
   const isAdmin = profile?.role === 'admin';
   const isBypassedAgent = profile?.role === 'agent' && profile?.bypassMaintenance;
@@ -126,6 +138,7 @@ function AppRoutes() {
       <Route path="/" element={<ProtectedRoute><ClientLayout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />
         <Route path="add" element={<AddTrade />} />
+        <Route path="import" element={<ImportTrades />} />
         <Route path="ai-coach" element={<AICoach />} />
         <Route path="strategies" element={<StrategyBuilder />} />
         <Route path="notebook" element={<Notebook />} />
