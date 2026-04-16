@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../lib/auth';
 import { subscribeToTrades, Trade } from '../../lib/db';
-import DecisionEngine from '../../components/organisms/client/DecisionEngine';
+import AICoachDashboard from '../../components/AI/AICoachDashboard';
 import { motion } from 'motion/react';
 import { BrainCircuit, Loader2, Lock, CreditCard } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n';
@@ -99,7 +99,7 @@ export default function AICoach() {
         </div>
       ) : trades.length > 0 ? (
         <div className="space-y-8">
-          <DecisionEngine trades={trades} />
+          <AICoachDashboard />
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-3xl p-12 text-center border border-gray-100 dark:border-gray-700 shadow-lg">

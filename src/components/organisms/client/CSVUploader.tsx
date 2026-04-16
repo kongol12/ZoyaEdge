@@ -162,6 +162,7 @@ export default function CSVUploader() {
       emotion: '😐',
       session: 'London',
       date,
+      platform,
     };
   };
 

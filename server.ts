@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
@@ -31,6 +32,26 @@ const authLimiter = rateLimit({
 });
 
 app.use(express.json());
+
+// Helper to handle Gemini Errors
+function handleGeminiError(error: any, res: express.Response) {
+  console.error("Gemini API Error:", error);
+  
+  if (error?.message?.includes('API key not valid')) {
+    return res.status(401).json({ 
+      error: "La clé API Gemini est invalide. Veuillez la vérifier dans les paramètres de l'application." 
+    });
+  }
+  
+  if (error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED')) {
+    return res.status(429).json({ 
+      error: "Limite de quota atteinte pour l'IA. Veuillez réessayer dans quelques minutes." 
+    });
+  }
+
+  res.status(500).json({ error: error.message || "Une erreur est survenue lors de l'analyse IA." });
+}
+
 app.use('/api/', limiter);
 
 // Health check
@@ -415,6 +436,109 @@ app.post('/api/admin/notify', verifyAdmin, async (req, res) => {
 // Admin User Management Endpoint
 app.post('/api/admin/users/:userId/update', verifyAdmin, async (req, res) => {
 // ... existing code ...
+});
+
+// AI Coach Proxy Endpoint
+app.post('/api/ai/coach', async (req, res) => {
+  const { input } = req.body;
+  
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: "GEMINI_API_KEY non configurée sur le serveur." });
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const prompt = `
+You are Zoya AI Coach, a professional hedge fund risk analyst, trading performance auditor, and discipline enforcement system.
+Analyze the following trading metrics and behavioral data.
+
+INPUT DATA:
+${JSON.stringify(input, null, 2)}
+
+MODE: ${input.mode || 'STANDARD'}
+If CONCISE: Provide 1 decision and max 3 bullet points in summary/insights.
+If STANDARD: Provide structured analysis.
+If DETAILED: Provide full breakdown of performance, psychology, risk, and actions.
+
+STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
+{
+  "decision": "GREEN" | "ORANGE" | "RED",
+  "score": {
+    "risk": number (0-100),
+    "discipline": number (0-100),
+    "consistency": number (0-100)
+  },
+  "summary": "string",
+  "insights": ["string"],
+  "mistakes": ["string"],
+  "recommendations": ["string"],
+  "risk_level": "LOW" | "MEDIUM" | "HIGH"
+}
+`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("Réponse vide de l'IA");
+    
+    // Clean JSON if model wraps it in markdown
+    const cleanedText = text.replace(/```json\n?|```/g, '').trim();
+    res.json(JSON.parse(cleanedText));
+  } catch (error: any) {
+    handleGeminiError(error, res);
+  }
+});
+
+// AI Coach Ask Endpoint
+app.post('/api/ai/ask', async (req, res) => {
+  const { trades, language, strategies, instruction } = req.body;
+  
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: "GEMINI_API_KEY non configurée sur le serveur." });
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const prompt = `
+Analyze this trading dataset and return structured output only.
+IMPORTANT: All text fields (message, action, reason, next_focus) MUST be in ${language === 'fr' ? 'French (Français)' : 'English'}.
+
+USER STRATEGY DEFINITIONS:
+${strategies?.length > 0 ? JSON.stringify(strategies) : "No custom strategies defined. Use default trading knowledge."}
+
+DATA:
+${JSON.stringify(trades || [])}
+
+MODE:
+HYBRID
+
+STRICT OUTPUT FORMAT REQUIRED:
+JSON ONLY
+`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-flash-lite-preview",
+      contents: prompt,
+      config: {
+        systemInstruction: instruction,
+        responseMimeType: "application/json",
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("Réponse vide de l'IA");
+    
+    const cleanedText = text.replace(/```json\n?|```/g, '').trim();
+    res.json(JSON.parse(cleanedText));
+  } catch (error: any) {
+    handleGeminiError(error, res);
+  }
 });
 
 async function startServer() {

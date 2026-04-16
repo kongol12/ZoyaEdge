@@ -1,7 +1,3 @@
-import { GoogleGenAI } from '@google/genai';
-
-const ai = new GoogleGenAI({ apiKey: (import.meta as any).env?.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY });
-
 export interface AIReport {
   score: number;
   status: "Beginner" | "Intermediate" | "Advanced" | "Elite";
@@ -12,43 +8,28 @@ export interface AIReport {
 }
 
 export async function runZoyaAIAnalysis(statsPayload: string): Promise<AIReport> {
-  const prompt = `
-  You are a trading performance analysis engine.
-
-  INPUT DATA:
-  ${statsPayload}
-
-  TASK:
-  1. Evaluate performance quality (score 0–100)
-  2. Detect critical risks
-  3. Identify behavioral weaknesses
-  4. Recommend 3 precise actions
-
-  OUTPUT FORMAT (STRICT JSON ONLY):
-  {
-    "score": number,
-    "status": "Beginner | Intermediate | Advanced | Elite",
-    "alerts": [string],
-    "strengths": [string],
-    "weaknesses": [string],
-    "actions": [string]
-  }
-  `;
-
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.2
-      }
+    const response = await fetch('/api/ai/ask', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        trades: [], // This endpoint expects trades, but we'll pass the payload in instruction for now
+        language: 'fr',
+        strategies: [],
+        instruction: `Analyze this trading data and return JSON: ${statsPayload}`
+      }),
     });
 
-    const text = response.text || "{}";
-    return JSON.parse(text) as AIReport;
-  } catch (error) {
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to analyze trading data.");
+    }
+
+    return await response.json() as AIReport;
+  } catch (error: any) {
     console.error("AI Analysis failed:", error);
-    throw new Error("Failed to analyze trading data.");
+    throw new Error(error.message || "Failed to analyze trading data.");
   }
 }

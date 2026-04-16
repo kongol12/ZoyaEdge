@@ -36,6 +36,27 @@ export default function TradeForm() {
     return () => unsubscribe();
   }, [user]);
 
+  useEffect(() => {
+    const entry = parseFloat(formData.entryPrice);
+    const exit = parseFloat(formData.exitPrice);
+    const lots = parseFloat(formData.lotSize);
+    
+    if (!isNaN(entry) && !isNaN(exit) && !isNaN(lots)) {
+      const diff = formData.direction === 'buy' ? exit - entry : entry - exit;
+      // Standard Forex lot size is 100,000. 
+      // For indices like NAS100/US30, it's often different, but we'll use a heuristic or just 100k for now as a base.
+      // Better: let's detect if it's a gold/index pair.
+      let multiplier = 100000;
+      const pair = formData.pair.toUpperCase();
+      if (pair.includes('XAU') || pair.includes('GOLD')) multiplier = 100;
+      if (pair.includes('NAS') || pair.includes('US30') || pair.includes('GER40') || pair.includes('SPX')) multiplier = 1;
+      if (pair.includes('JPY')) multiplier = 1000;
+
+      const calculatedPnl = (diff * lots * multiplier).toFixed(2);
+      setFormData(prev => ({ ...prev, pnl: calculatedPnl }));
+    }
+  }, [formData.entryPrice, formData.exitPrice, formData.lotSize, formData.direction, formData.pair]);
+
   const quickPairs = ['EURUSD', 'NAS100', 'XAUUSD', 'US30'];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -44,14 +65,7 @@ export default function TradeForm() {
 
     setLoading(true);
     try {
-      let finalPnl = parseFloat(formData.pnl);
-      if (isNaN(finalPnl)) {
-        const entry = parseFloat(formData.entryPrice);
-        const exit = parseFloat(formData.exitPrice);
-        const lots = parseFloat(formData.lotSize);
-        const diff = formData.direction === 'buy' ? exit - entry : entry - exit;
-        finalPnl = diff * lots * 100000; 
-      }
+      const finalPnl = parseFloat(formData.pnl);
 
       await addTrade(user.uid, {
         pair: formData.pair.toUpperCase(),
@@ -213,12 +227,15 @@ export default function TradeForm() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.dashboard.pnl} ($)</label>
+          <div className="flex justify-between items-center">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.dashboard.pnl} ($)</label>
+            <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Calculé automatiquement</span>
+          </div>
           <input
             type="number"
             step="0.01"
             placeholder={t.dashboard.pnlPlaceholder}
-            className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-zoya-red focus:border-transparent outline-none text-gray-900 dark:text-white transition-all duration-300"
+            className="w-full p-3 bg-emerald-50/30 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-gray-900 dark:text-white transition-all duration-300"
             value={formData.pnl}
             onChange={(e) => setFormData({ ...formData, pnl: e.target.value })}
           />

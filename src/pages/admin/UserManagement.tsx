@@ -36,23 +36,24 @@ export default function UserManagement() {
       return;
     }
 
-    // Fetch all users and filter client-side to include super admins regardless of role
+    // Fetch all users
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as (UserProfile & { id: string })[];
       
-      const staff = data.filter((u: any) => 
-        u.role === 'admin' || 
-        u.role === 'agent' || 
-        u.email === 'kongolmandf@gmail.com'
-      );
+      // Sort by creation date
+      const sorted = data.sort((a, b) => {
+        const dateA = a.createdAt?.toDate?.()?.getTime() || 0;
+        const dateB = b.createdAt?.toDate?.()?.getTime() || 0;
+        return dateB - dateA;
+      });
       
-      setUsers(staff);
+      setUsers(sorted);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users (staff)');
+      handleFirestoreError(error, OperationType.LIST, 'users');
     });
     return () => unsubscribe();
   }, [profile]);

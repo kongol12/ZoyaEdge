@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, limit } from 'firebase/firestore';
-import { Bell, Check, Trash2, Info, AlertTriangle, XCircle, CheckCircle2 } from 'lucide-react';
+import { Bell, Check, Trash2, Info, AlertTriangle, XCircle, CheckCircle2, Send, Megaphone } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../lib/auth';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
-import { OperationType, handleFirestoreError } from '../../lib/db';
+import { OperationType, handleFirestoreError, sendGlobalNotification } from '../../lib/db';
 
 interface AdminNotification {
   id: string;
@@ -21,6 +21,13 @@ export default function AdminNotifications() {
   const { profile } = useAuth();
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [broadcastData, setBroadcastData] = useState({
+    title: '',
+    message: '',
+    type: 'info' as 'info' | 'warning' | 'error' | 'success'
+  });
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -39,6 +46,22 @@ export default function AdminNotifications() {
 
     return () => unsubscribe();
   }, [profile]);
+
+  const handleBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastData.title || !broadcastData.message) return;
+    setSending(true);
+    try {
+      await sendGlobalNotification(broadcastData);
+      setBroadcastData({ title: '', message: '', type: 'info' });
+      setShowBroadcast(false);
+      alert("Message global envoyé à tous les utilisateurs !");
+    } catch (error) {
+      console.error("Error sending broadcast:", error);
+    } finally {
+      setSending(false);
+    }
+  };
 
   const markAsRead = async (id: string) => {
     await updateDoc(doc(db, 'admin_notifications', id), { read: true });
@@ -64,13 +87,92 @@ export default function AdminNotifications() {
           <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">Centre de Notifications</h1>
           <p className="text-gray-500 dark:text-gray-400">Alertes système et notifications administratives en temps réel.</p>
         </div>
-        <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center gap-2">
-          <Bell size={18} className="text-zoya-red" />
-          <span className="text-sm font-bold text-gray-900 dark:text-white">
-            {notifications.filter(n => !n.read).length} Non lues
-          </span>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setShowBroadcast(!showBroadcast)}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl shadow-lg shadow-indigo-600/20 font-poppins font-black text-sm hover:bg-indigo-700 transition-all"
+          >
+            <Megaphone size={18} />
+            Diffusion Globale
+          </button>
+          <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center gap-2">
+            <Bell size={18} className="text-zoya-red" />
+            <span className="text-sm font-bold text-gray-900 dark:text-white">
+              {notifications.filter(n => !n.read).length} Non lues
+            </span>
+          </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showBroadcast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-white dark:bg-gray-800 p-8 rounded-[40px] border border-indigo-100 dark:border-indigo-900/20 shadow-2xl space-y-6"
+          >
+            <div className="flex items-center gap-3 text-indigo-600">
+              <Megaphone size={24} />
+              <h2 className="text-xl font-poppins font-black">Envoyer un message à TOUS les utilisateurs</h2>
+            </div>
+            <form onSubmit={handleBroadcast} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Titre de l'alerte</label>
+                <input
+                  required
+                  type="text"
+                  placeholder="Ex: Maintenance prévue ce soir"
+                  value={broadcastData.title}
+                  onChange={(e) => setBroadcastData({ ...broadcastData, title: e.target.value })}
+                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Type d'alerte</label>
+                <select
+                  value={broadcastData.type}
+                  onChange={(e) => setBroadcastData({ ...broadcastData, type: e.target.value as any })}
+                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="info">Information (Bleu)</option>
+                  <option value="success">Succès (Vert)</option>
+                  <option value="warning">Avertissement (Orange)</option>
+                  <option value="error">Erreur (Rouge)</option>
+                </select>
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Message détaillé</label>
+                <textarea
+                  required
+                  placeholder="Décrivez l'alerte ici..."
+                  rows={3}
+                  value={broadcastData.message}
+                  onChange={(e) => setBroadcastData({ ...broadcastData, message: e.target.value })}
+                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                />
+              </div>
+              <div className="md:col-span-2 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBroadcast(false)}
+                  className="px-6 py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-2xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={sending}
+                  className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white rounded-2xl font-poppins font-black text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50"
+                >
+                  {sending ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
+                  Diffuser le message
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="grid grid-cols-1 gap-4">
         <AnimatePresence mode="popLayout">
@@ -130,5 +232,27 @@ export default function AdminNotifications() {
         )}
       </div>
     </div>
+  );
+}
+
+function RefreshCw({ size, className }: { size: number, className?: string }) {
+  return (
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      className={className}
+    >
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
   );
 }

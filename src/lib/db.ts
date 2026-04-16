@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, writeBatch, doc, deleteDoc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, writeBatch, doc, deleteDoc, updateDoc, getDoc, setDoc, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage } from './firebase';
 import { AICoachResponse } from './ai';
@@ -60,13 +60,22 @@ export interface Trade {
   direction: 'buy' | 'sell';
   entryPrice: number;
   exitPrice: number;
+  stopLoss?: number;
+  takeProfit?: number;
   lotSize: number;
   pnl: number;
   strategy: string;
-  emotion: '😐' | '😰' | '🔥';
-  session: 'London' | 'NY' | 'Asia';
+  emotion: '😐' | '😰' | '🔥' | 'neutral' | 'fear' | 'confidence';
+  session: 'London' | 'NY' | 'Asia' | 'london' | 'newyork' | 'asia';
   date: Date;
   createdAt?: Date;
+  rr?: number;
+  risk?: number;
+  reward?: number;
+  platform?: string;
+  commission?: number;
+  swap?: number;
+  closedAt?: Date;
 }
 
 export interface Strategy {
@@ -87,6 +96,15 @@ export interface NotebookEntry {
   content: string;
   imageUrl?: string;
   createdAt?: Date;
+}
+
+export interface Notification {
+  id?: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'error' | 'success';
+  read: boolean;
+  createdAt: Date;
 }
 
 export const addTrade = async (userId: string, tradeData: Omit<Trade, 'id' | 'userId' | 'createdAt'>) => {
@@ -267,5 +285,92 @@ export const getAIAnalysis = async (userId: string): Promise<AICoachResponse | n
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
     return null;
+  }
+};
+
+export const subscribeToNotifications = (userId: string, callback: (notifications: Notification[]) => void) => {
+  const path = `users/${userId}/notifications`;
+  const notifRef = collection(db, 'users', userId, 'notifications');
+  const q = query(notifRef, orderBy('createdAt', 'desc'), limit(50));
+
+  return onSnapshot(q, (snapshot) => {
+    const notifications = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate() || new Date(),
+      } as Notification;
+    });
+    callback(notifications);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+};
+
+export const markNotificationAsRead = async (userId: string, notifId: string) => {
+  const path = `users/${userId}/notifications/${notifId}`;
+  try {
+    const notifRef = doc(db, 'users', userId, 'notifications', notifId);
+    await updateDoc(notifRef, { read: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+};
+
+export const sendNotificationToUser = async (userId: string, notif: Omit<Notification, 'id' | 'createdAt' | 'read'>) => {
+  const path = `users/${userId}/notifications`;
+  try {
+    const notifRef = collection(db, 'users', userId, 'notifications');
+    await addDoc(notifRef, {
+      ...notif,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+};
+
+export const subscribeToGlobalNotifications = (callback: (notifications: Notification[]) => void) => {
+  const path = `global_notifications`;
+  const notifRef = collection(db, 'global_notifications');
+  const q = query(notifRef, orderBy('createdAt', 'desc'), limit(10));
+
+  return onSnapshot(q, (snapshot) => {
+    const notifications = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt?.toDate() || new Date(),
+      } as Notification;
+    });
+    callback(notifications);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+};
+
+export const sendGlobalNotification = async (notif: Omit<Notification, 'id' | 'createdAt' | 'read'>) => {
+  const path = `global_notifications`;
+  try {
+    const globalNotifRef = collection(db, 'global_notifications');
+    await addDoc(globalNotifRef, {
+      ...notif,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+    
+    // Also add to admin logs
+    const adminNotifRef = collection(db, 'admin_notifications');
+    await addDoc(adminNotifRef, {
+      ...notif,
+      title: `[GLOBAL] ${notif.title}`,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
   }
 };
