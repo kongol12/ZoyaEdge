@@ -10,7 +10,7 @@ export default function AddTrade() {
   const [mode, setMode] = useState<'manual' | 'import'>('manual');
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="w-full">
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-white mb-2">{t.common.addTrade}</h1>
         <p className="text-zinc-500 dark:text-zinc-400">{t.common.chooseLogMethod}</p>

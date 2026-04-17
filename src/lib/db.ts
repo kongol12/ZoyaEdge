@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, writeBatch, doc, deleteDoc, updateDoc, getDoc, setDoc, limit } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, writeBatch, doc, deleteDoc, updateDoc, getDoc, setDoc, limit, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage } from './firebase';
 import { AICoachResponse } from './ai';
@@ -76,6 +76,7 @@ export interface Trade {
   commission?: number;
   swap?: number;
   closedAt?: Date;
+  hiddenByClient?: boolean;
 }
 
 export interface Strategy {
@@ -187,12 +188,15 @@ export const importTrades = async (userId: string, trades: Omit<Trade, 'id' | 'u
   }
 };
 
-export const subscribeToTrades = (userId: string, callback: (trades: Trade[]) => void) => {
+export const subscribeToTrades = (userId: string, callback: (trades: Trade[]) => void, includeHidden = false) => {
   const path = `users/${userId}/trades`;
   const tradesRef = collection(db, 'users', userId, 'trades');
   const q = query(tradesRef, orderBy('date', 'desc'));
 
   return onSnapshot(q, (snapshot) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[Firestore] Received ${snapshot.docs.length} trades for user ${userId}`);
+    }
     const trades = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -201,7 +205,8 @@ export const subscribeToTrades = (userId: string, callback: (trades: Trade[]) =>
         date: data.date?.toDate() || new Date(),
         createdAt: data.createdAt?.toDate() || new Date(),
       } as Trade;
-    });
+    }).filter(t => includeHidden || !t.hiddenByClient);
+    
     callback(trades);
   }, (error) => {
     handleFirestoreError(error, OperationType.GET, path);
@@ -372,5 +377,36 @@ export const sendGlobalNotification = async (notif: Omit<Notification, 'id' | 'c
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+};
+
+export const softDeleteAllTrades = async (userId: string) => {
+  const path = `users/${userId}/trades (soft-delete-all)`;
+  try {
+    const tradesRef = collection(db, 'users', userId, 'trades');
+    const snapshot = await getDocs(tradesRef);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((doc) => {
+      batch.update(doc.ref, { hiddenByClient: true, updatedAt: serverTimestamp() });
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
+  }
+};
+
+export const softDeleteTrades = async (userId: string, tradeIds: string[]) => {
+  const path = `users/${userId}/trades (soft-delete-batch)`;
+  try {
+    const batch = writeBatch(db);
+    tradeIds.forEach((id) => {
+      const tradeRef = doc(db, 'users', userId, 'trades', id);
+      batch.update(tradeRef, { hiddenByClient: true, updatedAt: serverTimestamp() });
+    });
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
   }
 };

@@ -3,7 +3,9 @@ import { X, Shield, CreditCard, User as UserIcon, Mail, Crown, Save, Trash2, Ale
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../../lib/auth';
 import { cn } from '../../lib/utils';
-import { sendNotificationToUser } from '../../lib/db';
+import { Trade, subscribeToTrades, sendNotificationToUser } from '../../lib/db';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 interface UserDetailModalProps {
   user: UserProfile & { id: string };
@@ -14,6 +16,7 @@ interface UserDetailModalProps {
 }
 
 export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDelete }: UserDetailModalProps) {
+  const [activeTab, setActiveTab] = useState<'profile' | 'trades' | 'notif'>('profile');
   const [formData, setFormData] = useState({
     displayName: user.displayName || '',
     email: user.email || '',
@@ -29,6 +32,16 @@ export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDel
     type: 'info' as 'info' | 'warning' | 'error' | 'success'
   });
   const [sendingNotif, setSendingNotif] = useState(false);
+  const [trades, setTrades] = useState<Trade[]>([]);
+
+  React.useEffect(() => {
+    if (isOpen && activeTab === 'trades') {
+      const unsubscribe = subscribeToTrades(user.id, (data) => {
+        setTrades(data);
+      }, true); // includeHidden = true for admins
+      return () => unsubscribe();
+    }
+  }, [isOpen, activeTab, user.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,147 +104,224 @@ export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDel
                 </button>
               </div>
 
+              <div className="flex gap-1 bg-gray-100 dark:bg-gray-900/50 p-1 rounded-2xl">
+                {(['profile', 'trades', 'notif'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={cn(
+                      "flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all",
+                      activeTab === tab 
+                        ? "bg-white dark:bg-gray-800 text-zoya-red shadow-sm" 
+                        : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                    )}
+                  >
+                    {tab === 'profile' ? 'Profil' : tab === 'trades' ? 'Trades' : 'Notif'}
+                  </button>
+                ))}
+              </div>
+
               <div className="space-y-8">
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Basic Info */}
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <UserIcon size={14} /> Informations de Base
-                    </h3>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Nom d'affichage</label>
-                      <input
-                        type="text"
-                        value={formData.displayName}
-                        onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-                        className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Email</label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        disabled
-                        className="w-full bg-gray-100 dark:bg-gray-900/50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-gray-400 cursor-not-allowed"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Security & Access */}
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <Shield size={14} /> Sécurité & Accès
-                    </h3>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Rôle Système</label>
-                      <select
-                        value={formData.role}
-                        onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
-                        className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
-                      >
-                        <option value="user">Client Standard</option>
-                        <option value="agent">Agent Support</option>
-                        <option value="admin">Administrateur</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Plan d'Abonnement</label>
-                      <select
-                        value={formData.subscription}
-                        onChange={(e) => setFormData({ ...formData, subscription: e.target.value as any })}
-                        className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
-                      >
-                        <option value="free">Free Plan</option>
-                        <option value="pro">Pro Plan</option>
-                        <option value="premium">Premium Plan</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* AI Credits */}
-                  <div className="md:col-span-2 space-y-4">
-                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <CreditCard size={14} /> Gestion des Crédits AI
-                    </h3>
-                    <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900 p-4 rounded-3xl">
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-gray-900 dark:text-white">Crédits Disponibles</p>
-                        <p className="text-xs text-gray-500">Ces crédits permettent d'utiliser l'AI Coach.</p>
-                      </div>
-                      <input
-                        type="number"
-                        value={formData.aiCredits}
-                        onChange={(e) => setFormData({ ...formData, aiCredits: parseInt(e.target.value) })}
-                        className="w-32 bg-white dark:bg-gray-800 border-none rounded-2xl px-4 py-3 text-center font-black text-lg text-zoya-red outline-none focus:ring-2 focus:ring-zoya-red"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-2 flex justify-end gap-3">
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="flex items-center gap-2 px-8 py-3 bg-zoya-red text-white rounded-2xl font-poppins font-black text-sm hover:bg-zoya-red/90 transition-all shadow-lg shadow-zoya-red/20 disabled:opacity-50"
-                    >
-                      {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-                      Enregistrer les modifications
-                    </button>
-                  </div>
-                </form>
-
-                {/* Send Notification Section */}
-                <div className="pt-8 border-t border-gray-100 dark:border-gray-700 space-y-4">
-                  <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <Bell size={14} /> Envoyer une Notification Directe
-                  </h3>
-                  <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-[32px] space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {activeTab === 'profile' && (
+                  <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Basic Info */}
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <UserIcon size={14} /> Informations de Base
+                      </h3>
                       <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Titre</label>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Nom d'affichage</label>
                         <input
                           type="text"
-                          placeholder="Ex: Alerte de Trading"
-                          value={notifData.title}
-                          onChange={(e) => setNotifData({ ...notifData, title: e.target.value })}
-                          className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                          value={formData.displayName}
+                          onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
+                          className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Type</label>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Email</label>
+                        <input
+                          type="email"
+                          value={formData.email}
+                          disabled
+                          className="w-full bg-gray-100 dark:bg-gray-900/50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-gray-400 cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Security & Access */}
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <Shield size={14} /> Sécurité & Accès
+                      </h3>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Rôle Système</label>
                         <select
-                          value={notifData.type}
-                          onChange={(e) => setNotifData({ ...notifData, type: e.target.value as any })}
-                          className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                          value={formData.role}
+                          onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                          className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
                         >
-                          <option value="info">Information</option>
-                          <option value="success">Succès</option>
-                          <option value="warning">Avertissement</option>
-                          <option value="error">Erreur</option>
+                          <option value="user">Client Standard</option>
+                          <option value="agent">Agent Support</option>
+                          <option value="admin">Administrateur</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Plan d'Abonnement</label>
+                        <select
+                          value={formData.subscription}
+                          onChange={(e) => setFormData({ ...formData, subscription: e.target.value as any })}
+                          className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                        >
+                          <option value="free">Free Plan</option>
+                          <option value="pro">Pro Plan</option>
+                          <option value="premium">Premium Plan</option>
                         </select>
                       </div>
                     </div>
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Message</label>
-                      <textarea
-                        placeholder="Votre message ici..."
-                        rows={3}
-                        value={notifData.message}
-                        onChange={(e) => setNotifData({ ...notifData, message: e.target.value })}
-                        className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red resize-none"
-                      />
+
+                    {/* AI Credits */}
+                    <div className="md:col-span-2 space-y-4">
+                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <CreditCard size={14} /> Gestion des Crédits AI
+                      </h3>
+                      <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900 p-4 rounded-3xl">
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">Crédits Disponibles</p>
+                          <p className="text-xs text-gray-500">Ces crédits permettent d'utiliser l'AI Coach.</p>
+                        </div>
+                        <input
+                          type="number"
+                          value={formData.aiCredits}
+                          onChange={(e) => setFormData({ ...formData, aiCredits: parseInt(e.target.value) })}
+                          className="w-32 bg-white dark:bg-gray-800 border-none rounded-2xl px-4 py-3 text-center font-black text-lg text-zoya-red outline-none focus:ring-2 focus:ring-zoya-red"
+                        />
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleSendNotif}
-                      disabled={sendingNotif || !notifData.title || !notifData.message}
-                      className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all disabled:opacity-50"
-                    >
-                      {sendingNotif ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
-                      Envoyer la Notification
-                    </button>
+
+                    <div className="md:col-span-2 flex justify-end gap-3">
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="flex items-center gap-2 px-8 py-3 bg-zoya-red text-white rounded-2xl font-poppins font-black text-sm hover:bg-zoya-red/90 transition-all shadow-lg shadow-zoya-red/20 disabled:opacity-50"
+                      >
+                        {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
+                        Enregistrer les modifications
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {activeTab === 'trades' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Historique des Trades (Admin View)</h3>
+                      <span className="text-[10px] font-bold text-zoya-red bg-zoya-red/10 px-2 py-0.5 rounded-full">
+                        {trades.length} trades au total
+                      </span>
+                    </div>
+                    
+                    <div className="max-h-[400px] overflow-y-auto rounded-3xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                      {trades.length > 0 ? (
+                        <table className="w-full text-left">
+                          <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 text-[10px] font-black uppercase text-gray-400">
+                            <tr>
+                              <th className="px-4 py-3">Paire</th>
+                              <th className="px-4 py-3">Date</th>
+                              <th className="px-4 py-3">PnL</th>
+                              <th className="px-4 py-3">Masqué ?</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                            {trades.map(t => (
+                              <tr key={t.id} className="text-xs hover:bg-white dark:hover:bg-gray-800 transition-colors">
+                                <td className="px-4 py-3 font-bold text-gray-900 dark:text-white uppercase">{t.pair}</td>
+                                <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                                  {format(t.date, 'dd/MM/yy HH:mm')}
+                                </td>
+                                <td className={cn(
+                                  "px-4 py-3 font-bold",
+                                  t.pnl >= 0 ? "text-emerald-500" : "text-rose-500"
+                                )}>
+                                  {t.pnl >= 0 ? '+' : ''}{t.pnl}$
+                                </td>
+                                <td className="px-4 py-3">
+                                  {t.hiddenByClient ? (
+                                    <span className="px-1.5 py-0.5 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-md font-bold text-[9px] uppercase tracking-tighter">
+                                      OUI
+                                    </span>
+                                  ) : (
+                                    <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-md font-bold text-[9px] uppercase tracking-tighter">
+                                      NON
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="p-12 text-center text-gray-400 italic">
+                          Aucun trade trouvé pour cet utilisateur.
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {activeTab === 'notif' && (
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                      <Bell size={14} /> Envoyer une Notification Directe
+                    </h3>
+                    <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-[32px] space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Titre</label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Alerte de Trading"
+                            value={notifData.title}
+                            onChange={(e) => setNotifData({ ...notifData, title: e.target.value })}
+                            className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Type</label>
+                          <select
+                            value={notifData.type}
+                            onChange={(e) => setNotifData({ ...notifData, type: e.target.value as any })}
+                            className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                          >
+                            <option value="info">Information</option>
+                            <option value="success">Succès</option>
+                            <option value="warning">Avertissement</option>
+                            <option value="error">Erreur</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Message</label>
+                        <textarea
+                          placeholder="Votre message ici..."
+                          rows={3}
+                          value={notifData.message}
+                          onChange={(e) => setNotifData({ ...notifData, message: e.target.value })}
+                          className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red resize-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSendNotif}
+                        disabled={sendingNotif || !notifData.title || !notifData.message}
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all disabled:opacity-50"
+                      >
+                        {sendingNotif ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
+                        Envoyer la Notification
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between pt-4">
                   <button

@@ -1,14 +1,33 @@
-import React from 'react';
-import { motion } from 'motion/react';
-import { Calendar as CalendarIcon, Info, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Calendar as CalendarIcon, Info, ExternalLink, Globe, History } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n';
 import EconomicCalendarWidget from '../../components/calendar/EconomicCalendarWidget';
+import TradeExplorer from '../../components/organisms/client/TradeExplorer';
+import { subscribeToTrades, Trade } from '../../lib/db';
+import { auth } from '../../lib/firebase';
+import { cn } from '../../lib/utils';
 
 export default function Calendar() {
   const { t, language } = useTranslation();
+  const [activeTab, setActiveTab] = useState<'economic' | 'performance'>('economic');
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = auth.onAuthStateChanged(user => {
+      if (user) {
+        return subscribeToTrades(user.uid, (data) => {
+          setTrades(data);
+          setLoading(false);
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 pb-12">
+    <div className="w-full space-y-8 pb-12">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -18,32 +37,73 @@ export default function Calendar() {
             <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">{t.common.calendar}</h1>
           </div>
           <p className="text-gray-500 dark:text-gray-400 max-w-xl">
-            {language === 'fr' 
-              ? 'Suivez les événements économiques mondiaux en temps réel pour anticiper la volatilité des marchés.' 
-              : 'Track global economic events in real-time to anticipate market volatility.'}
+            {activeTab === 'economic' 
+              ? (language === 'fr' 
+                 ? 'Suivez les événements économiques mondiaux en temps réel.' 
+                 : 'Track global economic events in real-time.')
+              : (language === 'fr'
+                 ? 'Analysez vos performances de trading jour par jour.'
+                 : 'Analyze your trading performance day by day.')
+            }
           </p>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl text-sm font-bold border border-emerald-100 dark:border-emerald-800/50">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            {language === 'fr' ? 'Temps Réel' : 'Real-Time'}
-          </div>
+        <div className="flex bg-white dark:bg-gray-800 p-1 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <button 
+            onClick={() => setActiveTab('economic')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all",
+              activeTab === 'economic' ? "bg-zoya-red text-white shadow-lg shadow-zoya-red/20" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            )}
+          >
+            <Globe size={14} />
+            {language === 'fr' ? 'Économique' : 'Economic'}
+          </button>
+          <button 
+            onClick={() => setActiveTab('performance')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all",
+              activeTab === 'performance' ? "bg-zoya-red text-white shadow-lg shadow-zoya-red/20" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            )}
+          >
+            <History size={14} />
+            {language === 'fr' ? 'Performance' : 'Performance'}
+          </button>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Main Calendar Container */}
         <div className="lg:col-span-3">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="zoya-card overflow-hidden min-h-[800px] p-1"
-          >
-            <div className="w-full h-[800px] rounded-2xl overflow-hidden">
-              <EconomicCalendarWidget />
-            </div>
-          </motion.div>
+          <AnimatePresence mode="wait">
+            <motion.div 
+              key={activeTab}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="zoya-card overflow-hidden min-h-[600px] p-1 shadow-2xl"
+            >
+              <div className="w-full h-full rounded-2xl overflow-hidden">
+                {activeTab === 'economic' ? (
+                  <div className="h-[800px]">
+                    <EconomicCalendarWidget />
+                  </div>
+                ) : (
+                  <div className="p-4 sm:p-6 bg-gray-50/50 dark:bg-gray-900/50">
+                    {loading ? (
+                      <div className="flex items-center justify-center p-20">
+                        <div className="w-8 h-8 border-2 border-zoya-red border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : (
+                      <TradeExplorer 
+                        trades={trades} 
+                        defaultView="calendar" 
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Sidebar Info */}

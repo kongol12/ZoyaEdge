@@ -20,6 +20,8 @@ export default function TradeForm() {
     direction: 'buy' as 'buy' | 'sell',
     entryPrice: '',
     exitPrice: '',
+    stopLoss: '',
+    takeProfit: '',
     lotSize: '',
     pnl: '',
     strategy: 'Breakout',
@@ -27,6 +29,8 @@ export default function TradeForm() {
     session: 'London' as 'London' | 'NY' | 'Asia',
     date: new Date().toISOString().slice(0, 16),
   });
+
+  const [isManualPnl, setIsManualPnl] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -36,26 +40,80 @@ export default function TradeForm() {
     return () => unsubscribe();
   }, [user]);
 
+  const getAssetSettings = (pair: string) => {
+    const p = pair.toUpperCase();
+    // Indices & Crypto
+    if (
+      p.includes('NAS') || p.includes('US30') || p.includes('GER') || 
+      p.includes('DAX') || p.includes('SPX') || p.includes('BTC') || 
+      p.includes('ETH') || p.includes('NDX') || p.includes('US100') ||
+      p.includes('US500') || p.includes('UK100')
+    ) return { multiplier: 1, pipFactor: 1, label: 'Points' };
+
+    // Metals
+    if (p.includes('XAU') || p.includes('GOLD')) return { multiplier: 100, pipFactor: 1, label: 'Points' };
+    if (p.includes('XAG') || p.includes('SILVER')) return { multiplier: 5000, pipFactor: 1, label: 'Points' };
+    
+    // Forex JPY pairs
+    if (p.includes('JPY')) return { multiplier: 1000, pipFactor: 100, label: 'Pips' };
+    
+    // Standard Forex
+    return { multiplier: 100000, pipFactor: 10000, label: 'Pips' };
+  };
+
+  const [stats, setStats] = useState({ pips: 0, label: 'Pips', risk: 0, reward: 0, rr: 0 });
+
   useEffect(() => {
     const entry = parseFloat(formData.entryPrice);
     const exit = parseFloat(formData.exitPrice);
+    const sl = parseFloat(formData.stopLoss);
+    const tp = parseFloat(formData.takeProfit);
     const lots = parseFloat(formData.lotSize);
     
-    if (!isNaN(entry) && !isNaN(exit) && !isNaN(lots)) {
-      const diff = formData.direction === 'buy' ? exit - entry : entry - exit;
-      // Standard Forex lot size is 100,000. 
-      // For indices like NAS100/US30, it's often different, but we'll use a heuristic or just 100k for now as a base.
-      // Better: let's detect if it's a gold/index pair.
-      let multiplier = 100000;
-      const pair = formData.pair.toUpperCase();
-      if (pair.includes('XAU') || pair.includes('GOLD')) multiplier = 100;
-      if (pair.includes('NAS') || pair.includes('US30') || pair.includes('GER40') || pair.includes('SPX')) multiplier = 1;
-      if (pair.includes('JPY')) multiplier = 1000;
+    if (!isNaN(entry)) {
+      const settings = getAssetSettings(formData.pair);
+      let pips = 0;
+      let riskVal = 0;
+      let rewardVal = 0;
+      let rrRatio = 0;
 
-      const calculatedPnl = (diff * lots * multiplier).toFixed(2);
-      setFormData(prev => ({ ...prev, pnl: calculatedPnl }));
+      // Exit/PnL Calc
+      if (!isNaN(exit)) {
+        const diff = formData.direction === 'buy' ? exit - entry : entry - exit;
+        pips = parseFloat((diff * settings.pipFactor).toFixed(1));
+        
+        if (!isManualPnl && !isNaN(lots)) {
+          const calculatedPnl = (diff * lots * settings.multiplier).toFixed(2);
+          setFormData(prev => ({ ...prev, pnl: calculatedPnl }));
+        }
+      }
+
+      // Risk Calc
+      if (!isNaN(sl)) {
+        const riskDiff = formData.direction === 'buy' ? entry - sl : sl - entry;
+        riskVal = Math.abs(riskDiff * (isNaN(lots) ? 1 : lots) * settings.multiplier);
+      }
+
+      // Reward Calc
+      if (!isNaN(tp)) {
+        const rewardDiff = formData.direction === 'buy' ? tp - entry : entry - tp;
+        rewardVal = Math.abs(rewardDiff * (isNaN(lots) ? 1 : lots) * settings.multiplier);
+      }
+
+      // RR Calc
+      if (riskVal > 0 && rewardVal > 0) {
+        rrRatio = parseFloat((rewardVal / riskVal).toFixed(2));
+      }
+      
+      setStats({
+        pips,
+        label: settings.label,
+        risk: parseFloat(riskVal.toFixed(2)),
+        reward: parseFloat(rewardVal.toFixed(2)),
+        rr: rrRatio
+      });
     }
-  }, [formData.entryPrice, formData.exitPrice, formData.lotSize, formData.direction, formData.pair]);
+  }, [formData.entryPrice, formData.exitPrice, formData.stopLoss, formData.takeProfit, formData.lotSize, formData.direction, formData.pair, isManualPnl]);
 
   const quickPairs = ['EURUSD', 'NAS100', 'XAUUSD', 'US30'];
 
@@ -72,12 +130,17 @@ export default function TradeForm() {
         direction: formData.direction,
         entryPrice: parseFloat(formData.entryPrice),
         exitPrice: parseFloat(formData.exitPrice),
+        stopLoss: formData.stopLoss ? parseFloat(formData.stopLoss) : undefined,
+        takeProfit: formData.takeProfit ? parseFloat(formData.takeProfit) : undefined,
         lotSize: parseFloat(formData.lotSize),
         pnl: finalPnl,
         strategy: formData.strategy,
         emotion: formData.emotion,
         session: formData.session,
         date: new Date(formData.date),
+        rr: stats.rr || 0,
+        risk: stats.risk || 0,
+        reward: stats.reward || 0,
       });
 
       setShowSuccess(true);
@@ -203,7 +266,17 @@ export default function TradeForm() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.dashboard.exitPrice}</label>
+          <div className="flex justify-between items-center">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.dashboard.exitPrice}</label>
+            {!isNaN(stats.pips) && (
+              <span className={cn(
+                "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider",
+                stats.pips >= 0 ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" : "bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400"
+              )}>
+                {stats.pips} {stats.label}
+              </span>
+            )}
+          </div>
           <input
             required
             type="number"
@@ -212,6 +285,68 @@ export default function TradeForm() {
             value={formData.exitPrice}
             onChange={(e) => setFormData({ ...formData, exitPrice: e.target.value })}
           />
+        </div>
+
+        <div className="space-y-4 col-span-1 md:col-span-2 bg-gray-50/50 dark:bg-gray-900/30 p-4 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
+          <div className="flex justify-between items-center mb-2">
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest leading-none">Gestion du Risque</span>
+              <div className="h-px flex-1 bg-gray-100 dark:bg-gray-800" />
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setFormData({ ...formData, exitPrice: formData.entryPrice });
+                setIsManualPnl(false);
+              }}
+              className="ml-4 px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded-lg text-[10px] font-black uppercase text-gray-600 dark:text-gray-300 hover:bg-zoya-red hover:text-white transition-all"
+            >
+              {t.dashboard.be}
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.dashboard.stopLoss}</label>
+              <input
+                type="number"
+                step="0.00001"
+                placeholder="Entry - Risk"
+                className="w-full p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-rose-500 focus:border-transparent outline-none text-gray-900 dark:text-white transition-all duration-300"
+                value={formData.stopLoss}
+                onChange={(e) => setFormData({ ...formData, stopLoss: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.dashboard.takeProfit}</label>
+              <input
+                type="number"
+                step="0.00001"
+                placeholder="Entry + Target"
+                className="w-full p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-gray-900 dark:text-white transition-all duration-300"
+                value={formData.takeProfit}
+                onChange={(e) => setFormData({ ...formData, takeProfit: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {(stats.risk > 0 || stats.reward > 0) && (
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 text-center">
+                <p className="text-[10px] text-gray-400 font-bold uppercase">Risk $</p>
+                <p className="text-sm font-black text-rose-500">-${stats.risk}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 text-center">
+                <p className="text-[10px] text-gray-400 font-bold uppercase">Reward $</p>
+                <p className="text-sm font-black text-emerald-500">+${stats.reward}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 text-center">
+                <p className="text-[10px] text-gray-400 font-bold uppercase">{t.dashboard.rr}</p>
+                <p className="text-sm font-black text-zoya-red">1:{stats.rr}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -237,7 +372,10 @@ export default function TradeForm() {
             placeholder={t.dashboard.pnlPlaceholder}
             className="w-full p-3 bg-emerald-50/30 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-gray-900 dark:text-white transition-all duration-300"
             value={formData.pnl}
-            onChange={(e) => setFormData({ ...formData, pnl: e.target.value })}
+            onChange={(e) => {
+              setFormData({ ...formData, pnl: e.target.value });
+              setIsManualPnl(e.target.value !== '');
+            }}
           />
         </div>
 

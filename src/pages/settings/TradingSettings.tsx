@@ -5,6 +5,7 @@ import { db } from '../../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { Settings as SettingsIcon, Save, Loader2 } from 'lucide-react';
+import { cn } from '../../lib/utils';
 
 export default function TradingSettings() {
   const { user, updateProfile } = useAuth();
@@ -105,7 +106,10 @@ export default function TradingSettings() {
                 type="number"
                 step="0.1"
                 value={profile?.defaultRisk || ''}
-                onChange={e => setProfile(prev => prev ? { ...prev, defaultRisk: parseFloat(e.target.value) } : null)}
+                onChange={e => {
+                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                  setProfile(prev => prev ? { ...prev, defaultRisk: val || 0 } : null);
+                }}
                 className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all"
               />
             </div>
@@ -115,9 +119,57 @@ export default function TradingSettings() {
                 type="number"
                 step="0.01"
                 value={profile?.defaultLotSize || ''}
-                onChange={e => setProfile(prev => prev ? { ...prev, defaultLotSize: parseFloat(e.target.value) } : null)}
+                onChange={e => {
+                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                  setProfile(prev => prev ? { ...prev, defaultLotSize: val || 0 } : null);
+                }}
                 className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all"
               />
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-gray-100 dark:border-gray-700">
+            <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4">Affichage Calendrier</h3>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-700">
+                <div className="space-y-0.5">
+                  <label className="text-sm font-bold text-gray-900 dark:text-white">Afficher le P&L</label>
+                  <p className="text-xs text-gray-500">Affiche le gain/perte total de la journée sur chaque case.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProfile(prev => prev ? { ...prev, calendarShowPnL: !prev.calendarShowPnL } : null)}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-zoya-red focus:ring-offset-2",
+                    profile?.calendarShowPnL !== false ? "bg-zoya-red" : "bg-gray-200 dark:bg-gray-700"
+                  )}
+                >
+                  <span className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                    profile?.calendarShowPnL !== false ? "translate-x-6" : "translate-x-1"
+                  )} />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-700">
+                <div className="space-y-0.5">
+                  <label className="text-sm font-bold text-gray-900 dark:text-white">Afficher les Trades</label>
+                  <p className="text-xs text-gray-500">Affiche les détails compacts des trades sur les cases (Bureau).</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setProfile(prev => prev ? { ...prev, calendarShowTrades: !prev.calendarShowTrades } : null)}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-zoya-red focus:ring-offset-2",
+                    profile?.calendarShowTrades !== false ? "bg-zoya-red" : "bg-gray-200 dark:bg-gray-700"
+                  )}
+                >
+                  <span className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                    profile?.calendarShowTrades !== false ? "translate-x-6" : "translate-x-1"
+                  )} />
+                </button>
+              </div>
             </div>
           </div>
 

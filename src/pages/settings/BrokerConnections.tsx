@@ -10,7 +10,7 @@ import { OperationType, handleFirestoreError } from '../../lib/db';
 
 interface BrokerConnection {
   id: string;
-  platform: 'MT4' | 'MT5' | 'TradeLocker';
+  platform: 'MT4' | 'MT5' | 'TradeLocker' | 'CTrader' | 'TradingView' | 'Tradovate' | 'NinjaTrader';
   accountName: string;
   brokerServer?: string;
   brokerLogin?: string;
@@ -19,6 +19,16 @@ interface BrokerConnection {
   lastSync?: Date;
   connectionType?: 'ea' | 'cloud';
 }
+
+const PLATFORM_LOGOS: Record<string, string> = {
+  MT4: 'https://upload.wikimedia.org/wikipedia/commons/e/e4/MetaTrader_4_logo.png',
+  MT5: 'https://upload.wikimedia.org/wikipedia/commons/c/c2/MetaTrader_5_logo.png',
+  TradeLocker: 'https://tradelocker.com/wp-content/uploads/2023/06/tradelocker-logo.svg',
+  CTrader: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/CTrader_logo.png',
+  TradingView: 'https://upload.wikimedia.org/wikipedia/commons/3/33/TradingView_logo.svg',
+  Tradovate: 'https://logos-world.net/wp-content/uploads/2021/04/Tradovate-Logo.png',
+  NinjaTrader: 'https://ninjatrader.com/wp-content/uploads/2023/10/NinjaTrader-Logo.png'
+};
 
 export default function BrokerConnections() {
   const { user, profile } = useAuth();
@@ -30,7 +40,7 @@ export default function BrokerConnections() {
   const [showPaywall, setShowPaywall] = useState(false);
 
   // Form State
-  const [platform, setPlatform] = useState<'MT4' | 'MT5' | 'TradeLocker'>('MT5');
+  const [platform, setPlatform] = useState<'MT4' | 'MT5' | 'TradeLocker' | 'CTrader' | 'TradingView' | 'Tradovate' | 'NinjaTrader'>('MT5');
   const [connectionType, setConnectionType] = useState<'ea' | 'cloud'>('ea');
   const [accountName, setAccountName] = useState('');
   const [brokerServer, setBrokerServer] = useState('');
@@ -228,12 +238,21 @@ export default function BrokerConnections() {
             >
               <div className="flex items-center gap-4">
                 <div className={cn(
-                  "p-3 rounded-2xl shrink-0",
-                  conn.platform === 'MT5' ? "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400" :
-                  conn.platform === 'MT4' ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400" :
-                  "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400"
+                  "w-12 h-12 rounded-2xl shrink-0 flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700",
                 )}>
-                  <Server size={24} />
+                  {PLATFORM_LOGOS[conn.platform] ? (
+                    <img 
+                      src={PLATFORM_LOGOS[conn.platform]} 
+                      alt={conn.platform} 
+                      className={cn(
+                        "w-8 h-8 object-contain",
+                        conn.platform === 'TradingView' && "dark:invert"
+                      )}
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <Server size={24} className="text-gray-400" />
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -387,19 +406,33 @@ export default function BrokerConnections() {
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-500 uppercase ml-1">Plateforme</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['MT4', 'MT5', 'TradeLocker'] as const).map((p) => (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(['MT4', 'MT5', 'TradeLocker', 'CTrader', 'TradingView', 'Tradovate', 'NinjaTrader'] as const).map((p) => (
                       <button
                         key={p}
                         type="button"
                         onClick={() => setPlatform(p)}
                         className={cn(
-                          "py-2.5 rounded-xl text-xs font-bold transition-all border",
+                          "py-2.5 rounded-xl text-[10px] font-bold transition-all border flex flex-col items-center gap-1.5",
                           platform === p 
                             ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 border-transparent shadow-md" 
                             : "bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
                         )}
                       >
+                        {PLATFORM_LOGOS[p] ? (
+                          <img 
+                            src={PLATFORM_LOGOS[p]} 
+                            alt={p} 
+                            className={cn(
+                              "w-5 h-5 object-contain",
+                              p === 'TradingView' && platform !== p && "dark:invert",
+                              p === 'TradingView' && platform === p && "invert dark:invert-0"
+                            )}
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <Server size={14} />
+                        )}
                         {p}
                       </button>
                     ))}

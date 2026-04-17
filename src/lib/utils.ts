@@ -38,6 +38,17 @@ export function formatCurrency(value: number) {
   }).format(value);
 }
 
+export function compactCurrency(value: number, currency = '$') {
+  const absValue = Math.abs(value);
+  const sign = value >= 0 ? '+' : '-';
+  
+  if (absValue >= 1000) {
+    return `${sign}${currency}${(absValue / 1000).toFixed(1)}k`;
+  }
+  
+  return `${sign}${currency}${absValue.toFixed(0)}`;
+}
+
 export function formatPercentage(value: number) {
   return new Intl.NumberFormat('en-US', {
     style: 'percent',

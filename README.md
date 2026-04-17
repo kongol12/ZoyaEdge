@@ -23,8 +23,8 @@ ZoyaEdge est une plateforme d'analyse de performance et de coaching psychologiqu
 
 ## 🛠 Fonctionnalités Déployées
 
-- **Journal de Trading Intelligent** : Saisie manuelle ou import CSV avec suivi des émotions et des sessions.
-- **AI Coach (Zoya AI)** : Analyse en temps réel des séries de pertes et détection des biais psychologiques.
+- **Journal de Trading Visuel** : Interface de calendrier harmonisée avec coloration automatique des cellules (Profit/Perte) et formatage compact des montants (ex: 1.2k$).
+- **AI Coach (Zoya AI) — VERSION BETA** : Analyse en temps réel des séries de pertes et détection des biais psychologiques via un moteur Gemini 3.1 Flash.
 - **Synchronisation MT4/MT5** : Webhook dédié pour l'importation automatique des trades via Expert Advisor (EA).
 - **Dashboard Institutionnel** : Métriques avancées (Expectancy, Profit Factor, Winrate par session/paire).
 - **Strategy Builder** : Définition et test de règles de trading pour renforcer la discipline.

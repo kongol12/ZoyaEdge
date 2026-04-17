@@ -15,6 +15,8 @@ service cloud.firestore {
     //   - defaultLotSize: number (optional)
     //   - currency: string (optional)
     //   - onboarded: boolean (optional)
+    //   - calendarShowPnL: boolean (optional)
+    //   - calendarShowTrades: boolean (optional)
     //   - createdAt: timestamp (required)
     //
     // Collection: users/{userId}/trades
@@ -131,7 +133,7 @@ service cloud.firestore {
     // Domain Validators
     // ===============================================================
     function isValidUser() {
-      return hasOnlyAllowedFields(['email', 'displayName', 'tradingStyle', 'defaultRisk', 'defaultLotSize', 'currency', 'onboarded', 'subscription', 'subscriptionCycle', 'subscriptionStatus', 'subscriptionEndDate', 'createdAt', 'aiCredits', 'role', 'hasUsedTrial', 'updatedAt', 'bypassMaintenance']) &&
+      return hasOnlyAllowedFields(['email', 'displayName', 'tradingStyle', 'defaultRisk', 'defaultLotSize', 'currency', 'onboarded', 'subscription', 'subscriptionCycle', 'subscriptionStatus', 'subscriptionEndDate', 'createdAt', 'aiCredits', 'role', 'hasUsedTrial', 'updatedAt', 'bypassMaintenance', 'calendarShowPnL', 'calendarShowTrades']) &&
              hasRequiredFields(['email', 'createdAt']) &&
              isValidString('email', 3, 100) &&
              isValidOptionalString('displayName', 1, 50) &&
@@ -140,6 +142,8 @@ service cloud.firestore {
              (!( 'defaultLotSize' in request.resource.data) || request.resource.data.defaultLotSize is number) &&
              isValidOptionalString('currency', 1, 10) &&
              (!( 'onboarded' in request.resource.data) || request.resource.data.onboarded is bool) &&
+             (!( 'calendarShowPnL' in request.resource.data) || request.resource.data.calendarShowPnL is bool) &&
+             (!( 'calendarShowTrades' in request.resource.data) || request.resource.data.calendarShowTrades is bool) &&
              (!( 'subscription' in request.resource.data) || request.resource.data.subscription in ['free', 'pro', 'premium']) &&
              (!( 'subscriptionCycle' in request.resource.data) || request.resource.data.subscriptionCycle in ['monthly', 'yearly']) &&
              (!( 'subscriptionStatus' in request.resource.data) || request.resource.data.subscriptionStatus in ['active', 'expired', 'canceled', 'trialing']) &&
@@ -152,7 +156,7 @@ service cloud.firestore {
     }
     
     function isValidTrade(userId) {
-      return hasOnlyAllowedFields(['userId', 'pair', 'direction', 'entryPrice', 'exitPrice', 'lotSize', 'pnl', 'strategy', 'emotion', 'session', 'date', 'createdAt', 'importId']) &&
+      return hasOnlyAllowedFields(['userId', 'pair', 'direction', 'entryPrice', 'exitPrice', 'lotSize', 'pnl', 'strategy', 'emotion', 'session', 'date', 'createdAt', 'importId', 'stopLoss', 'takeProfit', 'rr', 'risk', 'reward', 'platform', 'commission', 'swap', 'closedAt', 'breakEven', 'hiddenByClient', 'updatedAt']) &&
              hasRequiredFields(['userId', 'pair', 'direction', 'entryPrice', 'exitPrice', 'lotSize', 'pnl', 'strategy', 'emotion', 'session', 'date', 'createdAt']) &&
              request.resource.data.userId == userId &&
              isValidString('pair', 1, 20) &&
@@ -161,7 +165,7 @@ service cloud.firestore {
              isPositiveNumber('exitPrice') &&
              isPositiveNumber('lotSize') &&
              request.resource.data.pnl is number &&
-             isValidString('strategy', 1, 50) &&
+             isValidString('strategy', 1, 100) &&
              request.resource.data.emotion in ['😐', '😰', '🔥'] &&
              request.resource.data.session in ['London', 'NY', 'Asia'] &&
              request.resource.data.date is timestamp &&
@@ -209,6 +213,27 @@ service cloud.firestore {
              request.resource.data.content.size() <= 5000 &&
              (!( 'imageUrl' in request.resource.data) || (request.resource.data.imageUrl is string && request.resource.data.imageUrl.size() <= 2000)) &&
              request.resource.data.date is timestamp &&
+             request.resource.data.createdAt is timestamp;
+    }
+
+    function isValidNotification() {
+      return hasOnlyAllowedFields(['title', 'message', 'type', 'read', 'createdAt']) &&
+             hasRequiredFields(['title', 'message', 'type', 'read', 'createdAt']) &&
+             isValidString('title', 1, 100) &&
+             isValidString('message', 1, 2000) &&
+             request.resource.data.type in ['info', 'warning', 'error', 'success'] &&
+             request.resource.data.read is bool &&
+             request.resource.data.createdAt is timestamp;
+    }
+
+    function isValidPayment() {
+      return hasOnlyAllowedFields(['userId', 'amount', 'currency', 'status', 'plan', 'method', 'createdAt']) &&
+             hasRequiredFields(['userId', 'amount', 'currency', 'status', 'plan', 'method', 'createdAt']) &&
+             request.resource.data.amount is number &&
+             isValidString('currency', 3, 3) &&
+             request.resource.data.status in ['completed', 'pending', 'failed', 'refunded'] &&
+             request.resource.data.plan in ['pro', 'premium'] &&
+             request.resource.data.method in ['stripe', 'paypal', 'crypto'] &&
              request.resource.data.createdAt is timestamp;
     }
 
@@ -283,6 +308,15 @@ service cloud.firestore {
                       isAdmin();
         allow delete: if isOwner(userId) || isAdmin();
       }
+
+      match /notifications/{notifId} {
+        allow read: if isOwner(userId) || isAgent();
+        allow create: if isOwner(userId) && isValidNotification();
+        allow update: if (isOwner(userId) && isValidNotification() && 
+                      request.resource.data.createdAt == resource.data.createdAt) ||
+                      isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
     }
 
     match /broker_connections/{connectionId} {
@@ -296,6 +330,11 @@ service cloud.firestore {
       allow delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
     }
 
+    match /payments/{paymentId} {
+      allow read: if isAgent() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
     match /bug_reports/{reportId} {
       allow read: if isAgent();
       allow create: if isAuthenticated();
@@ -305,6 +344,11 @@ service cloud.firestore {
 
     match /admin_notifications/{notifId} {
       allow read: if isAgent();
+      allow write: if isSuperAdmin();
+    }
+
+    match /global_notifications/{notifId} {
+      allow read: if isAuthenticated();
       allow write: if isSuperAdmin();
     }
 

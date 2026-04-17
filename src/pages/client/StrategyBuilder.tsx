@@ -95,7 +95,7 @@ export default function StrategyBuilder() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="w-full space-y-8">
       <header className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">{t.strategies.title}</h1>

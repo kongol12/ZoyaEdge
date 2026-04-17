@@ -42,9 +42,9 @@ export const ClientLayout: React.FC = () => {
           marginLeft: isMobile ? 0 : (isCollapsed ? 80 : 288) 
         }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="flex-1 p-4 md:p-8 w-full min-w-0"
+        className="flex-1 p-4 md:p-6 lg:p-10 w-full min-w-0"
       >
-        <div className="max-w-5xl mx-auto">
+        <div className="w-full">
           {/* Mobile Header */}
           <div className="md:hidden mb-6 flex justify-between items-center bg-white dark:bg-gray-800 p-3 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
             <div className="flex items-center gap-3">

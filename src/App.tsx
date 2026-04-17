@@ -45,6 +45,9 @@ import ClientManagement from './pages/admin/ClientManagement';
 import SystemReports from './pages/admin/SystemReports';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminSettings from './pages/admin/AdminSettings';
+import FinanceManagement from './pages/admin/FinanceManagement';
+import TradeReporting from './pages/admin/TradeReporting';
+import SubscriptionReports from './pages/admin/SubscriptionReports';
 
 const LoadingScreen = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-zinc-950">
@@ -100,13 +103,13 @@ function AppRoutes() {
     return () => unsubscribe();
   }, []);
 
-  if (loading) return <LoadingScreen />;
-
   const isAdmin = profile?.role === 'admin';
   const isBypassedAgent = profile?.role === 'agent' && profile?.bypassMaintenance;
   const canBypassMaintenance = isSuper || isAdmin || isBypassedAgent;
 
-  if (maintenance && !canBypassMaintenance) {
+  const isLandingPage = window.location.pathname === '/home';
+
+  if (maintenance && !canBypassMaintenance && !isLandingPage) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 p-8 text-center">
         <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-3xl flex items-center justify-center text-amber-600 mb-6">
@@ -168,6 +171,9 @@ function AppRoutes() {
       <Route element={<AdminRoute requiredRole="agent" />}>
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/finance" element={<FinanceManagement />} />
+          <Route path="/admin/trade-reports" element={<TradeReporting />} />
+          <Route path="/admin/subscription-reports" element={<SubscriptionReports />} />
           <Route path="/admin/clients" element={<ClientManagement />} />
           <Route path="/admin/users" element={<UserManagement />} />
           <Route path="/admin/connections" element={<div className="p-8">Gestion des Connexions EA (Global)</div>} />

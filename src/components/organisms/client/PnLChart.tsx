@@ -10,7 +10,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { Trade } from '../../../lib/db';
-import { formatCurrency } from '../../../lib/utils';
+import { formatCurrency, compactCurrency } from '../../../lib/utils';
 import { useTranslation } from '../../../lib/i18n';
 import { InfoTooltip } from '../../atoms/InfoTooltip';
 
@@ -72,7 +72,7 @@ export default function PnLChart({ trades, infoText }: PnLChartProps) {
         </div>
         <div className={isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
           <span className="text-2xl font-poppins font-black">
-            {formatCurrency(chartData[chartData.length - 1]?.cumulative || 0)}
+            {compactCurrency(chartData[chartData.length - 1]?.cumulative || 0)}
           </span>
         </div>
       </div>
@@ -109,7 +109,7 @@ export default function PnLChart({ trades, infoText }: PnLChartProps) {
               axisLine={false}
               tickLine={false}
               tick={{ fill: '#71717a', fontSize: 12 }}
-              tickFormatter={(value) => `$${value}`}
+              tickFormatter={(value) => compactCurrency(value)}
             />
             <Tooltip
               contentStyle={{ 

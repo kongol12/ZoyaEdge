@@ -1,6 +1,21 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Users, Settings, LogOut, ChevronLeft, ExternalLink, Activity, Menu, Bug, Bell, Shield } from 'lucide-react';
+import { 
+  LayoutDashboard, 
+  Users, 
+  Settings, 
+  LogOut, 
+  ChevronLeft, 
+  ExternalLink, 
+  Activity, 
+  Menu, 
+  Bug, 
+  Bell, 
+  Shield, 
+  DollarSign, 
+  PieChart, 
+  BarChart3 
+} from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAuth } from '../../../lib/auth';
 import { cn } from '../../../lib/utils';
@@ -18,13 +33,16 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
   const [unreadCount, setUnreadCount] = useState(0);
 
   const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
-    { icon: Users, label: 'Clients', path: '/admin/clients' },
-    { icon: Shield, label: 'Équipe', path: '/admin/users' },
-    { icon: Activity, label: 'Connexions EA', path: '/admin/connections' },
-    { icon: Bug, label: 'Bugs & Rapports', path: '/admin/reports' },
-    { icon: Bell, label: 'Notifications', path: '/admin/notifications', badge: unreadCount },
-    { icon: Settings, label: 'Paramètres Système', path: '/admin/settings' },
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/admin', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
+    { icon: DollarSign, label: 'Finances', path: '/admin/finance', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+    { icon: BarChart3, label: 'Rapports Trades', path: '/admin/trade-reports', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
+    { icon: PieChart, label: 'Abonnements', path: '/admin/subscription-reports', color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+    { icon: Users, label: 'Clients', path: '/admin/clients', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+    { icon: Shield, label: 'Équipe', path: '/admin/users', color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20' },
+    { icon: Activity, label: 'Connexions EA', path: '/admin/connections', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
+    { icon: Bug, label: 'Bugs & Rapports', path: '/admin/reports', color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+    { icon: Bell, label: 'Notifications', path: '/admin/notifications', color: 'text-red-500 bg-red-50 dark:bg-red-900/20', badge: unreadCount },
+    { icon: Settings, label: 'Paramètres Système', path: '/admin/settings', color: 'text-gray-500 bg-gray-50 dark:bg-gray-900/40' },
   ];
 
   return (
@@ -61,29 +79,27 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
             to={item.path}
             title={isCollapsed ? item.label : ""}
             className={cn(
-              "flex items-center gap-3 px-4 py-3.5 rounded-2xl font-poppins font-bold transition-all relative",
+              "flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 relative",
               isCollapsed ? "justify-center" : "",
               location.pathname === item.path
-                ? "bg-zoya-red text-white shadow-lg shadow-zoya-red/20"
-                : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white"
+                ? "bg-zoya-red text-white shadow-lg shadow-zoya-red/20 font-black"
+                : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white font-bold"
             )}
           >
-            <div className="relative">
-              <item.icon size={20} className="shrink-0" />
+            <div className={cn(
+              "w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-300 shrink-0",
+              location.pathname === item.path ? "bg-white/20 text-white" : (item.color || "bg-gray-50 dark:bg-gray-900 text-gray-400")
+            )}>
+              <item.icon size={18} />
               {item.badge !== undefined && item.badge > 0 && (
-                <span className="absolute -top-2 -right-2 w-4 h-4 bg-zoya-red text-white text-[8px] flex items-center justify-center rounded-full border-2 border-white dark:border-gray-900">
-                  {item.badge > 9 ? '9+' : item.badge}
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-zoya-red text-white text-[7px] flex items-center justify-center rounded-full border-2 border-white dark:border-gray-900">
+                  {item.badge}
                 </span>
               )}
             </div>
             {!isCollapsed && (
-              <div className="flex-1 flex justify-between items-center">
+              <div className="flex-1 flex justify-between items-center text-sm">
                 <span>{item.label}</span>
-                {item.badge !== undefined && item.badge > 0 && !isCollapsed && (
-                  <span className="bg-zoya-red/10 text-zoya-red text-[10px] px-2 py-0.5 rounded-lg">
-                    {item.badge}
-                  </span>
-                )}
               </div>
             )}
           </Link>

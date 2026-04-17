@@ -74,7 +74,7 @@ export default function Support() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-12">
+    <div className="w-full space-y-12">
       <div className="text-center space-y-4">
         <div className="inline-flex p-4 bg-zoya-red-accent text-zoya-red rounded-3xl mb-2">
           <LifeBuoy size={32} />

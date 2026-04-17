@@ -14,22 +14,33 @@ const PORT = 3000;
 // Trust proxy is required for express-rate-limit to work correctly behind the AI Studio proxy
 app.set('trust proxy', 1);
 
-// Rate Limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: { error: "Trop de requêtes, veuillez réessayer plus tard." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// Inactivity shutdown logic (Development only)
+// Automatically shuts down the server after 1 hour of no requests to save resources.
+if (process.env.NODE_ENV !== 'production') {
+  const INACTIVITY_TIMEOUT = 60 * 60 * 1000; // 1 hour
+  let inactivityTimer: NodeJS.Timeout;
 
-const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // limit each IP to 10 requests per hour for sensitive ops
-  message: { error: "Trop de tentatives, veuillez réessayer plus tard." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+  const resetInactivityTimer = () => {
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => {
+      console.log(`[Development] Server shutting down due to 1 hour of inactivity.`);
+      process.exit(0);
+    }, INACTIVITY_TIMEOUT);
+  };
+
+  // Initialize timer on startup
+  resetInactivityTimer();
+
+  // Reset timer on every incoming request
+  app.use((req, res, next) => {
+    resetInactivityTimer();
+    next();
+  });
+}
+
+// Rate Limiting removed to avoid IP-based restrictions in dev/preview
+const limiter = (req: any, res: any, next: any) => next();
+const authLimiter = (req: any, res: any, next: any) => next();
 
 app.use(express.json());
 

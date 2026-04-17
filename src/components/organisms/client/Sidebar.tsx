@@ -46,27 +46,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, classNa
     {
       title: t.common.categories.principal,
       items: [
-        { name: t.common.dashboard, path: '/', icon: LayoutDashboard },
-        { name: t.common.addTrade, path: '/add', icon: PlusCircle },
-        { name: t.common.journal, path: '/journal', icon: Book },
-        { name: t.common.academy, path: '/academy', icon: GraduationCap },
+        { name: t.common.dashboard, path: '/', icon: LayoutDashboard, color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
+        { name: t.common.addTrade, path: '/add', icon: PlusCircle, color: 'text-zoya-red bg-zoya-red/10' },
+        { name: t.common.journal, path: '/journal', icon: Book, color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
+        { name: t.common.academy, path: '/academy', icon: GraduationCap, color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20' },
       ]
     },
     {
       title: t.common.categories.analyse,
       items: [
-        { name: t.common.statistics, path: '/statistics', icon: BarChart2 },
-        { name: t.dashboard.coachTitle, path: '/ai-coach', icon: BrainCircuit },
-        { name: t.notebook.title, path: '/notebook', icon: BookOpen },
-        { name: t.strategies.title, path: '/strategies', icon: ListChecks },
+        { name: t.common.statistics, path: '/statistics', icon: BarChart2, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+        { name: t.dashboard.coachTitle, path: '/ai-coach', icon: BrainCircuit, color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20', badge: 'BETA' },
+        { name: t.notebook.title, path: '/notebook', icon: BookOpen, color: 'text-cyan-500 bg-cyan-50 dark:bg-cyan-900/20' },
+        { name: t.strategies.title, path: '/strategies', icon: ListChecks, color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
       ]
     },
     {
       title: t.common.categories.marketData,
       items: [
-        { name: t.common.calendar, path: '/calendar', icon: Calendar },
-        { name: t.common.news, path: '/news', icon: Newspaper },
-        { name: t.common.alerts, path: '/alerts', icon: Bell, badge: t.common.soon },
+        { name: t.common.calendar, path: '/calendar', icon: Calendar, color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
+        { name: t.common.news, path: '/news', icon: Newspaper, color: 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' },
+        { name: t.common.alerts, path: '/alerts', icon: Bell, color: 'text-red-500 bg-red-50 dark:bg-red-900/20', badge: t.common.soon },
       ]
     },
     {
@@ -138,15 +138,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, classNa
                     to={item.path}
                     title={isCollapsed ? item.name : ""}
                     className={cn(
-                      "flex items-center px-4 py-2.5 rounded-2xl font-medium transition-all duration-300 text-sm group",
+                      "flex items-center px-4 py-2.5 rounded-2xl transition-all duration-300 text-sm group",
                       isCollapsed ? "justify-center" : "justify-between",
                       isActive 
-                        ? "bg-zoya-red text-white shadow-lg shadow-zoya-red/20" 
-                        : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-zoya-red dark:hover:text-zoya-red"
+                        ? "bg-zoya-red text-white shadow-lg shadow-zoya-red/20 font-bold" 
+                        : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-zoya-red dark:hover:text-zoya-red font-medium"
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <Icon size={18} className={cn("transition-colors", isActive ? "text-white" : "group-hover:text-zoya-red")} />
+                      <div className={cn(
+                        "w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-300 shrink-0",
+                        isActive ? "bg-white/20 text-white" : (item.color || "bg-gray-50 dark:bg-gray-900 text-gray-400")
+                      )}>
+                        <Icon size={18} />
+                      </div>
                       {!isCollapsed && <span>{item.name}</span>}
                     </div>
                     {!isCollapsed && item.badge && (

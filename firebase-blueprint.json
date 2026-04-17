@@ -11,6 +11,8 @@
         "bypassMaintenance": { "type": "boolean", "description": "Whether the user can bypass maintenance mode." },
         "aiCredits": { "type": "number", "description": "Remaining AI credits for the user." },
         "subscription": { "type": "string", "enum": ["free", "pro", "premium"] },
+        "calendarShowPnL": { "type": "boolean", "description": "Toggle to show PnL on trade calendar." },
+        "calendarShowTrades": { "type": "boolean", "description": "Toggle to show trade details on trade calendar." },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["email", "createdAt"]
@@ -33,6 +35,19 @@
     "AdminNotification": {
       "title": "AdminNotification",
       "description": "A notification for administrators.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "error", "success"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "type", "read", "createdAt"]
+    },
+    "GlobalNotification": {
+      "title": "GlobalNotification",
+      "description": "A notification for all users.",
       "type": "object",
       "properties": {
         "title": { "type": "string" },
@@ -102,6 +117,19 @@
       },
       "required": ["summary", "scores", "alerts", "actions", "coach_decision", "updatedAt"]
     },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a specific user.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "error", "success"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "message", "type", "read", "createdAt"]
+    },
     "BrokerConnection": {
       "title": "BrokerConnection",
       "description": "A connection to a trading platform via EA or API.",
@@ -118,12 +146,31 @@
         "lastSync": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "platform", "accountName", "status", "createdAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A payment record for a subscription.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed", "pending", "failed", "refunded"] },
+        "plan": { "type": "string", "enum": ["pro", "premium"] },
+        "method": { "type": "string", "enum": ["stripe", "paypal", "crypto"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "currency", "status", "plan", "method", "createdAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User profiles."
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Global payment records."
     },
     "/users/{userId}/trades/{tradeId}": {
       "schema": { "$ref": "#/entities/Trade" },
@@ -137,6 +184,10 @@
       "schema": { "$ref": "#/entities/AIAnalysis" },
       "description": "The latest AI analysis for a user."
     },
+    "/users/{userId}/notifications/{notifId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User-specific notifications."
+    },
     "/broker_connections/{connectionId}": {
       "schema": { "$ref": "#/entities/BrokerConnection" },
       "description": "Broker connections for EA sync."
@@ -148,6 +199,10 @@
     "/admin_notifications/{notifId}": {
       "schema": { "$ref": "#/entities/AdminNotification" },
       "description": "Notifications for staff."
+    },
+    "/global_notifications/{notifId}": {
+      "schema": { "$ref": "#/entities/GlobalNotification" },
+      "description": "Global announcements for all users."
     },
     "/app_settings/global": {
       "schema": { "$ref": "#/entities/AppSettings" },

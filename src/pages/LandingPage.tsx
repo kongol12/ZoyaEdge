@@ -206,7 +206,7 @@ const LandingPage = () => {
               className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 text-[11px] uppercase tracking-[0.2em] font-black mb-10"
             >
               <Activity size={14} className="text-zoya-red animate-pulse" />
-              <span>L'Intelligence au service de l'Alpha — par ZoyaFX</span>
+              <span>Propulsé par ZoyaFX</span>
             </motion.div>
             
             <motion.h1 
@@ -242,6 +242,40 @@ const LandingPage = () => {
               </a>
             </motion.div>
 
+            {/* Platform Trust Bar */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.8, duration: 1 }}
+              className="mt-20 pt-10 border-t border-gray-100 dark:border-gray-900"
+            >
+              <p className="text-[10px] uppercase tracking-[0.3em] font-black text-gray-400 mb-10">Intégrations Natives & Automatisées</p>
+              <div className="flex flex-wrap justify-center items-center gap-8 md:gap-16 opacity-40 dark:opacity-30 grayscale hover:grayscale-0 transition-all duration-700">
+                {[
+                  { name: 'MetaTrader 5', logo: 'https://upload.wikimedia.org/wikipedia/commons/c/c2/MetaTrader_5_logo.png', invert: false },
+                  { name: 'MetaTrader 4', logo: 'https://upload.wikimedia.org/wikipedia/commons/e/e4/MetaTrader_4_logo.png', invert: false },
+                  { name: 'TradeLocker', logo: 'https://tradelocker.com/wp-content/uploads/2023/06/tradelocker-logo.svg', invert: false },
+                  { name: 'cTrader', logo: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/CTrader_logo.png', invert: false },
+                  { name: 'TradingView', logo: 'https://upload.wikimedia.org/wikipedia/commons/3/33/TradingView_logo.svg', invert: true },
+                  { name: 'Tradovate', logo: 'https://logos-world.net/wp-content/uploads/2021/04/Tradovate-Logo.png', invert: false },
+                  { name: 'NinjaTrader', logo: 'https://ninjatrader.com/wp-content/uploads/2023/10/NinjaTrader-Logo.png', invert: false }
+                ].map((platform) => (
+                  <img 
+                    key={platform.name}
+                    src={platform.logo} 
+                    alt={platform.name} 
+                    title={platform.name}
+                    className={cn(
+                      "h-6 md:h-8 w-auto object-contain transition-all duration-300",
+                      platform.invert && "dark:invert"
+                    )}
+                    referrerPolicy="no-referrer"
+                  />
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Hero Image Section */}
             <motion.div
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
@@ -249,12 +283,12 @@ const LandingPage = () => {
               className="mt-24 relative group"
             >
               <div className="absolute -inset-4 bg-gradient-to-b from-zoya-red/20 to-transparent rounded-[3rem] blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-              <div className="relative bg-white dark:bg-gray-900 rounded-[2.5rem] border border-gray-200 dark:border-gray-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] dark:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] overflow-hidden">
+              <div className="relative bg-white dark:bg-gray-900 rounded-[2.5rem] border border-gray-200 dark:border-gray-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] dark:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] overflow-hidden aspect-video">
                 <div className="absolute inset-0 bg-gradient-to-t from-white/10 dark:from-black/10 to-transparent pointer-events-none" />
                 <img 
-                  src="https://picsum.photos/seed/zoya_pro_dashboard/1600/900" 
+                  src="https://picsum.photos/seed/zoya_pro_dashboard_v2/1600/900" 
                   alt="ZoyaEdge Institutional Interface" 
-                  className="w-full h-auto object-cover"
+                  className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-1000"
                   referrerPolicy="no-referrer"
                 />
               </div>
@@ -383,7 +417,7 @@ const LandingPage = () => {
             >
               <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-zoya-red/10 border border-zoya-red/20 text-zoya-red text-[10px] uppercase tracking-[0.2em] font-black mb-10">
                 <Brain size={14} />
-                <span>Intelligence Artificielle de Pointe</span>
+                <span>Zoya AI Coach — VERSION BETA</span>
               </div>
               <h2 className="text-4xl md:text-5xl font-poppins font-black mb-10 leading-[1.15] tracking-tight">
                 L'IA qui comprend <br />

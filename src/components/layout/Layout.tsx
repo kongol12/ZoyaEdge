@@ -243,25 +243,38 @@ export default function Layout() {
       <motion.main 
         initial={false}
         animate={{ 
-          marginLeft: isMobile ? 0 : (isCollapsed ? 80 : 288) 
+          paddingLeft: isMobile ? 0 : (isCollapsed ? 80 : 288) 
         }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="flex-1 p-4 md:p-8 w-full min-w-0"
+        className="flex-1 w-full min-w-0"
       >
-        <div className="max-w-5xl mx-auto">
-          {/* Mobile Header */}
-          <div className="md:hidden mb-6 flex justify-between items-center bg-white dark:bg-gray-800 p-3 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
-            <div className="flex items-center gap-3">
-              <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                <Menu size={20} />
-              </button>
-              <h1 className="text-xl font-poppins font-black tracking-tight text-zoya-red">ZoyaEdge</h1>
+        <div className="p-4 md:p-8 lg:p-10 min-h-screen">
+          <div className="w-full space-y-8">
+            {/* Mobile Header */}
+            <div className="md:hidden flex justify-between items-center bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm mb-6">
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setIsMobileMenuOpen(true)} 
+                  className="p-2.5 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <Menu size={20} />
+                </button>
+                <div className="flex flex-col">
+                  <h1 className="text-lg font-poppins font-black leading-none tracking-tight text-gray-900 dark:text-white">ZoyaEdge</h1>
+                  <span className="text-[10px] font-medium text-zoya-red uppercase tracking-widest mt-0.5">Trader Space</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={toggleTheme} 
+                  className="p-2.5 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                </button>
+              </div>
             </div>
-            <button onClick={toggleTheme} className="p-2 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
+            <Outlet />
           </div>
-          <Outlet />
         </div>
       </motion.main>
 

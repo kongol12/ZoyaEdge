@@ -5,7 +5,7 @@ import { ArrowUpRight, ArrowDownRight, Clock, Layers, Zap } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useTranslation } from '../../../lib/i18n';
 
-export default function TradeList({ trades }: { trades: Trade[] }) {
+export default function TradeList({ trades, onTradeClick }: { trades: Trade[], onTradeClick?: (trade: Trade) => void }) {
   const { t, language } = useTranslation();
 
   if (trades.length === 0) {
@@ -17,14 +17,15 @@ export default function TradeList({ trades }: { trades: Trade[] }) {
   }
 
   return (
-    <div className="grid grid-cols-1 xs:grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 sm:p-5">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 p-6">
       {trades.map((trade, idx) => (
         <motion.div 
           key={trade.id}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: idx * 0.05 }}
-          className="bg-white dark:bg-gray-800 p-4 sm:p-5 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg hover:shadow-xl hover:border-zoya-red/20 transition-all cursor-pointer group relative overflow-hidden"
+          onClick={() => onTradeClick?.(trade)}
+          className="bg-white dark:bg-gray-800 p-6 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg hover:shadow-xl hover:border-zoya-red/20 transition-all cursor-pointer group relative overflow-hidden"
         >
           {/* Background Accent */}
           <div className={`absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 rounded-full opacity-5 transition-transform group-hover:scale-110 ${trade.direction === 'buy' ? 'bg-emerald-500' : 'bg-zoya-red'}`} />
@@ -48,8 +49,11 @@ export default function TradeList({ trades }: { trades: Trade[] }) {
             <div className="flex justify-between items-end">
               <div className="space-y-1">
                 <div className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase tracking-widest">{t.dashboard.netPnl}</div>
-                <div className={`text-xl font-poppins font-black ${trade.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-zoya-red'}`}>
-                  {trade.pnl > 0 ? '+' : ''}{formatCurrency(trade.pnl)}
+                <div className={`text-xl font-poppins font-black flex items-baseline gap-1.5 ${trade.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-zoya-red'}`}>
+                  <span>{trade.pnl > 0 ? '+' : ''}{formatCurrency(trade.pnl)}</span>
+                  {trade.rr && trade.rr > 0 && (
+                    <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">(1:{trade.rr})</span>
+                  )}
                 </div>
               </div>
               <div className="text-right">

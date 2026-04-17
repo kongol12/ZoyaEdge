@@ -76,7 +76,7 @@ export const AdminLayout: React.FC = () => {
           paddingTop: isMobile ? 64 : 0
         }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="flex-1 p-8 md:p-12 overflow-y-auto"
+        className="flex-1 p-4 md:p-6 lg:p-10 overflow-y-auto"
       >
         <Outlet />
       </motion.main>

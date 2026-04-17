@@ -136,7 +136,7 @@ export default function Subscription() {
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="max-w-6xl mx-auto space-y-12 pb-12"
+      className="w-full space-y-12 pb-12"
     >
       {/* Header */}
       <div className="text-center space-y-4">

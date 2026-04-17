@@ -68,7 +68,7 @@ export default function Statistics() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-12 pb-12">
+    <div className="w-full space-y-12 pb-12">
       <header className="flex items-center gap-3 mb-8">
         <div className="p-2 bg-zoya-red-accent text-zoya-red rounded-xl">
           <BarChart2 size={24} />

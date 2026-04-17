@@ -55,6 +55,8 @@ export interface UserProfile {
   aiCredits?: number;
   role?: 'user' | 'agent' | 'admin';
   bypassMaintenance?: boolean;
+  calendarShowPnL?: boolean;
+  calendarShowTrades?: boolean;
   createdAt: any;
 }
 
@@ -167,8 +169,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfile = async (data: Partial<UserProfile>) => {
     if (!user) return;
+    // Filter out restricted fields that should not be updated by the user directly
+    const { createdAt, role, email, ...updatableData } = data;
     const userRef = doc(db, 'users', user.uid);
-    await setDoc(userRef, data, { merge: true });
+    await setDoc(userRef, { 
+      ...updatableData, 
+      updatedAt: serverTimestamp() 
+    }, { merge: true });
     await fetchProfile(user.uid);
   };
 

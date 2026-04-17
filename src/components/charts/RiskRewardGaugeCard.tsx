@@ -33,7 +33,7 @@ export function RiskRewardGaugeCard({ ratio, delay = 0 }: RiskRewardGaugeCardPro
       <div className="flex-1 flex items-center justify-between">
         <div className="flex flex-col">
           <span className="text-3xl font-poppins font-black text-gray-900 dark:text-white">
-            {ratio > 0 ? ratio.toFixed(1) : '0.0'}
+            {ratio > 0 ? `1:${ratio.toFixed(1)}` : '1:0.0'}
           </span>
           <div className="flex flex-col gap-1 mt-3">
             <div className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">

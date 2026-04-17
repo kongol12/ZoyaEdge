@@ -6,17 +6,18 @@ import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { UploadCloud, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react';
 import { useTranslation } from '../../../lib/i18n';
+import { cn } from '../../../lib/utils';
 
 type Platform = 'MT4' | 'MT5' | 'TradeLocker' | 'CTrader' | 'TradingView' | 'Tradovate' | 'NinjaTrader';
 
 const PLATFORMS: { id: Platform; name: string; formats: string; logo: string; fallbackColor: string }[] = [
-  { id: 'MT4', name: 'MetaTrader 4', formats: '.csv,.txt,.html', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/MetaTrader_4_logo.png/120px-MetaTrader_4_logo.png', fallbackColor: 'bg-blue-600' },
-  { id: 'MT5', name: 'MetaTrader 5', formats: '.csv,.txt,.html', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/MetaTrader_5_logo.png/120px-MetaTrader_5_logo.png', fallbackColor: 'bg-blue-700' },
+  { id: 'MT4', name: 'MetaTrader 4', formats: '.csv,.txt,.html', logo: 'https://upload.wikimedia.org/wikipedia/commons/e/e4/MetaTrader_4_logo.png', fallbackColor: 'bg-blue-600' },
+  { id: 'MT5', name: 'MetaTrader 5', formats: '.csv,.txt,.html', logo: 'https://upload.wikimedia.org/wikipedia/commons/c/c2/MetaTrader_5_logo.png', fallbackColor: 'bg-blue-700' },
   { id: 'TradeLocker', name: 'TradeLocker', formats: '.csv', logo: 'https://tradelocker.com/wp-content/uploads/2023/06/tradelocker-logo.svg', fallbackColor: 'bg-indigo-600' },
-  { id: 'CTrader', name: 'cTrader', formats: '.csv,.xlsx', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/CTrader_logo.png/120px-CTrader_logo.png', fallbackColor: 'bg-green-600' },
-  { id: 'TradingView', name: 'TradingView', formats: '.csv', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/TradingView_logo.svg/120px-TradingView_logo.svg.png', fallbackColor: 'bg-black' },
-  { id: 'Tradovate', name: 'Tradovate', formats: '.csv', logo: '', fallbackColor: 'bg-blue-500' },
-  { id: 'NinjaTrader', name: 'NinjaTrader', formats: '.csv', logo: '', fallbackColor: 'bg-green-700' },
+  { id: 'CTrader', name: 'cTrader', formats: '.csv,.xlsx', logo: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/CTrader_logo.png', fallbackColor: 'bg-green-600' },
+  { id: 'TradingView', name: 'TradingView', formats: '.csv', logo: 'https://upload.wikimedia.org/wikipedia/commons/3/33/TradingView_logo.svg', fallbackColor: 'bg-black' },
+  { id: 'Tradovate', name: 'Tradovate', formats: '.csv', logo: 'https://logos-world.net/wp-content/uploads/2021/04/Tradovate-Logo.png', fallbackColor: 'bg-blue-500' },
+  { id: 'NinjaTrader', name: 'NinjaTrader', formats: '.csv', logo: 'https://ninjatrader.com/wp-content/uploads/2023/10/NinjaTrader-Logo.png', fallbackColor: 'bg-green-700' },
 ];
 
 export default function CSVUploader() {
@@ -225,7 +226,10 @@ export default function CSVUploader() {
                   <img 
                     src={platform.logo} 
                     alt={platform.name} 
-                    className="w-12 h-12 object-contain group-hover:scale-110 transition-transform"
+                    className={cn(
+                      "w-12 h-12 object-contain group-hover:scale-110 transition-transform",
+                      platform.id === 'TradingView' && "dark:invert"
+                    )}
                     onError={(e) => {
                       (e.target as HTMLImageElement).style.display = 'none';
                       (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
