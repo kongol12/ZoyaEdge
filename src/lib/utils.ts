@@ -56,6 +56,11 @@ export function formatPercentage(value: number) {
   }).format(value / 100);
 }
 
+export function formatRR(rr: number | undefined | null): string {
+  if (rr === undefined || rr === null || isNaN(rr) || rr === 0) return '1 : 0.00';
+  return `1 : ${Math.abs(rr).toFixed(2)}`;
+}
+
 export function exportToCSV(filename: string, rows: any[]) {
   if (!rows || !rows.length) return;
   const separator = ',';

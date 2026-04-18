@@ -1,14 +1,26 @@
 import { Trade } from './db';
+import { formatRR } from './utils';
+import { calculateAvgRR } from './advancedTradingMetrics';
 
-export function computeEquityCurve(trades: Trade[]) {
-  let cumulative = 0;
-  return [...trades].sort((a, b) => a.date.getTime() - b.date.getTime()).map(t => {
+export function computeEquityCurve(trades: Trade[], initialBalance: number = 0) {
+  let cumulative = initialBalance;
+  const sorted = [...trades].sort((a, b) => a.date.getTime() - b.date.getTime());
+  
+  // Add an initial point at t=0
+  const points = [{
+    date: 'Start',
+    cumulative: Number(initialBalance.toFixed(2))
+  }];
+  
+  sorted.forEach(t => {
     cumulative += Number(t.pnl);
-    return {
+    points.push({
       date: t.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
       cumulative: Number(cumulative.toFixed(2))
-    };
+    });
   });
+  
+  return points;
 }
 
 export function computeDrawdown(trades: Trade[]) {
@@ -58,7 +70,7 @@ export function computeRiskReward(trades: Trade[]) {
   const avgWin = wins.length > 0 ? wins.reduce((sum, t) => sum + Number(t.pnl), 0) / wins.length : 0;
   const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((sum, t) => sum + Number(t.pnl), 0)) / losses.length : 0;
 
-  const rr = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? avgWin : 0);
+  const rr = calculateAvgRR(trades);
   return {
     avgWin: Number(avgWin.toFixed(2)),
     avgLoss: Number(avgLoss.toFixed(2)),
@@ -92,7 +104,7 @@ export function computePerformanceMetrics(trades: Trade[]) {
   
   const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
   const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
-  const rr = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? avgWin : 0);
+  const rr = calculateAvgRR(trades);
 
   const totalPnL = trades.reduce((sum, t) => sum + Number(t.pnl), 0);
   const avgReturn = totalPnL / trades.length;
@@ -137,7 +149,7 @@ export function computePerformanceMetrics(trades: Trade[]) {
   return {
     metrics: [
       { subject: 'Profit Factor', A: Math.round(scorePF), fullMark: 100, value: profitFactor.toFixed(2) },
-      { subject: 'R/R', A: Math.round(scoreRR), fullMark: 100, value: rr.toFixed(2) },
+      { subject: 'R/R', A: Math.round(scoreRR), fullMark: 100, value: formatRR(rr) },
       { subject: 'Avg Return', A: Math.round(scoreAvgReturn), fullMark: 100, value: `$${avgReturn.toFixed(2)}` },
       { subject: 'Max DD', A: Math.round(scoreMaxDD), fullMark: 100, value: `$${Math.abs(maxDrawdown).toFixed(2)}` },
     ],

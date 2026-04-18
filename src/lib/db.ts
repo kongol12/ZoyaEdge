@@ -56,17 +56,17 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 export interface Trade {
   id?: string;
   userId: string;
-  pair: string;
-  direction: 'buy' | 'sell';
-  entryPrice: number;
-  exitPrice: number;
+  pair?: string;
+  direction?: 'buy' | 'sell';
+  entryPrice?: number;
+  exitPrice?: number;
   stopLoss?: number;
   takeProfit?: number;
-  lotSize: number;
+  lotSize?: number;
   pnl: number;
   strategy: string;
   emotion: '😐' | '😰' | '🔥' | 'neutral' | 'fear' | 'confidence';
-  session: 'London' | 'NY' | 'Asia' | 'london' | 'newyork' | 'asia';
+  session: 'London' | 'NY' | 'Asia' | 'london' | 'newyork' | 'asia' | 'other';
   date: Date;
   createdAt?: Date;
   rr?: number;
@@ -77,6 +77,9 @@ export interface Trade {
   swap?: number;
   closedAt?: Date;
   hiddenByClient?: boolean;
+  isDemo?: boolean;
+  type?: 'trade' | 'deposit' | 'withdrawal' | 'adjustment';
+  assetType?: 'forex' | 'indices' | 'crypto' | 'commodities' | 'futures' | 'synthetic';
 }
 
 export interface Strategy {
@@ -117,6 +120,7 @@ export const addTrade = async (userId: string, tradeData: Omit<Trade, 'id' | 'us
       userId,
       date: Timestamp.fromDate(tradeData.date),
       createdAt: serverTimestamp(),
+      isDemo: false, // Explicitly set false for real trades
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -179,6 +183,7 @@ export const importTrades = async (userId: string, trades: Omit<Trade, 'id' | 'u
         userId,
         date: Timestamp.fromDate(trade.date),
         createdAt: serverTimestamp(),
+        isDemo: false,
       });
     });
 
@@ -205,7 +210,7 @@ export const subscribeToTrades = (userId: string, callback: (trades: Trade[]) =>
         date: data.date?.toDate() || new Date(),
         createdAt: data.createdAt?.toDate() || new Date(),
       } as Trade;
-    }).filter(t => includeHidden || !t.hiddenByClient);
+    }).filter(t => (includeHidden || !t.hiddenByClient) && !t.isDemo);
     
     callback(trades);
   }, (error) => {

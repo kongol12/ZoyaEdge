@@ -1,6 +1,6 @@
 import React from 'react';
 import { Trade } from '../../../lib/db';
-import { formatCurrency, cn } from '../../../lib/utils';
+import { formatCurrency, cn, formatRR } from '../../../lib/utils';
 import { format } from 'date-fns';
 import { 
   ArrowLeft, 
@@ -139,7 +139,7 @@ export default function TradeDetail({ trade, allTrades = [], onBack }: TradeDeta
                   <div className="grid grid-cols-2 gap-6 bg-gray-50 dark:bg-gray-900/50 p-6 rounded-3xl border border-gray-100 dark:border-gray-800">
                     <div className="space-y-1">
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Rapport R/R</p>
-                      <p className="text-xl font-poppins font-black text-gray-900 dark:text-white">1:{trade.rr || 'N/A'}</p>
+                      <p className="text-xl font-poppins font-black text-gray-900 dark:text-white">{formatRR(trade.rr)}</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Commission</p>

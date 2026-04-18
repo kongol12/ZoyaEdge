@@ -1,3 +1,5 @@
+import { auth } from './firebase';
+
 export interface AIReport {
   score: number;
   status: "Beginner" | "Intermediate" | "Advanced" | "Elite";
@@ -9,10 +11,12 @@ export interface AIReport {
 
 export async function runZoyaAIAnalysis(statsPayload: string): Promise<AIReport> {
   try {
+    const token = await auth.currentUser?.getIdToken();
     const response = await fetch('/api/ai/ask', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({
         trades: [], // This endpoint expects trades, but we'll pass the payload in instruction for now

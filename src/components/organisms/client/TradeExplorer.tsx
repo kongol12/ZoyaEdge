@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Trade } from '../../../lib/db';
-import { formatCurrency, compactCurrency, cn } from '../../../lib/utils';
+import { formatCurrency, compactCurrency, cn, formatRR } from '../../../lib/utils';
 import { format, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from 'date-fns';
 import { 
   Calendar as CalendarIcon, 
@@ -235,13 +235,23 @@ export default function TradeExplorer({ trades, defaultView = 'list', onTradeCli
                 <td className="px-6 py-4">
                   <span className={cn(
                     "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",
-                    trade.direction === 'buy' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20" : "bg-rose-50 text-rose-600 dark:bg-rose-900/20"
+                    trade.type === 'deposit' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20" :
+                    trade.type === 'withdrawal' ? "bg-rose-50 text-rose-600 dark:bg-rose-900/20" :
+                    trade.type === 'adjustment' ? "bg-amber-50 text-amber-600 dark:bg-amber-900/20" :
+                    (trade.direction === 'buy' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20" : "bg-rose-50 text-rose-600 dark:bg-rose-900/20")
                   )}>
-                    {trade.direction}
+                    {trade.type === 'deposit' ? 'DEPOSIT' : 
+                     trade.type === 'withdrawal' ? 'WITHDRAWAL' : 
+                     trade.type === 'adjustment' ? 'ADJUST' : 
+                     trade.direction}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-xs font-bold text-gray-600 dark:text-gray-400">{trade.lotSize}</td>
-                <td className="px-6 py-4 text-xs font-bold text-gray-500">{trade.rr ? `1:${trade.rr}` : '-'}</td>
+                <td className="px-6 py-4 text-xs font-bold text-gray-600 dark:text-gray-400">
+                  {(!trade.type || trade.type === 'trade') ? trade.lotSize : '-'}
+                </td>
+                <td className="px-6 py-4 text-xs font-bold text-gray-500">
+                  {(!trade.type || trade.type === 'trade') ? formatRR(trade.rr) : '-'}
+                </td>
                 <td className={cn(
                   "px-6 py-4 font-poppins font-black",
                   trade.pnl >= 0 ? "text-emerald-600" : "text-rose-600"

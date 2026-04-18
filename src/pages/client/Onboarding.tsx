@@ -12,6 +12,7 @@ export default function Onboarding() {
   const [formData, setFormData] = useState({
     tradingStyle: '',
     currency: 'USD',
+    initialBalance: 1000,
     defaultRisk: 1,
     defaultLotSize: 0.1
   });
@@ -99,6 +100,15 @@ export default function Onboarding() {
                       <option value="EUR">EUR (€)</option>
                       <option value="GBP">GBP (£)</option>
                     </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-poppins font-bold text-gray-700 dark:text-gray-300">{t.onboarding.initialBalance}</label>
+                    <input
+                      type="number"
+                      value={formData.initialBalance}
+                      onChange={e => setFormData({ ...formData, initialBalance: parseFloat(e.target.value) })}
+                      className="w-full px-4 py-3 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all"
+                    />
                   </div>
                 </div>
               )}

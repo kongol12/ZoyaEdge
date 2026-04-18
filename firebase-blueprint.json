@@ -7,13 +7,24 @@
       "properties": {
         "email": { "type": "string", "format": "email" },
         "displayName": { "type": "string" },
+        "tradingStyle": { "type": "string" },
+        "defaultRisk": { "type": "number" },
+        "defaultLotSize": { "type": "number" },
+        "currency": { "type": "string" },
+        "onboarded": { "type": "boolean" },
         "role": { "type": "string", "enum": ["user", "agent", "admin"] },
         "bypassMaintenance": { "type": "boolean", "description": "Whether the user can bypass maintenance mode." },
         "aiCredits": { "type": "number", "description": "Remaining AI credits for the user." },
         "subscription": { "type": "string", "enum": ["free", "pro", "premium"] },
+        "subscriptionCycle": { "type": "string", "enum": ["monthly", "yearly"] },
+        "subscriptionStatus": { "type": "string", "enum": ["active", "expired", "canceled", "trialing", "suspended"] },
+        "subscriptionEndDate": { "type": "string", "format": "date-time" },
+        "hasUsedTrial": { "type": "boolean" },
+        "initialBalance": { "type": "number" },
         "calendarShowPnL": { "type": "boolean", "description": "Toggle to show PnL on trade calendar." },
         "calendarShowTrades": { "type": "boolean", "description": "Toggle to show trade details on trade calendar." },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["email", "createdAt"]
     },
@@ -72,7 +83,7 @@
     },
     "Trade": {
       "title": "Trade",
-      "description": "A trading record.",
+      "description": "A financial transaction record (trade, deposit, withdrawal, or adjustment).",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
@@ -80,16 +91,30 @@
         "direction": { "type": "string", "enum": ["buy", "sell"] },
         "entryPrice": { "type": "number" },
         "exitPrice": { "type": "number" },
+        "stopLoss": { "type": "number" },
+        "takeProfit": { "type": "number" },
         "lotSize": { "type": "number" },
         "pnl": { "type": "number" },
         "strategy": { "type": "string" },
-        "emotion": { "type": "string", "enum": ["😐", "😰", "🔥"] },
-        "session": { "type": "string", "enum": ["London", "NY", "Asia"] },
+        "emotion": { "type": "string", "enum": ["😐", "😰", "🔥", "neutral", "fear", "confidence"] },
+        "session": { "type": "string", "enum": ["London", "NY", "Asia", "london", "newyork", "asia", "other"] },
         "date": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "importId": { "type": "string", "description": "Optional reference to the import batch." }
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "importId": { "type": "string", "description": "Optional reference to the import batch." },
+        "type": { "type": "string", "enum": ["trade", "deposit", "withdrawal", "adjustment"] },
+        "rr": { "type": "number" },
+        "risk": { "type": "number" },
+        "reward": { "type": "number" },
+        "platform": { "type": "string" },
+        "assetType": { "type": "string", "enum": ["forex", "indices", "crypto", "commodities", "futures", "synthetic"] },
+        "commission": { "type": "number" },
+        "swap": { "type": "number" },
+        "closedAt": { "type": "string", "format": "date-time" },
+        "hiddenByClient": { "type": "boolean" },
+        "isDemo": { "type": "boolean" }
       },
-      "required": ["userId", "pair", "direction", "entryPrice", "exitPrice", "lotSize", "pnl", "strategy", "emotion", "session", "date", "createdAt"]
+      "required": ["userId", "pnl", "strategy", "date", "createdAt"]
     },
     "Import": {
       "title": "Import",
@@ -140,7 +165,9 @@
         "accountName": { "type": "string" },
         "brokerServer": { "type": "string" },
         "brokerLogin": { "type": "string" },
+        "investorPassword": { "type": "string" },
         "syncKey": { "type": "string" },
+        "connectionType": { "type": "string", "enum": ["ea", "cloud"] },
         "status": { "type": "string", "enum": ["waiting", "active", "error"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "lastSync": { "type": "string", "format": "date-time" }

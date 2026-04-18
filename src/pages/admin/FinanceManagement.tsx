@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot, query, orderBy, limit, Timestamp, where } from 'firebase/firestore';
-import { DollarSign, TrendingUp, Users, CreditCard, ArrowUpRight, ArrowDownRight, Calendar, Filter, Download, Wallet, Database, RefreshCw } from 'lucide-react';
-import { seedMockTransactions } from '../../lib/seed';
+import { DollarSign, TrendingUp, Users, CreditCard, ArrowUpRight, ArrowDownRight, Calendar, Filter, Download, Wallet, Database, RefreshCw, Trash2 } from 'lucide-react';
+import { seedMockTransactions, clearDemoPayments } from '../../lib/seed';
 import { motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
@@ -28,12 +28,14 @@ interface PaymentRecord {
   plan: 'pro' | 'premium';
   method: 'stripe' | 'paypal' | 'crypto';
   createdAt: Timestamp;
+  isDemo?: boolean;
 }
 
 export default function FinanceManagement() {
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
   const [stats, setStats] = useState({
     totalRevenue: 0,
     monthlyRevenue: 0,
@@ -56,10 +58,28 @@ export default function FinanceManagement() {
     }
   };
 
+  const handleClearDemo = async () => {
+    if (!confirm("Supprimer toutes les données de démonstration ?")) return;
+    setIsSeeding(true);
+    try {
+      await clearDemoPayments();
+      alert("Données de démo supprimées !");
+    } catch (error) {
+      console.error(error);
+      alert("Erreur lors de la suppression.");
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   useEffect(() => {
     const q = query(collection(db, 'payments'), orderBy('createdAt', 'desc'), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as PaymentRecord);
+      const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as PaymentRecord);
+      
+      // Filter based on toggle
+      const data = allData.filter(p => showDemo || !p.isDemo);
+      
       setPayments(data);
       
       // Calculate basic stats
@@ -131,6 +151,25 @@ export default function FinanceManagement() {
           <p className="text-gray-500 dark:text-gray-400">Suivi des revenus, abonnements et performances comptables.</p>
         </div>
         <div className="flex gap-3">
+          <button 
+            onClick={() => setShowDemo(!showDemo)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl border font-bold text-sm transition-all",
+              showDemo 
+                ? "bg-amber-100 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:border-amber-800" 
+                : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-400"
+            )}
+          >
+            {showDemo ? "Cacher Démo" : "Voir Démo"}
+          </button>
+          <button 
+            onClick={handleClearDemo}
+            disabled={isSeeding}
+            className="flex items-center gap-2 bg-rose-500 text-white px-4 py-2 rounded-xl shadow-lg shadow-rose-500/20 font-bold text-sm hover:bg-rose-600 transition-colors disabled:opacity-50"
+          >
+            <Trash2 size={18} />
+            Nettoyer Démo
+          </button>
           <button 
             onClick={handleSeed}
             disabled={isSeeding}

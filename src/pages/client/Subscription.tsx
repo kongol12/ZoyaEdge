@@ -14,8 +14,8 @@ export default function Subscription() {
   const plans = [
     {
       id: 'free',
-      name: 'Free',
-      description: 'Pour découvrir ZoyaEdge et commencer son journal.',
+      name: 'Discovery',
+      description: 'Pour découvrir ZoyaEdge et poser les bases de votre discipline.',
       price: { monthly: 0, yearly: 0 },
       features: [
         'Jusqu\'à 50 trades manuels / mois',
@@ -36,7 +36,7 @@ export default function Subscription() {
     {
       id: 'pro',
       name: 'Pro',
-      description: 'Pour les traders actifs qui veulent gagner du temps.',
+      description: '7 jours d\'essai offerts. Pour les traders actifs qui veulent performer.',
       price: { monthly: 15.99, yearly: 153.50 }, // ~$12.79/mo if yearly
       features: [
         'Trades manuels illimités',
@@ -136,8 +136,16 @@ export default function Subscription() {
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="w-full space-y-12 pb-12"
+      className="max-w-7xl mx-auto w-full space-y-12 pb-12"
     >
+      {/* Payment Gateway Coming Soon Notification */}
+      <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/50 p-4 rounded-3xl flex items-center justify-center gap-3 shadow-inner">
+        <CreditCard className="text-emerald-600 dark:text-emerald-400" size={20} />
+        <p className="text-sm font-poppins font-bold text-emerald-900 dark:text-emerald-200 text-center">
+          Prochainement : Intégration d'une passerelle de paiement directe (M-Pesa, Orange, Airtel, Carte).
+        </p>
+      </div>
+
       {/* Header */}
       <div className="text-center space-y-4">
         <h1 className="text-4xl md:text-5xl font-poppins font-black text-gray-900 dark:text-white tracking-tight">

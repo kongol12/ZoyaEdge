@@ -126,6 +126,18 @@ export default function TradingSettings() {
                 className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all"
               />
             </div>
+            <div className="space-y-2 lg:col-span-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Solde Initial du Compte ($)</label>
+              <input
+                type="number"
+                value={profile?.initialBalance || ''}
+                onChange={e => {
+                  const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                  setProfile(prev => prev ? { ...prev, initialBalance: val || 0 } : null);
+                }}
+                className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all"
+              />
+            </div>
           </div>
 
           <div className="pt-6 border-t border-gray-100 dark:border-gray-700">

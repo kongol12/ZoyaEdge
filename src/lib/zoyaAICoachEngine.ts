@@ -1,5 +1,5 @@
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { Trade } from './db';
 import { computeZoyaMetrics, ZoyaMetrics } from './zoyaMetrics';
 
@@ -72,10 +72,12 @@ export async function runZoyaAICoach(userId: string, mode: AnalysisMode = "STAND
 
 async function callGeminiAICoach(input: any): Promise<ZoyaAICoachOutput> {
   try {
+    const token = await auth.currentUser?.getIdToken();
     const response = await fetch('/api/ai/coach', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({ input }),
     });

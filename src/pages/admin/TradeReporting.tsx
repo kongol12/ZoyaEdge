@@ -14,9 +14,10 @@ import {
   Filter,
   Download,
   Database,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react';
-import { seedMockTrades } from '../../lib/seed';
+import { seedMockTrades, clearDemoTrades } from '../../lib/seed';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
@@ -45,6 +46,7 @@ interface GlobalTrade {
   emotion: string;
   date: any;
   createdAt: any;
+  isDemo?: boolean;
 }
 
 const COLORS = ['#10B981', '#6366F1', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
@@ -53,6 +55,7 @@ export default function ClientTradeReports() {
   const [trades, setTrades] = useState<GlobalTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
   const [stats, setStats] = useState({
     totalTrades: 0,
     globalWinrate: 0,
@@ -66,7 +69,11 @@ export default function ClientTradeReports() {
     const q = query(collectionGroup(db, 'trades'), orderBy('date', 'desc'), limit(200));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as GlobalTrade);
+      const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as GlobalTrade);
+      
+      // Filter demo
+      const data = allData.filter(t => showDemo || !t.isDemo);
+
       setTrades(data);
 
       if (data.length > 0) {
@@ -120,6 +127,20 @@ export default function ClientTradeReports() {
     }
   };
 
+  const handleClearDemo = async () => {
+    if (!confirm("Supprimer tous les trades de démonstration ?")) return;
+    setIsSeeding(true);
+    try {
+      await clearDemoTrades();
+      alert("Trades démo supprimés !");
+    } catch (error) {
+      console.error(error);
+      alert("Erreur lors de la suppression.");
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-10">
       <div className="flex justify-between items-start">
@@ -128,6 +149,25 @@ export default function ClientTradeReports() {
           <p className="text-gray-500 dark:text-gray-400">Analyse consolidée des performances de trading sur toute la plateforme.</p>
         </div>
         <div className="flex gap-3">
+          <button 
+            onClick={() => setShowDemo(!showDemo)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl border font-bold text-sm transition-all",
+              showDemo 
+                ? "bg-amber-100 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:border-amber-800" 
+                : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-400"
+            )}
+          >
+            {showDemo ? "Cacher Démo" : "Voir Démo"}
+          </button>
+          <button 
+            onClick={handleClearDemo}
+            disabled={isSeeding}
+            className="flex items-center gap-2 bg-rose-500 text-white px-4 py-2 rounded-xl shadow-lg shadow-rose-500/20 font-bold text-sm hover:bg-rose-600 transition-colors disabled:opacity-50"
+          >
+            <Trash2 size={18} />
+            Nettoyer Démo
+          </button>
           <button 
             onClick={handleSeed}
             disabled={isSeeding}

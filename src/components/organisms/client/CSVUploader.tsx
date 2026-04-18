@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth';
 import { importTrades, Trade } from '../../../lib/db';
+import { calculateTradeStats, AssetType } from '../../../lib/tradeCalculations';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { UploadCloud, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react';
@@ -127,43 +128,108 @@ export default function CSVUploader() {
       return undefined;
     };
 
-    const typeStr = String(getVal(['type', 'action', 'side', 'direction']) || '').toLowerCase();
+    const typeStr = String(getVal(['type', 'action', 'side', 'direction', 'comment']) || '').toLowerCase();
     
+    let type: 'trade' | 'deposit' | 'withdrawal' | 'adjustment' = 'trade';
     let direction: 'buy' | 'sell' = 'buy';
-    if (typeStr.includes('sell') || typeStr.includes('short')) direction = 'sell';
-    else if (typeStr.includes('buy') || typeStr.includes('long')) direction = 'buy';
 
-    const symbol = String(getVal(['symbol', 'item', 'market', 'instrument', 'pair']) || 'UNKNOWN').toUpperCase();
+    if (typeStr.includes('deposit') || typeStr.includes('depôt') || typeStr.includes('credit')) {
+      type = 'deposit';
+    } else if (typeStr.includes('withdrawal') || typeStr.includes('retrait') || typeStr.includes('debit')) {
+      type = 'withdrawal';
+    } else if (typeStr.includes('balance') || typeStr.includes('solde') || typeStr.includes('correction')) {
+      type = 'adjustment';
+    }
+
+    if (type === 'trade') {
+      if (typeStr.includes('sell') || typeStr.includes('short')) direction = 'sell';
+      else if (typeStr.includes('buy') || typeStr.includes('long')) direction = 'buy';
+    }
+
+    const symbol = String(getVal(['symbol', 'item', 'market', 'instrument', 'pair']) || (type !== 'trade' ? 'BALANCE' : 'UNKNOWN')).toUpperCase();
     
-    const entryPriceStr = getVal(['open price', 'entry price', 'price', 'avg price', 'fill price']);
-    const exitPriceStr = getVal(['close price', 'exit price', 'price']);
+    const entryPriceStr = getVal(['open price', 'entry price', 'price', 'avg price', 'fill price', 'open_price', 'entry_price']);
+    const exitPriceStr = getVal(['close price', 'exit price', 'price', 'close_price', 'exit_price']);
     
-    const entryPrice = parseFloat(String(entryPriceStr).replace(/,/g, '')) || 0;
-    const exitPrice = parseFloat(String(exitPriceStr).replace(/,/g, '')) || entryPrice;
+    const entryPrice = parseFloat(String(entryPriceStr).replace(/[^0-9.-]/g, '')) || 0;
+    const exitPrice = parseFloat(String(exitPriceStr).replace(/[^0-9.-]/g, '')) || entryPrice;
 
     const lotSizeStr = getVal(['size', 'volume', 'qty', 'quantity']);
-    const lotSize = parseFloat(String(lotSizeStr).replace(/,/g, '')) || 0;
+    const lotSize = parseFloat(String(lotSizeStr).replace(/[^0-9.-]/g, '')) || 0;
 
-    const pnlStr = getVal(['profit', 'pnl', 'net pnl', 'gross pnl', 'realized pnl', 'net']);
-    const pnl = parseFloat(String(pnlStr).replace(/,/g, '').replace(/ /g, '')) || 0;
+    const pnlStr = getVal(['profit', 'pnl', 'net pnl', 'gross pnl', 'realized pnl', 'net', 'amount', 'gain']);
+    const pnl = parseFloat(String(pnlStr).replace(/[^0-9.-]/g, '').replace(/ /g, '')) || 0;
 
-    const dateStr = getVal(['time', 'open time', 'date', 'close time']);
+    const slStr = getVal(['sl', 'stoploss', 'stop loss', 'stop_loss', 's/l']);
+    const tpStr = getVal(['tp', 'takeprofit', 'take profit', 'take_profit', 't/p']);
+    const sl = slStr ? parseFloat(String(slStr).replace(/[^0-9.-]/g, '')) : undefined;
+    const tp = tpStr ? parseFloat(String(tpStr).replace(/[^0-9.-]/g, '')) : undefined;
+
+    const dateStr = getVal(['time', 'open time', 'date', 'close time', 'open_time', 'close_time', 'timestamp']);
     const date = parseDate(String(dateStr));
 
-    if (symbol === 'UNKNOWN' && pnl === 0 && lotSize === 0) return null;
+    if (type === 'trade' && symbol.trim() === 'UNKNOWN' && pnl === 0 && lotSize === 0) return null;
+    if (type !== 'trade' && pnl === 0) return null;
+
+    // Double check if it's a deposit based on symbol (MT4/5 style)
+    const sTrim = symbol.trim();
+    if (sTrim === 'BALANCE' || sTrim === 'DBASE') {
+      type = pnl >= 0 ? 'deposit' : 'withdrawal';
+    }
+
+    // Use shared calculation logic for R:R if it's a trade and we have SL/TP
+    let risk = 0;
+    let reward = 0;
+    let rr = 0;
+
+    // Detect Asset Type
+    let assetType: AssetType = 'forex';
+    const symbolStr = symbol.toUpperCase();
+    if (symbolStr.includes('XAU') || symbolStr.includes('GOLD') || symbolStr.includes('OIL') || symbolStr.includes('WTI')) {
+      assetType = 'commodities';
+    } else if (symbolStr.includes('BTC') || symbolStr.includes('ETH') || symbolStr.includes('SOL')) {
+      assetType = 'crypto';
+    } else if (symbolStr.includes('NAS') || symbolStr.includes('US30') || symbolStr.includes('GER') || symbolStr.includes('DAX')) {
+      assetType = 'indices';
+    } else if (symbolStr.includes('VOLATILITY') || symbolStr.includes('BOOM') || symbolStr.includes('CRASH') || symbolStr.includes('INDEX')) {
+      assetType = 'synthetic';
+    }
+
+    if (type === 'trade') {
+      const calculated = calculateTradeStats(
+        symbol,
+        direction,
+        entryPrice,
+        exitPrice,
+        sl,
+        tp,
+        lotSize,
+        assetType
+      );
+      risk = calculated.risk;
+      reward = calculated.reward;
+      rr = calculated.rr;
+    }
 
     return {
-      pair: symbol,
-      direction,
-      entryPrice,
-      exitPrice,
-      lotSize,
+      pair: symbol.trim(),
+      direction: type === 'trade' ? direction : undefined,
+      assetType: type === 'trade' ? assetType : undefined,
+      entryPrice: type === 'trade' ? entryPrice : 0,
+      exitPrice: type === 'trade' ? exitPrice : 0,
+      stopLoss: sl,
+      takeProfit: tp,
+      lotSize: type === 'trade' ? lotSize : 0,
       pnl,
-      strategy: `Import ${platform}`,
+      type,
+      strategy: type === 'trade' ? `Import ${platform}` : 'Balance Movement',
       emotion: '😐',
-      session: 'London',
+      session: 'other',
       date,
       platform,
+      risk,
+      reward,
+      rr
     };
   };
 

@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth';
 import { addTrade, subscribeToStrategies, Strategy } from '../../../lib/db';
-import { cn } from '../../../lib/utils';
+import { cn, formatRR } from '../../../lib/utils';
+import { calculateTradeStats } from '../../../lib/tradeCalculations';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2 } from 'lucide-react';
 import { useTranslation } from '../../../lib/i18n';
@@ -13,11 +14,13 @@ export default function TradeForm() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+
   const [customStrategies, setCustomStrategies] = useState<Strategy[]>([]);
 
   const [formData, setFormData] = useState({
     pair: 'EURUSD',
     direction: 'buy' as 'buy' | 'sell',
+    assetType: 'forex' as 'forex' | 'indices' | 'crypto' | 'commodities' | 'futures' | 'synthetic',
     entryPrice: '',
     exitPrice: '',
     stopLoss: '',
@@ -40,28 +43,7 @@ export default function TradeForm() {
     return () => unsubscribe();
   }, [user]);
 
-  const getAssetSettings = (pair: string) => {
-    const p = pair.toUpperCase();
-    // Indices & Crypto
-    if (
-      p.includes('NAS') || p.includes('US30') || p.includes('GER') || 
-      p.includes('DAX') || p.includes('SPX') || p.includes('BTC') || 
-      p.includes('ETH') || p.includes('NDX') || p.includes('US100') ||
-      p.includes('US500') || p.includes('UK100')
-    ) return { multiplier: 1, pipFactor: 1, label: 'Points' };
-
-    // Metals
-    if (p.includes('XAU') || p.includes('GOLD')) return { multiplier: 100, pipFactor: 1, label: 'Points' };
-    if (p.includes('XAG') || p.includes('SILVER')) return { multiplier: 5000, pipFactor: 1, label: 'Points' };
-    
-    // Forex JPY pairs
-    if (p.includes('JPY')) return { multiplier: 1000, pipFactor: 100, label: 'Pips' };
-    
-    // Standard Forex
-    return { multiplier: 100000, pipFactor: 10000, label: 'Pips' };
-  };
-
-  const [stats, setStats] = useState({ pips: 0, label: 'Pips', risk: 0, reward: 0, rr: 0 });
+  const [stats, setStats] = useState({ pips: 0, label: 'Pips' as const, risk: 0, reward: 0, rr: 0, pnl: 0 });
 
   useEffect(() => {
     const entry = parseFloat(formData.entryPrice);
@@ -71,49 +53,25 @@ export default function TradeForm() {
     const lots = parseFloat(formData.lotSize);
     
     if (!isNaN(entry)) {
-      const settings = getAssetSettings(formData.pair);
-      let pips = 0;
-      let riskVal = 0;
-      let rewardVal = 0;
-      let rrRatio = 0;
+      const calculated = calculateTradeStats(
+        formData.pair,
+        formData.direction,
+        entry,
+        exit,
+        sl,
+        tp,
+        lots,
+        formData.assetType
+      );
 
-      // Exit/PnL Calc
-      if (!isNaN(exit)) {
-        const diff = formData.direction === 'buy' ? exit - entry : entry - exit;
-        pips = parseFloat((diff * settings.pipFactor).toFixed(1));
-        
-        if (!isManualPnl && !isNaN(lots)) {
-          const calculatedPnl = (diff * lots * settings.multiplier).toFixed(2);
-          setFormData(prev => ({ ...prev, pnl: calculatedPnl }));
-        }
-      }
+      setStats(calculated);
 
-      // Risk Calc
-      if (!isNaN(sl)) {
-        const riskDiff = formData.direction === 'buy' ? entry - sl : sl - entry;
-        riskVal = Math.abs(riskDiff * (isNaN(lots) ? 1 : lots) * settings.multiplier);
+      // Automatic PnL calculation if allowed
+      if (!isManualPnl && !isNaN(exit) && !isNaN(lots)) {
+        setFormData(prev => ({ ...prev, pnl: calculated.pnl.toString() }));
       }
-
-      // Reward Calc
-      if (!isNaN(tp)) {
-        const rewardDiff = formData.direction === 'buy' ? tp - entry : entry - tp;
-        rewardVal = Math.abs(rewardDiff * (isNaN(lots) ? 1 : lots) * settings.multiplier);
-      }
-
-      // RR Calc
-      if (riskVal > 0 && rewardVal > 0) {
-        rrRatio = parseFloat((rewardVal / riskVal).toFixed(2));
-      }
-      
-      setStats({
-        pips,
-        label: settings.label,
-        risk: parseFloat(riskVal.toFixed(2)),
-        reward: parseFloat(rewardVal.toFixed(2)),
-        rr: rrRatio
-      });
     }
-  }, [formData.entryPrice, formData.exitPrice, formData.stopLoss, formData.takeProfit, formData.lotSize, formData.direction, formData.pair, isManualPnl]);
+  }, [formData.entryPrice, formData.exitPrice, formData.stopLoss, formData.takeProfit, formData.lotSize, formData.direction, formData.pair, formData.assetType, isManualPnl]);
 
   const quickPairs = ['EURUSD', 'NAS100', 'XAUUSD', 'US30'];
 
@@ -128,6 +86,7 @@ export default function TradeForm() {
       await addTrade(user.uid, {
         pair: formData.pair.toUpperCase(),
         direction: formData.direction,
+        assetType: formData.assetType,
         entryPrice: parseFloat(formData.entryPrice),
         exitPrice: parseFloat(formData.exitPrice),
         stopLoss: formData.stopLoss ? parseFloat(formData.stopLoss) : undefined,
@@ -231,6 +190,22 @@ export default function TradeForm() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Type d'Actif</label>
+          <select 
+            value={formData.assetType}
+            onChange={e => setFormData({ ...formData, assetType: e.target.value as any })}
+            className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-zoya-red focus:border-transparent outline-none text-gray-900 dark:text-white transition-all duration-300"
+          >
+            <option value="forex">CFD Forex</option>
+            <option value="indices">CFD Indices</option>
+            <option value="commodities">Matières Premières</option>
+            <option value="crypto">Crypto-monnaies</option>
+            <option value="futures">Futures (Contrats à Terme)</option>
+            <option value="synthetic">Indices Synthétiques (Deriv)</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.dashboard.pair} (ex: EURUSD)</label>
           <input
             required
@@ -238,7 +213,7 @@ export default function TradeForm() {
             placeholder="EURUSD"
             className="w-full p-3 bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-zoya-red focus:border-transparent outline-none uppercase text-gray-900 dark:text-white transition-all duration-300"
             value={formData.pair}
-            onChange={(e) => setFormData({ ...formData, pair: e.target.value })}
+            onChange={(e) => setFormData({ ...formData, pair: e.target.value.toUpperCase() })}
           />
         </div>
 
@@ -343,7 +318,7 @@ export default function TradeForm() {
               </div>
               <div className="bg-white dark:bg-gray-800 p-3 rounded-xl border border-gray-100 dark:border-gray-700 text-center">
                 <p className="text-[10px] text-gray-400 font-bold uppercase">{t.dashboard.rr}</p>
-                <p className="text-sm font-black text-zoya-red">1:{stats.rr}</p>
+                <p className="text-sm font-black text-zoya-red">{formatRR(stats.rr)}</p>
               </div>
             </div>
           )}

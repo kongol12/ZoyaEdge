@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../lib/auth';
 import { subscribeToTrades, Trade } from '../../lib/db';
 import { BarChart2, Loader2, Filter } from 'lucide-react';
+import { formatRR } from '../../lib/utils';
 import {
   computeEquityCurve,
   computeDrawdown,
@@ -68,7 +69,7 @@ export default function Statistics() {
   }
 
   return (
-    <div className="w-full space-y-12 pb-12">
+    <div className="max-w-7xl mx-auto w-full space-y-12 pb-12">
       <header className="flex items-center gap-3 mb-8">
         <div className="p-2 bg-zoya-red-accent text-zoya-red rounded-xl">
           <BarChart2 size={24} />
@@ -222,7 +223,7 @@ export default function Statistics() {
           </div>
           <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg text-center">
             <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Risk/Reward Ratio</div>
-            <div className="text-3xl font-poppins font-black text-blue-500">1 : {rrData.ratio}</div>
+            <div className="text-3xl font-poppins font-black text-blue-500">{formatRR(rrData.ratio)}</div>
           </div>
           <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg text-center">
             <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Avg Win / Avg Loss</div>

@@ -38,9 +38,30 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Rate Limiting removed to avoid IP-based restrictions in dev/preview
-const limiter = (req: any, res: any, next: any) => next();
-const authLimiter = (req: any, res: any, next: any) => next();
+// Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Trop de requêtes. Veuillez réessayer dans 15 minutes." }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // limit each IP to 10 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Trop de tentatives. Veuillez réessayer dans une heure." }
+});
+
+const webhookLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 60, // 1 request per second average
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Rate limit exceeded for webhook." }
+});
 
 app.use(express.json());
 
@@ -64,6 +85,24 @@ function handleGeminiError(error: any, res: express.Response) {
 }
 
 app.use('/api/', limiter);
+
+// Middleware to verify Auth Token (Any User)
+async function verifyUser(req: any, res: any, next: any) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: "Unauthorized: No token provided" });
+  }
+
+  const idToken = authHeader.split('Bearer ')[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    req.user = decodedToken;
+    next();
+  } catch (error) {
+    console.error("User verification failed:", error);
+    res.status(401).json({ error: "Unauthorized: Invalid token" });
+  }
+}
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -139,7 +178,7 @@ async function initFirebaseAdmin() {
 }
 
 // Webhook for MT5 EA
-app.post('/api/webhook/mt5', async (req, res) => {
+app.post('/api/webhook/mt5', webhookLimiter, async (req, res) => {
   const { syncKey, pair, direction, lotSize, exitPrice, pnl, timestamp } = req.body;
 
   if (!syncKey) {
@@ -450,7 +489,7 @@ app.post('/api/admin/users/:userId/update', verifyAdmin, async (req, res) => {
 });
 
 // AI Coach Proxy Endpoint
-app.post('/api/ai/coach', async (req, res) => {
+app.post('/api/ai/coach', verifyUser, async (req, res) => {
   const { input } = req.body;
   
   if (!process.env.GEMINI_API_KEY) {
@@ -507,7 +546,7 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
 });
 
 // AI Coach Ask Endpoint
-app.post('/api/ai/ask', async (req, res) => {
+app.post('/api/ai/ask', verifyUser, async (req, res) => {
   const { trades, language, strategies, instruction } = req.body;
   
   if (!process.env.GEMINI_API_KEY) {

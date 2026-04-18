@@ -1,4 +1,5 @@
 import { Trade } from './db';
+import { calculateAvgRR } from './advancedTradingMetrics';
 
 export interface ZoyaMetrics {
   totalPnL: number;
@@ -53,10 +54,7 @@ export function computeZoyaMetrics(trades: Trade[]): ZoyaMetrics {
   let maxWinStreak = 0;
   let currentLossStreak = 0;
   let maxLossStreak = 0;
-
-  let totalRR = 0;
-  let rrCount = 0;
-
+  
   let peak = -Infinity;
   let maxDrawdown = 0;
   let currentEquity = 0;
@@ -106,14 +104,6 @@ export function computeZoyaMetrics(trades: Trade[]): ZoyaMetrics {
       currentLossStreak = 0;
     }
 
-    if (trade.rr && trade.rr > 0) {
-      totalRR += trade.rr;
-      rrCount++;
-    } else if (trade.risk && trade.reward && trade.risk > 0) {
-      totalRR += (trade.reward / trade.risk);
-      rrCount++;
-    }
-
     const dateStr = trade.date.toISOString().split('T')[0];
     dailyPnL[dateStr] = (dailyPnL[dateStr] || 0) + pnl;
 
@@ -140,7 +130,7 @@ export function computeZoyaMetrics(trades: Trade[]): ZoyaMetrics {
   const totalTrades = trades.length;
   const winrate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0;
   const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 999 : 0);
-  const avgRR = rrCount > 0 ? totalRR / rrCount : 0;
+  const avgRR = calculateAvgRR(trades);
 
   const dailyValues = Object.values(dailyPnL);
   const bestDay = dailyValues.length > 0 ? Math.max(...dailyValues) : 0;

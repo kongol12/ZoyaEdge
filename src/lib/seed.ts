@@ -8,7 +8,9 @@ import {
   getDocs, 
   query, 
   limit, 
-  where 
+  where,
+  writeBatch,
+  collectionGroup
 } from 'firebase/firestore';
 
 const PAIRS = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'BTCUSD', 'ETHUSD'];
@@ -37,7 +39,8 @@ export async function seedMockTransactions(count: number = 20) {
       status: Math.random() > 0.1 ? 'completed' : 'failed',
       plan: Math.random() > 0.5 ? 'pro' : 'premium',
       method: ['stripe', 'paypal', 'crypto'][Math.floor(Math.random() * 3)],
-      createdAt: Timestamp.fromDate(date)
+      createdAt: Timestamp.fromDate(date),
+      isDemo: true
     });
   }
 }
@@ -71,7 +74,25 @@ export async function seedMockTrades(count: number = 50) {
       emotion: EMOTIONS[Math.floor(Math.random() * EMOTIONS.length)],
       session: SESSIONS[Math.floor(Math.random() * SESSIONS.length)],
       date: Timestamp.fromDate(date),
-      createdAt: Timestamp.now()
+      createdAt: Timestamp.now(),
+      isDemo: true
     });
   }
+}
+
+export async function clearDemoPayments() {
+  const q = query(collection(db, 'payments'), where('isDemo', '==', true));
+  const snapshot = await getDocs(q);
+  const batch = writeBatch(db);
+  snapshot.docs.forEach(d => batch.delete(d.ref));
+  await batch.commit();
+}
+
+export async function clearDemoTrades() {
+  // Clear from all users using collectionGroup
+  const q = query(collectionGroup(db, 'trades'), where('isDemo', '==', true));
+  const snapshot = await getDocs(q);
+  const batch = writeBatch(db);
+  snapshot.docs.forEach(d => batch.delete(d.ref));
+  await batch.commit();
 }

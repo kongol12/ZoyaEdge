@@ -33,7 +33,6 @@ import Subscription from './pages/client/Subscription';
 import FAQ from './pages/client/FAQ';
 import Support from './pages/client/Support';
 import SecretAdminPortal from './pages/SecretAdminPortal';
-
 import LandingPage from './pages/LandingPage';
 
 // Admin Pages
@@ -65,7 +64,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   
   if (loading) return <LoadingScreen />;
-  if (!user) return <Navigate to="/home" />;
+  if (!user) return <Navigate to="/home" replace />;
   
   // Redirect to onboarding if not completed
   if (profile && !profile.onboarded && window.location.pathname !== '/onboarding') {
@@ -134,7 +133,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/home" element={<LandingPage />} />
-      <Route path="/auth" element={user ? <Navigate to="/" /> : <Auth />} />
+      <Route path="/auth" element={user ? <Navigate to="/" replace /> : <Auth />} />
       <Route path="/zoya-admin-access" element={<SecretAdminPortal />} />
       <Route path="/onboarding" element={
         <ProtectedRoute>
@@ -182,6 +181,7 @@ function AppRoutes() {
           <Route path="/admin/settings" element={<AdminSettings />} />
         </Route>
       </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

@@ -1,3 +1,5 @@
+import { auth } from './firebase';
+
 export interface AICoachInput {
   winrate: number;
   profitFactor: number;
@@ -21,10 +23,12 @@ export interface AICoachOutput {
 
 export async function getAICoachDecision(input: AICoachInput): Promise<AICoachOutput> {
   try {
+    const token = await auth.currentUser?.getIdToken();
     const response = await fetch('/api/ai/coach', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({ 
         input: {

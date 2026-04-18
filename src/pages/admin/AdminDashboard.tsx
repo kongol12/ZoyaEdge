@@ -9,6 +9,9 @@ import { format } from 'date-fns';
 import { useAuth } from '../../lib/auth';
 import { OperationType, handleFirestoreError } from '../../lib/db';
 
+import { Terminal, Database, Trash2, RefreshCw } from 'lucide-react';
+import { seedMockTransactions, clearDemoPayments } from '../../lib/seed';
+
 export default function AdminDashboard() {
   const { t } = useTranslation();
   const [stats, setStats] = useState({
@@ -20,8 +23,36 @@ export default function AdminDashboard() {
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSeeding, setIsSeeding] = useState(false);
 
   const { profile } = useAuth();
+
+  const handleSeed = async () => {
+    if (!confirm("Générer des données de démonstration (trades & transactions) ?")) return;
+    setIsSeeding(true);
+    try {
+      await seedMockTransactions(20);
+      alert("Données générées !");
+    } catch (error) {
+      alert("Erreur lors du seeding.");
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
+  const handleClear = async () => {
+    if (!confirm("Supprimer TOUTES les données marquées comme 'Démo' ?")) return;
+    setIsSeeding(true);
+    try {
+      await clearDemoPayments();
+      // Also clear demo trades if applicable (already handled by clearDemoPayments in some implementations)
+      alert("Nettoyage terminé !");
+    } catch (error) {
+      alert("Erreur lors du nettoyage.");
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   useEffect(() => {
     if (!profile || (profile.role !== 'admin' && profile.role !== 'agent' && profile.email !== 'kongolmandf@gmail.com')) {
@@ -119,10 +150,32 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">Console d'Administration</h1>
           <p className="text-gray-500 dark:text-gray-400">Vue d'ensemble de l'écosystème ZoyaEdge en temps réel.</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={handleClear}
+            disabled={isSeeding}
+            className="flex items-center gap-2 bg-rose-500 text-white px-4 py-2 rounded-xl shadow-lg shadow-rose-500/20 font-bold text-sm hover:bg-rose-600 transition-all disabled:opacity-50"
+          >
+            <Trash2 size={18} />
+            Reset Demo
+          </button>
+          <button 
+            onClick={handleSeed}
+            disabled={isSeeding}
+            className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-xl shadow-lg shadow-indigo-500/20 font-bold text-sm hover:bg-indigo-600 transition-all disabled:opacity-50"
+          >
+            {isSeeding ? <RefreshCw className="animate-spin" size={18} /> : <Database size={18} />}
+            Seed Mock Data
+          </button>
+          <div className="w-px h-8 bg-gray-100 dark:bg-gray-700 mx-2 self-center" />
+          <div className="p-3 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm text-zoya-red">
+            <Terminal size={20} />
+          </div>
         </div>
       </div>
 

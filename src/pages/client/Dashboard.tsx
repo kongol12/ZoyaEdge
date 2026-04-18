@@ -3,7 +3,7 @@ import { useAuth } from '../../lib/auth';
 import { useTranslation } from '../../lib/i18n';
 import { subscribeToTrades, Trade } from '../../lib/db';
 import { formatCurrency, formatPercentage, cn, exportToCSV } from '../../lib/utils';
-import { TrendingUp, Target, Activity, Plus, Upload, BarChart3, Flame, Download, Filter, FileText, History } from 'lucide-react';
+import { TrendingUp, Target, Activity, Plus, Upload, BarChart3, Flame, Download, Filter, FileText, History, Wallet } from 'lucide-react';
 import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import TradeExplorer from '../../components/organisms/client/TradeExplorer';
@@ -38,42 +38,63 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, [user]);
 
+  const {
+    totalPnL,
+    winRate,
+    profitFactor,
+    avgRR,
+    maxDrawdown,
+    streak,
+    rrData,
+    currentBalance
+  } = useMemo(() => {
+    const performancePnL = filteredTrades
+      .filter(t => !t.type || t.type === 'trade')
+      .reduce((sum, trade) => sum + Number(trade.pnl), 0);
+    
+    const totalBalanceChange = filteredTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
+    
+    const wr = calculateWinrate(filteredTrades);
+    const pf = calculateProfitFactor(filteredTrades);
+    const rr = calculateAvgRR(filteredTrades);
+    const dd = calculateMaxDrawdown(filteredTrades);
+    const balance = (profile?.initialBalance || 0) + totalBalanceChange;
+    
+    // Streak Logic (only trades)
+    let s = 0;
+    const tradesOnly = filteredTrades.filter(t => !t.type || t.type === 'trade');
+    if (tradesOnly.length > 0) {
+      const days = Array.from(new Set(tradesOnly.map(t => t.date.toDateString()))) as string[];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      for (let i = 0; i < days.length; i++) {
+        const date = new Date(days[i]);
+        date.setHours(0, 0, 0, 0);
+        const diff = (today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+        if (diff === s) s++;
+        else break;
+      }
+    }
+
+    return {
+      totalPnL: performancePnL,
+      winRate: wr,
+      profitFactor: pf,
+      avgRR: rr,
+      maxDrawdown: dd,
+      streak: s,
+      rrData: computeRiskReward(filteredTrades),
+      currentBalance: balance
+    };
+  }, [filteredTrades, profile?.initialBalance]);
+
   if (loading) {
     return <div className="animate-pulse space-y-4">
       <div className="h-32 bg-zinc-200 dark:bg-zinc-800 rounded-2xl"></div>
       <div className="h-64 bg-zinc-200 dark:bg-zinc-800 rounded-2xl"></div>
     </div>;
   }
-
-  const totalPnL = filteredTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
-  const winningTrades = filteredTrades.filter(t => Number(t.pnl) > 0).length;
-  const winRate = calculateWinrate(filteredTrades);
-  const profitFactor = calculateProfitFactor(filteredTrades);
-  const avgRR = calculateAvgRR(filteredTrades);
-  const maxDrawdown = calculateMaxDrawdown(filteredTrades);
-  const expectancy = calculateExpectancy(filteredTrades);
-  const streaks = calculateStreaks(filteredTrades);
-
-  // Simple Streak Logic (consecutive days with at least one trade)
-  const calculateStreak = () => {
-    if (filteredTrades.length === 0) return 0;
-    const days = Array.from(new Set(filteredTrades.map(t => t.date.toDateString()))) as string[];
-    let streak = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    for (let i = 0; i < days.length; i++) {
-      const date = new Date(days[i]);
-      date.setHours(0, 0, 0, 0);
-      const diff = (today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
-      if (diff === streak) streak++;
-      else break;
-    }
-    return streak;
-  };
-
-  const streak = calculateStreak();
-  const rrData = computeRiskReward(filteredTrades);
 
   const handleExportCSV = () => {
     if (profile?.subscription === 'free') {
@@ -114,9 +135,9 @@ export default function Dashboard() {
 
     const tableData = filteredTrades.map(t => [
       t.date.toLocaleDateString(),
-      t.pair,
-      t.direction.toUpperCase(),
-      t.lotSize.toString(),
+      t.pair || t.type?.toUpperCase() || 'OTHER',
+      t.direction ? t.direction.toUpperCase() : (t.type?.toUpperCase() || '-'),
+      t.lotSize ? t.lotSize.toString() : '-',
       formatCurrency(t.pnl)
     ]);
 
@@ -133,7 +154,7 @@ export default function Dashboard() {
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
+      className="max-w-7xl mx-auto w-full space-y-6 pb-12"
     >
       {/* Header & Quick Actions */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-2">
@@ -216,8 +237,46 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Balance Setup Notification */}
+      {(!profile?.initialBalance || profile.initialBalance === 0) && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 p-4 bg-zoya-red-accent/10 border border-zoya-red/20 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 backdrop-blur-sm"
+        >
+          <div className="flex items-center gap-4 text-center sm:text-left">
+            <div className="p-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-zoya-red/10">
+              <Wallet className="text-zoya-red" size={24} />
+            </div>
+            <div>
+              <p className="text-sm font-poppins font-black text-gray-900 dark:text-white uppercase tracking-tight">
+                {t.dashboard.balance}
+              </p>
+              <p className="text-xs text-gray-500 font-medium">
+                {t.dashboard.balanceWarning}
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/settings"
+            className="w-full sm:w-auto px-6 py-3 bg-zoya-red text-white text-xs font-poppins font-black rounded-2xl hover:bg-zoya-red-dark transition-all shadow-lg shadow-zoya-red/20 active:scale-95 text-center flex items-center justify-center gap-2 group"
+          >
+            {t.common.settings}
+            <Plus size={14} className="group-hover:rotate-90 transition-transform" />
+          </Link>
+        </motion.div>
+      )}
+
       {/* Stats Grid - Robust Dashboard Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+        <StatCard
+          title={t.dashboard.balance}
+          value={formatCurrency(currentBalance)}
+          icon={<Wallet className="text-indigo-600 dark:text-indigo-400" size={20} />}
+          iconClassName="bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50"
+          delay={0.05}
+          infoText="Votre capital actuel incluant les profits/pertes."
+        />
         <StatCard
           title={t.dashboard.pnl}
           value={formatCurrency(totalPnL)}
@@ -265,7 +324,8 @@ export default function Dashboard() {
           <div className="lg:col-span-2">
             <PnLChart 
               trades={filteredTrades} 
-              infoText="Évolution de votre capital (Profit and Loss) au fil du temps."
+              initialBalance={profile?.initialBalance}
+              infoText="Évolution de votre capital (Solde + Profit/Perte) au fil du temps."
             />
           </div>
           <div className="lg:col-span-1">

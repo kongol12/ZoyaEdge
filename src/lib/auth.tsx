@@ -52,6 +52,7 @@ export interface UserProfile {
   subscriptionStatus?: 'active' | 'expired' | 'canceled' | 'trialing' | 'suspended';
   subscriptionEndDate?: any;
   hasUsedTrial?: boolean;
+  initialBalance?: number;
   aiCredits?: number;
   role?: 'user' | 'agent' | 'admin';
   bypassMaintenance?: boolean;
@@ -100,14 +101,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           let p = await fetchProfile(currentUser.uid);
           if (!p) {
             try {
+              const trialEndDate = new Date();
+              trialEndDate.setDate(trialEndDate.getDate() + 7);
+
               const newProfile = {
                 email: currentUser.email || '',
                 displayName: currentUser.displayName || '',
                 createdAt: serverTimestamp(),
                 onboarded: false,
-                subscription: 'free',
+                subscription: 'pro',
                 subscriptionStatus: 'trialing',
+                subscriptionEndDate: trialEndDate,
+                hasUsedTrial: true,
                 aiCredits: 10,
+                initialBalance: 0,
                 role: 'user',
               };
               await setDoc(doc(db, 'users', currentUser.uid), newProfile);
@@ -147,12 +154,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUpWithEmail = async (email: string, pass: string, name: string) => {
     const res = await createUserWithEmailAndPassword(auth, email, pass);
     await updateFirebaseProfile(res.user, { displayName: name });
+    
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialEndDate.getDate() + 7);
+
     const newProfile = {
       email,
       displayName: name,
       createdAt: serverTimestamp(),
       onboarded: false,
-      subscription: 'free',
+      subscription: 'pro',
+      subscriptionStatus: 'trialing',
+      subscriptionEndDate: trialEndDate,
+      hasUsedTrial: true,
+      aiCredits: 10,
+      initialBalance: 0,
       role: 'user',
     };
     await setDoc(doc(db, 'users', res.user.uid), newProfile);

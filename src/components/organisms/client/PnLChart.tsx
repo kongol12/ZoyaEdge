@@ -16,10 +16,11 @@ import { InfoTooltip } from '../../atoms/InfoTooltip';
 
 interface PnLChartProps {
   trades: Trade[];
+  initialBalance?: number;
   infoText?: string;
 }
 
-export default function PnLChart({ trades, infoText }: PnLChartProps) {
+export default function PnLChart({ trades, initialBalance = 0, infoText }: PnLChartProps) {
   const { t } = useTranslation();
   const [mounted, setMounted] = React.useState(false);
 
@@ -28,8 +29,6 @@ export default function PnLChart({ trades, infoText }: PnLChartProps) {
   }, []);
 
   const chartData = useMemo(() => {
-    if (trades.length === 0) return [];
-
     // Sort trades by date ascending
     const sortedTrades = [...trades].sort((a, b) => a.date.getTime() - b.date.getTime());
 
@@ -42,7 +41,14 @@ export default function PnLChart({ trades, infoText }: PnLChartProps) {
     });
 
     const data: { date: string; pnl: number; cumulative: number }[] = [];
-    let cumulative = 0;
+    let cumulative = initialBalance;
+
+    // Add starting point
+    data.push({
+      date: 'Start',
+      pnl: 0,
+      cumulative: Number(initialBalance.toFixed(2))
+    });
 
     Object.entries(dailyPnL).forEach(([date, pnl]) => {
       cumulative += pnl;
@@ -54,9 +60,10 @@ export default function PnLChart({ trades, infoText }: PnLChartProps) {
     });
 
     return data;
-  }, [trades]);
+  }, [trades, initialBalance]);
 
-  if (trades.length === 0 || !mounted) return null;
+  if (!mounted) return null;
+  if (trades.length === 0 && initialBalance === 0) return null;
 
   const isPositive = chartData.length > 0 && chartData[chartData.length - 1].cumulative >= 0;
 
@@ -65,7 +72,7 @@ export default function PnLChart({ trades, infoText }: PnLChartProps) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-center">
-            <h3 className="text-lg font-poppins font-black text-gray-900 dark:text-white">Daily Cumulative P&L</h3>
+            <h3 className="text-lg font-poppins font-black text-gray-900 dark:text-white uppercase tracking-tight">{t.dashboard.balance} & P&L</h3>
             {infoText && <InfoTooltip text={infoText} />}
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">Performance evolution over time</p>
@@ -122,7 +129,7 @@ export default function PnLChart({ trades, infoText }: PnLChartProps) {
                 fontFamily: 'Inter, sans-serif'
               }}
               itemStyle={{ color: '#fff', fontWeight: 'bold' }}
-              formatter={(value: number) => [formatCurrency(value), 'Cumulative P&L']}
+              formatter={(value: number) => [formatCurrency(value), t.dashboard.balance]}
             />
             <ReferenceLine y={0} stroke="#3f3f46" strokeWidth={1} />
             <Area

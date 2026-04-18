@@ -1,9 +1,10 @@
 import { Trade } from './db';
 
 export function calculateWinrate(trades: Trade[]): number {
-  if (trades.length === 0) return 0;
-  const wins = trades.filter(t => t.pnl > 0).length;
-  return (wins / trades.length) * 100;
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  if (realTrades.length === 0) return 0;
+  const wins = realTrades.filter(t => t.pnl > 0).length;
+  return (wins / realTrades.length) * 100;
 }
 
 export function calculateRR(trade: Trade): number {
@@ -17,10 +18,11 @@ export function calculateRR(trade: Trade): number {
 }
 
 export function calculateAvgRR(trades: Trade[]): number {
-  if (trades.length === 0) return 0;
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  if (realTrades.length === 0) return 0;
   let totalRR = 0;
   let count = 0;
-  for (const t of trades) {
+  for (const t of realTrades) {
     const rr = calculateRR(t);
     if (rr > 0) {
       totalRR += rr;
@@ -31,9 +33,10 @@ export function calculateAvgRR(trades: Trade[]): number {
 }
 
 export function calculateProfitFactor(trades: Trade[]): number {
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
   let grossProfit = 0;
   let grossLoss = 0;
-  for (const t of trades) {
+  for (const t of realTrades) {
     if (t.pnl > 0) grossProfit += t.pnl;
     else if (t.pnl < 0) grossLoss += Math.abs(t.pnl);
   }
@@ -42,11 +45,12 @@ export function calculateProfitFactor(trades: Trade[]): number {
 }
 
 export function calculateExpectancy(trades: Trade[]): number {
-  if (trades.length === 0) return 0;
-  const wins = trades.filter(t => t.pnl > 0);
-  const losses = trades.filter(t => t.pnl < 0);
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  if (realTrades.length === 0) return 0;
+  const wins = realTrades.filter(t => t.pnl > 0);
+  const losses = realTrades.filter(t => t.pnl < 0);
   
-  const winrate = wins.length / trades.length;
+  const winrate = wins.length / realTrades.length;
   const avgWin = wins.length > 0 ? wins.reduce((sum, t) => sum + t.pnl, 0) / wins.length : 0;
   const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((sum, t) => sum + t.pnl, 0)) / losses.length : 0;
   
@@ -95,7 +99,8 @@ export function calculateStreaks(trades: Trade[]): { winStreak: number; lossStre
   let maxWinStreak = 0;
   let maxLossStreak = 0;
   
-  const sortedTrades = [...trades].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  const sortedTrades = [...realTrades].sort((a, b) => a.date.getTime() - b.date.getTime());
   
   for (const t of sortedTrades) {
     if (t.pnl > 0) {
