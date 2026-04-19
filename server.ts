@@ -166,10 +166,9 @@ async function initFirebaseAdmin() {
     db.collection('app_settings').doc('health').get().then(() => {
       console.log("[Firebase] Firestore connection test successful");
     }).catch((testError: any) => {
+      console.error("[Firebase] Firestore connection test FAILED:", testError);
       if (testError.code === 7) {
-        console.warn("[Firebase] WARNING: Permission Denied. If you are using a custom Firebase project, you need to provide a FIREBASE_SERVICE_ACCOUNT_KEY environment variable for the server to access Firestore.");
-      } else {
-        console.error("[Firebase] Firestore connection test FAILED:", testError);
+        console.warn("[Firebase] CRITICAL: Permission Denied. The most common cause is missing FIREBASE_SERVICE_ACCOUNT_KEY or incorrect database setup.");
       }
     });
     
