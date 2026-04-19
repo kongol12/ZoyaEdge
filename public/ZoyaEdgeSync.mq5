@@ -62,57 +62,109 @@ void OnTimer()
    SyncData();
   }
 
+//--- Global variables
+long           lastSyncedTickets[]; // Local cache of synced tickets
+
 //+------------------------------------------------------------------+
 //| Custom function to sync data                                     |
 //+------------------------------------------------------------------+
 void SyncData()
   {
-   // Vérification de la connexion Internet
-   if(!TerminalInfoInteger(TERMINAL_CONNECTED))
+   if(!TerminalInfoInteger(TERMINAL_CONNECTED)) return;
+
+   // Select history for the last 24 hours
+   datetime end = TimeCurrent();
+   datetime start = end - (24 * 3600);
+   
+   if(!HistorySelect(start, end))
      {
-      Print("ZoyaEdge: Terminal non connecté à Internet. En attente de reconnexion...");
+      Print("ZoyaEdge: Failed to select history.");
       return;
      }
 
-   Print("ZoyaEdge: Début de la synchronisation des données...");
-   
-   // Construction du payload JSON
-   string json = "{";
-   json += "\"syncKey\":\"" + InpSyncKey + "\",";
-   json += "\"timestamp\":" + IntegerToString(TimeCurrent()) + ",";
-   json += "\"pair\":\"" + _Symbol + "\",";
-   json += "\"direction\":\"buy\",";
-   json += "\"lotSize\":0.10,";
-   json += "\"exitPrice\":" + DoubleToString(SymbolInfoDouble(_Symbol, SYMBOL_BID), _Digits) + ",";
-   json += "\"pnl\":25.50";
-   json += "}";
+   int totalDeals = HistoryDealsTotal();
+   for(int i = 0; i < totalDeals; i++)
+     {
+      ulong ticket = HistoryDealGetTicket(i);
+      if(ticket <= 0) continue;
+      
+      // Only process closed trades (DEAL_ENTRY_OUT or DEAL_ENTRY_INOUT)
+      long entryType = HistoryDealGetInteger(ticket, DEAL_ENTRY);
+      if(entryType != DEAL_ENTRY_OUT && entryType != DEAL_ENTRY_INOUT) continue;
 
-   // Préparation de la requête HTTP
-   char post[], result[];
-   string headers = "Content-Type: application/json\r\n";
-   StringToCharArray(json, post, 0, WHOLE_ARRAY, CP_UTF8);
-   
-   string result_headers;
-   int res = WebRequest("POST", InpWebhookURL, headers, 5000, post, result, result_headers);
-   
-   if(res == 200)
-     {
-      Print("ZoyaEdge: Synchronisation réussie !");
-     }
-   else if(res == 403)
-     {
-      string msg = "ZoyaEdge: Abonnement expiré ou invalide. Synchronisation bloquée.";
-      Print(msg);
-      if(InpSendPush) SendNotification(msg);
-      Alert(msg);
-     }
-   else if(res == -1)
-     {
-      Print("ZoyaEdge Erreur: Impossible de contacter le serveur. Vérifiez que l'URL est autorisée dans Outils > Options > Expert Advisors.");
-     }
-   else
-     {
-      Print("ZoyaEdge Erreur: Code HTTP ", res);
+      // Check for duplicates in local cache
+      bool alreadySynced = false;
+      for(int j = 0; j < ArraySize(lastSyncedTickets); j++)
+        {
+         if(lastSyncedTickets[j] == (long)ticket)
+           {
+            alreadySynced = true;
+            break;
+           }
+        }
+      if(alreadySynced) continue;
+
+      // Extract data
+      string symbol    = HistoryDealGetString(ticket, DEAL_SYMBOL);
+      long type      = HistoryDealGetInteger(ticket, DEAL_TYPE);
+      double volume    = HistoryDealGetDouble(ticket, DEAL_VOLUME);
+      double price     = HistoryDealGetDouble(ticket, DEAL_PRICE);
+      double profit    = HistoryDealGetDouble(ticket, DEAL_PROFIT);
+      long time      = HistoryDealGetInteger(ticket, DEAL_TIME);
+      
+      long positionId = HistoryDealGetInteger(ticket, DEAL_POSITION_ID);
+      double entryPrice = 0;
+      
+      // Find the corresponding ENTRY_IN deal to get the entry price
+      if(HistorySelectByPosition(positionId))
+        {
+         int posDeals = HistoryDealsTotal();
+         for(int k = 0; k < posDeals; k++)
+           {
+            ulong t = HistoryDealGetTicket(k);
+            if(HistoryDealGetInteger(t, DEAL_ENTRY) == DEAL_ENTRY_IN)
+              {
+               entryPrice = HistoryDealGetDouble(t, DEAL_PRICE);
+               break;
+              }
+           }
+        }
+      
+      if(entryPrice == 0) entryPrice = price; // Fallback
+
+      // Construct JSON
+      string direction = (type == DEAL_TYPE_BUY) ? "buy" : "sell";
+      string json = "{";
+      json += "\"syncKey\":\"" + InpSyncKey + "\",";
+      json += "\"ticket\":" + IntegerToString(ticket) + ",";
+      json += "\"pair\":\"" + symbol + "\",";
+      json += "\"direction\":\"" + direction + "\",";
+      json += "\"lotSize\":" + DoubleToString(volume, 2) + ",";
+      json += "\"entryPrice\":" + DoubleToString(entryPrice, _Digits) + ",";
+      json += "\"exitPrice\":" + DoubleToString(price, _Digits) + ",";
+      json += "\"pnl\":" + DoubleToString(profit, 2) + ",";
+      json += "\"timestamp\":" + IntegerToString(time);
+      json += "}";
+
+      // Send to server
+      char post[], result[];
+      string headers = "Content-Type: application/json\r\n";
+      StringToCharArray(json, post, 0, WHOLE_ARRAY, CP_UTF8);
+      string result_headers;
+      int res = WebRequest("POST", InpWebhookURL, headers, 5000, post, result, result_headers);
+      
+      if(res == 200)
+        {
+         Print("ZoyaEdge: Synced ticket ", ticket);
+         // Add to local cache
+         int size = ArraySize(lastSyncedTickets);
+         ArrayResize(lastSyncedTickets, size + 1);
+         lastSyncedTickets[size] = (long)ticket;
+        }
+      else
+        {
+         Print("ZoyaEdge Error: Ticket ", ticket, " failed with code ", res);
+        }
      }
   }
 //+------------------------------------------------------------------+

@@ -11,6 +11,8 @@ import rateLimit from 'express-rate-limit';
 const app = express();
 const PORT = 3000;
 
+const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || '';
+
 // Trust proxy is required for express-rate-limit to work correctly behind the AI Studio proxy
 app.set('trust proxy', 1);
 
@@ -179,7 +181,7 @@ async function initFirebaseAdmin() {
 
 // Webhook for MT5 EA
 app.post('/api/webhook/mt5', webhookLimiter, async (req, res) => {
-  const { syncKey, pair, direction, lotSize, exitPrice, pnl, timestamp } = req.body;
+  const { syncKey, pair, direction, lotSize, entryPrice, exitPrice, pnl, timestamp, ticket } = req.body;
 
   if (!syncKey) {
     return res.status(400).json({ error: "Missing syncKey" });
@@ -233,14 +235,24 @@ app.post('/api/webhook/mt5', webhookLimiter, async (req, res) => {
 
     // Add the trade to the user's trades collection
     const tradesRef = db.collection('users').doc(userId).collection('trades');
+    
+    // Si ticket fourni, vérifier qu'il n'existe pas déjà
+    if (ticket) {
+      const existingQuery = await tradesRef.where('ticket', '==', ticket).limit(1).get();
+      if (!existingQuery.empty) {
+        return res.json({ success: true, skipped: true, reason: "ticket already synced" });
+      }
+    }
+
     await tradesRef.add({
       userId,
       pair,
       direction,
-      entryPrice: exitPrice, // Simplified: we use exitPrice as entry for now
+      entryPrice: entryPrice ?? exitPrice,
       exitPrice,
       lotSize,
       pnl,
+      ticket,
       strategy: "EA Sync",
       emotion: "😐",
       session: "EA",
@@ -262,13 +274,9 @@ app.post('/api/webhook/mt5', webhookLimiter, async (req, res) => {
 });
 
 // Manual Sync Endpoint
-app.post('/api/connections/:connectionId/sync', async (req, res) => {
+app.post('/api/connections/:connectionId/sync', verifyUser, async (req: any, res: any) => {
   const { connectionId } = req.params;
-  const { userId } = req.body;
-
-  if (!userId) {
-    return res.status(400).json({ error: "Missing userId" });
-  }
+  const userId = req.user.uid; // ← JAMAIS depuis req.body
 
   if (!db) {
     return res.status(503).json({ error: "Database service unavailable" });
@@ -337,7 +345,7 @@ app.post('/api/connections/:connectionId/sync', async (req, res) => {
   }
 });
 
-app.get('/api/config/coach-instructions', (req, res) => {
+app.get('/api/config/coach-instructions', verifyUser, (req, res) => {
   try {
     const systemInstruction = fs.readFileSync(path.join(process.cwd(), 'AGENTS.md'), 'utf-8');
     res.json({ instruction: systemInstruction });
@@ -372,11 +380,11 @@ async function verifyAdmin(req: any, res: any, next: any) {
       userData = userDoc.data();
 
       const settingsSnap = await db.collection('app_settings').doc('global').get();
-      const superAdmins = settingsSnap.data()?.superAdmins || ['kongolmandf@gmail.com'];
-      isSuperAdmin = superAdmins.includes(email);
+      const superAdmins = settingsSnap.data()?.superAdmins || [SUPER_ADMIN_EMAIL];
+      isSuperAdmin = email && (superAdmins.includes(email) || email === SUPER_ADMIN_EMAIL);
     } catch (dbError) {
       console.error("Firestore check failed in verifyAdmin, falling back to hardcoded check:", dbError);
-      isSuperAdmin = email === 'kongolmandf@gmail.com';
+      isSuperAdmin = email === SUPER_ADMIN_EMAIL;
     }
 
     if (isSuperAdmin || userData?.role === 'admin' || userData?.role === 'agent') {
@@ -410,9 +418,9 @@ async function verifySuperAdmin(req: any, res: any, next: any) {
 
     try {
       const settingsSnap = await db.collection('app_settings').doc('global').get();
-      const superAdmins = settingsSnap.data()?.superAdmins || ['kongolmandf@gmail.com'];
+      const superAdmins = settingsSnap.data()?.superAdmins || [SUPER_ADMIN_EMAIL];
 
-      if (superAdmins.includes(email?.toLowerCase())) {
+      if (email && (superAdmins.includes(email?.toLowerCase()) || email?.toLowerCase() === SUPER_ADMIN_EMAIL)) {
         req.user = decodedToken;
         next();
       } else {
@@ -420,7 +428,7 @@ async function verifySuperAdmin(req: any, res: any, next: any) {
       }
     } catch (dbError) {
       console.error("Firestore check failed in verifySuperAdmin, falling back to hardcoded check:", dbError);
-      if (email?.toLowerCase() === 'kongolmandf@gmail.com') {
+      if (email?.toLowerCase() === SUPER_ADMIN_EMAIL) {
         req.user = decodedToken;
         next();
       } else {
@@ -488,15 +496,50 @@ app.post('/api/admin/users/:userId/update', verifyAdmin, async (req, res) => {
 // ... existing code ...
 });
 
+async function checkAndDeductAICredit(userId: string, db: admin.firestore.Firestore): Promise<boolean> {
+  const userRef = db.collection('users').doc(userId);
+  
+  return db.runTransaction(async (transaction) => {
+    const userDoc = await transaction.get(userRef);
+    if (!userDoc.exists) return false;
+    
+    const userData = userDoc.data()!;
+    const subscription = userData.subscription || 'free';
+    
+    // Pro et Premium : crédits illimités (ou très élevés)
+    if (subscription === 'pro' || subscription === 'premium') {
+      return true;
+    }
+    
+    // Free : vérification des crédits
+    const credits = userData.aiCredits ?? 0;
+    if (credits <= 0) return false;
+    
+    transaction.update(userRef, {
+      aiCredits: admin.firestore.FieldValue.increment(-1)
+    });
+    return true;
+  });
+}
+
 // AI Coach Proxy Endpoint
-app.post('/api/ai/coach', verifyUser, async (req, res) => {
+app.post('/api/ai/coach', verifyUser, async (req: any, res: any) => {
   const { input } = req.body;
   
   if (!process.env.GEMINI_API_KEY) {
     return res.status(500).json({ error: "GEMINI_API_KEY non configurée sur le serveur." });
   }
 
+  if (!db) return res.status(503).json({ error: "Service de base de données indisponible" });
+
   try {
+    const hasCredit = await checkAndDeductAICredit(req.user.uid, db!);
+    if (!hasCredit) {
+      return res.status(402).json({ 
+        error: "Crédits IA épuisés. Passez à Pro pour un accès illimité." 
+      });
+    }
+
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const prompt = `
 You are Zoya AI Coach, a professional hedge fund risk analyst, trading performance auditor, and discipline enforcement system.
@@ -527,7 +570,7 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
 `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.0-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -546,14 +589,23 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
 });
 
 // AI Coach Ask Endpoint
-app.post('/api/ai/ask', verifyUser, async (req, res) => {
+app.post('/api/ai/ask', verifyUser, async (req: any, res: any) => {
   const { trades, language, strategies, instruction } = req.body;
   
   if (!process.env.GEMINI_API_KEY) {
     return res.status(500).json({ error: "GEMINI_API_KEY non configurée sur le serveur." });
   }
 
+  if (!db) return res.status(503).json({ error: "Service de base de données indisponible" });
+
   try {
+    const hasCredit = await checkAndDeductAICredit(req.user.uid, db!);
+    if (!hasCredit) {
+      return res.status(402).json({ 
+        error: "Crédits IA épuisés. Passez à Pro pour un accès illimité." 
+      });
+    }
+
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const prompt = `
 Analyze this trading dataset and return structured output only.
@@ -573,7 +625,7 @@ JSON ONLY
 `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-2.0-flash-lite",
       contents: prompt,
       config: {
         systemInstruction: instruction,
