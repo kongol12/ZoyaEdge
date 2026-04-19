@@ -42,7 +42,7 @@ export default function LandingPage() {
           className="max-w-3xl space-y-8"
         >
           <h1 className="text-5xl md:text-7xl font-poppins font-black text-gray-900 dark:text-white tracking-tighter leading-none">
-            VOTRE ALPHA <br />
+            VOTRE EDGE <br />
             <span className="text-zoya-red">COMMENCE ICI.</span>
           </h1>
           

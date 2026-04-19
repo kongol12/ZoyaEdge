@@ -1,8 +1,9 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Trade } from '../../lib/db';
+import { InfoTooltip } from '../atoms/InfoTooltip';
 
-export default function WinrateEvolutionChart({ trades }: { trades: Trade[] }) {
+export default function WinrateEvolutionChart({ trades, infoText }: { trades: Trade[], infoText?: string }) {
   const data = React.useMemo(() => {
     const sorted = [...trades].sort((a, b) => a.date.getTime() - b.date.getTime());
     let wins = 0;
@@ -17,7 +18,10 @@ export default function WinrateEvolutionChart({ trades }: { trades: Trade[] }) {
 
   return (
     <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg">
-      <h3 className="text-lg font-poppins font-black text-gray-900 dark:text-white mb-4">Évolution du Winrate</h3>
+      <div className="flex items-center gap-1.5 mb-4">
+        <h3 className="text-lg font-poppins font-black text-gray-900 dark:text-white uppercase tracking-tight">Évolution du Winrate</h3>
+        {infoText && <InfoTooltip text={infoText} />}
+      </div>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>

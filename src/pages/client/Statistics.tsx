@@ -3,13 +3,14 @@ import { useAuth } from '../../lib/auth';
 import { subscribeToTrades, Trade } from '../../lib/db';
 import { BarChart2, Loader2, Filter } from 'lucide-react';
 import { formatRR } from '../../lib/utils';
-import {
-  computeEquityCurve,
-  computeDrawdown,
-  computeWinrate,
-  computePnLByGroup,
-  computeTradesPerDay,
-  computeRiskReward
+import { 
+  computeEquityCurve, 
+  computeDrawdown, 
+  computeWinrate, 
+  computePnLByGroup, 
+  computeTradesPerDay, 
+  computeRiskReward,
+  computePerformanceMetrics
 } from '../../lib/stats';
 import EquityChart from '../../components/charts/EquityChart';
 import DrawdownChart from '../../components/charts/DrawdownChart';
@@ -19,6 +20,11 @@ import WinrateEvolutionChart from '../../components/charts/WinrateEvolutionChart
 import RRDistributionChart from '../../components/charts/RRDistributionChart';
 import { useFilteredTrades } from '../../hooks/useFilteredTrades';
 import { useTranslation } from '../../lib/i18n';
+import { ProfitFactorGauge } from '../../components/charts/ProfitFactorGauge';
+import { WinRateArc } from '../../components/charts/WinRateArc';
+import { PnlVolumeChart } from '../../components/charts/PnlVolumeChart';
+import { AvgWinLossBar } from '../../components/charts/AvgWinLossBar';
+import { InfoTooltip } from '../../components/atoms/InfoTooltip';
 
 export default function Statistics() {
   const { user } = useAuth();
@@ -37,6 +43,7 @@ export default function Statistics() {
 
   const { filters, setFilters, filteredTrades, uniqueMonths, uniqueStrategies, uniquePairs, uniquePlatforms } = useFilteredTrades(trades);
 
+  const { summary } = useMemo(() => computePerformanceMetrics(filteredTrades), [filteredTrades]);
   const equityData = useMemo(() => computeEquityCurve(filteredTrades), [filteredTrades]);
   const drawdownData = useMemo(() => computeDrawdown(filteredTrades), [filteredTrades]);
   const strategyData = useMemo(() => computePnLByGroup(filteredTrades, 'strategy'), [filteredTrades]);
@@ -45,8 +52,19 @@ export default function Statistics() {
   const pairData = useMemo(() => computePnLByGroup(filteredTrades, 'pair'), [filteredTrades]);
   const platformData = useMemo(() => computePnLByGroup(filteredTrades, 'platform'), [filteredTrades]);
   const frequencyData = useMemo(() => computeTradesPerDay(filteredTrades), [filteredTrades]);
-  const rrData = useMemo(() => computeRiskReward(filteredTrades), [filteredTrades]);
-  const winrate = useMemo(() => computeWinrate(filteredTrades), [filteredTrades]);
+  const cumulativePnlData = useMemo(() => {
+    return filteredTrades
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .reduce((acc: any[], trade, index) => {
+        const prev = acc.length > 0 ? acc[acc.length - 1].pnl : 0;
+        acc.push({
+          date: trade.date.toLocaleDateString(),
+          pnl: Number((prev + trade.pnl).toFixed(2)),
+          volume: Math.abs(trade.pnl)
+        });
+        return acc;
+      }, []);
+  }, [filteredTrades]);
 
   if (loading) {
     return (
@@ -69,7 +87,7 @@ export default function Statistics() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto w-full space-y-12 pb-12">
+    <div className="w-full space-y-12 pb-12">
       <header className="flex items-center gap-3 mb-8">
         <div className="p-2 bg-zoya-red-accent text-zoya-red rounded-xl">
           <BarChart2 size={24} />
@@ -119,7 +137,36 @@ export default function Statistics() {
         </div>
       </div>
 
-      {/* SECTION 1: Performance Overview */}
+      {/* SECTION 1: Risk Metrics (Unified Visual Models) */}
+      <section className="space-y-6">
+        <h2 className="text-2xl font-poppins font-bold text-gray-900 dark:text-white">Risk Metrics</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <ProfitFactorGauge 
+            value={summary.profitFactor} 
+            infoText="Indicateur de rentabilité. Ratio entre vos profits totaux et vos pertes totales (Cible > 1.5)."
+          />
+          <WinRateArc 
+            wins={summary.wins} 
+            losses={summary.losses} 
+            winRate={summary.winRate} 
+            infoText="Pourcentage de trades gagnants par rapport au nombre total de trades."
+          />
+          <AvgWinLossBar 
+            avgWin={summary.avgWin} 
+            avgLoss={summary.avgLoss} 
+            avgRatio={summary.avgRR} 
+            infoText="Ratio entre le gain moyen et la perte moyenne pour évaluer l'espérance de votre stratégie."
+          />
+          <PnlVolumeChart 
+            data={cumulativePnlData}
+            totalPnl={summary.totalPnL}
+            className="h-full !p-6"
+            infoText="Évolution de votre profit net cumulé trade après trade sur la période sélectionnée."
+          />
+        </div>
+      </section>
+
+      {/* SECTION 2: Performance Overview */}
       <section className="space-y-6">
         <h2 className="text-2xl font-poppins font-bold text-gray-900 dark:text-white">Performance Overview</h2>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -141,11 +188,14 @@ export default function Statistics() {
             data={drawdownData} 
             infoText="Mesure de la baisse de votre capital par rapport à son point le plus haut (Peak)."
           />
-          <WinrateEvolutionChart trades={filteredTrades} />
+          <WinrateEvolutionChart 
+            trades={filteredTrades} 
+            infoText="Suivi de la progression de votre taux de réussite cumulé sur chaque trade."
+          />
         </div>
       </section>
 
-      {/* SECTION 2: Performance Breakdown */}
+      {/* SECTION 3: Performance Breakdown */}
       <section className="space-y-6">
         <h2 className="text-2xl font-poppins font-bold text-gray-900 dark:text-white">Performance Breakdown</h2>
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -188,7 +238,7 @@ export default function Statistics() {
         </div>
       </section>
 
-      {/* SECTION 3: Behavior Analysis */}
+      {/* SECTION 4: Behavior Analysis */}
       <section className="space-y-6">
         <h2 className="text-2xl font-poppins font-bold text-gray-900 dark:text-white">Behavior Analysis</h2>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -209,28 +259,10 @@ export default function Statistics() {
             color="#10B981" 
             infoText="Nombre de trades pris chaque jour pour identifier le surtrading."
           />
-          <RRDistributionChart trades={filteredTrades} />
-        </div>
-      </section>
-
-      {/* SECTION 4: Risk Metrics */}
-      <section className="space-y-6">
-        <h2 className="text-2xl font-poppins font-bold text-gray-900 dark:text-white">Risk Metrics</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg text-center">
-            <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Winrate</div>
-            <div className="text-3xl font-poppins font-black text-emerald-500">{winrate}%</div>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg text-center">
-            <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Risk/Reward Ratio</div>
-            <div className="text-3xl font-poppins font-black text-blue-500">{formatRR(rrData.ratio)}</div>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg text-center">
-            <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Avg Win / Avg Loss</div>
-            <div className="text-xl font-poppins font-black text-gray-900 dark:text-white">
-              <span className="text-emerald-500">${rrData.avgWin}</span> / <span className="text-rose-500">-${rrData.avgLoss}</span>
-            </div>
-          </div>
+          <RRDistributionChart 
+            trades={filteredTrades} 
+            infoText="Visualisation de la fréquence de vos ratios Risk/Reward pour vérifier votre respect du plan."
+          />
         </div>
       </section>
     </div>

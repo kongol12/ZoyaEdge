@@ -177,5 +177,6 @@ GLOBAL RULES
 - No hallucinated data
 - Use only input data
 - Be strict, deterministic, analytical
+- LANGUAGE: You MUST write all "message", "action", and "reason" fields in the language specified in the request (e.g., if language: "fr", write in French. If language: "en", write in English).
 
 END

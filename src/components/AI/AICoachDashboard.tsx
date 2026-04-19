@@ -8,6 +8,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, R
 import { collection, addDoc, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { subscribeToTrades, Trade } from '../../lib/db';
+import { InfoTooltip } from '../atoms/InfoTooltip';
 
 export default function AICoachDashboard() {
   const { user } = useAuth();
@@ -81,10 +82,10 @@ export default function AICoachDashboard() {
         <div>
           <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Activity className="text-zoya-red" /> Analyse Globale</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <MetricCard title="Total PnL" value={formatCurrency(metrics.totalPnL)} isPositive={metrics.totalPnL >= 0} />
-            <MetricCard title="Winrate" value={formatPercentage(metrics.winrate)} />
-            <MetricCard title="Profit Factor" value={metrics.profitFactor.toFixed(2)} />
-            <MetricCard title="Total Trades" value={metrics.stats.totalTrades} />
+            <MetricCard title="Total PnL" value={formatCurrency(metrics.totalPnL)} isPositive={metrics.totalPnL >= 0} infoText="Somme totale des profits et pertes." />
+            <MetricCard title="Winrate" value={formatPercentage(metrics.winrate)} infoText="Pourcentage de trades gagnants." />
+            <MetricCard title="Profit Factor" value={metrics.profitFactor.toFixed(2)} infoText="Ratio profits totaux / pertes totales." />
+            <MetricCard title="Total Trades" value={metrics.stats.totalTrades} infoText="Nombre de trades clôturés." />
           </div>
         </div>
 
@@ -396,10 +397,13 @@ export default function AICoachDashboard() {
   );
 }
 
-function MetricCard({ title, value, isPositive, className }: { title: string, value: string | number, isPositive?: boolean, className?: string }) {
+function MetricCard({ title, value, isPositive, className, infoText }: { title: string, value: string | number, isPositive?: boolean, className?: string, infoText?: string }) {
   return (
-    <div className={`bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm ${className || ''}`}>
-      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{title}</div>
+    <div className={`bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm relative ${className || ''}`}>
+      <div className="flex justify-between items-start mb-1">
+        <div className="text-xs text-gray-500 dark:text-gray-400">{title}</div>
+        {infoText && <InfoTooltip text={infoText} />}
+      </div>
       <div className={`text-xl font-black ${isPositive === true ? 'text-emerald-500' : isPositive === false ? 'text-rose-500' : 'text-gray-900 dark:text-white'}`}>
         {value}
       </div>

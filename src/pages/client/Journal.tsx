@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Book, Plus, Filter, History, Calendar, LayoutGrid, List } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n';
-import { subscribeToTrades, Trade } from '../../lib/db';
+import { subscribeToTrades, subscribeToNotebook, Trade, NotebookEntry } from '../../lib/db';
 import { useAuth } from '../../lib/auth';
 import { cn } from '../../lib/utils';
 import TradeExplorer from '../../components/organisms/client/TradeExplorer';
@@ -15,16 +15,27 @@ export default function Journal() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [notebookEntries, setNotebookEntries] = useState<NotebookEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     if (!user) return;
-    return subscribeToTrades(user.uid, (data) => {
+    
+    const unsubscribeTrades = subscribeToTrades(user.uid, (data) => {
       setTrades(data);
       setLoading(false);
     });
+
+    const unsubscribeNotebook = subscribeToNotebook(user.uid, (data) => {
+      setNotebookEntries(data);
+    });
+
+    return () => {
+      unsubscribeTrades();
+      unsubscribeNotebook();
+    };
   }, [user]);
 
   const { 
@@ -47,7 +58,7 @@ export default function Journal() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto w-full space-y-8 pb-12">
+    <div className="w-full space-y-8 pb-12">
       <AnimatePresence mode="wait">
         {!selectedTrade ? (
           <motion.div 
@@ -165,6 +176,7 @@ export default function Journal() {
             {/* Main Content: Trade Explorer (Calendar by Default) */}
             <TradeExplorer 
               trades={filteredTrades} 
+              notebookEntries={notebookEntries}
               defaultView="calendar" 
               onTradeClick={(trade) => setSelectedTrade(trade)}
             />

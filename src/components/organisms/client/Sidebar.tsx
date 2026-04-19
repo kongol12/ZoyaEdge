@@ -55,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, classNa
     {
       title: t.common.categories.analyse,
       items: [
+        { name: t.common.tradeView, path: '/trade-view', icon: BarChart2, color: 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20' },
         { name: t.common.statistics, path: '/statistics', icon: BarChart2, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
         { name: t.dashboard.coachTitle, path: '/ai-coach', icon: BrainCircuit, color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20', badge: 'BETA' },
         { name: t.notebook.title, path: '/notebook', icon: BookOpen, color: 'text-cyan-500 bg-cyan-50 dark:bg-cyan-900/20' },

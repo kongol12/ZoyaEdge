@@ -1,29 +1,35 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../../lib/auth';
 import { useTranslation } from '../../lib/i18n';
-import { subscribeToTrades, Trade } from '../../lib/db';
+import { subscribeToTrades, subscribeToNotebook, Trade, NotebookEntry } from '../../lib/db';
 import { formatCurrency, formatPercentage, cn, exportToCSV } from '../../lib/utils';
-import { TrendingUp, Target, Activity, Plus, Upload, BarChart3, Flame, Download, Filter, FileText, History, Wallet } from 'lucide-react';
+import { TrendingUp, Target, Activity, Plus, Upload, BarChart3, Flame, Download, Filter, FileText, History, Wallet, Zap } from 'lucide-react';
 import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import TradeExplorer from '../../components/organisms/client/TradeExplorer';
 import PnLChart from '../../components/organisms/client/PnLChart';
 import PerformanceRadarChart from '../../components/charts/PerformanceRadarChart';
+import { PsychologyChart } from '../../components/charts/PsychologyChart';
 import PaywallModal from '../../components/molecules/PaywallModal';
 import { Button } from '../../components/atoms/Button';
 import { StatCard } from '../../components/molecules/StatCard';
 import { RiskRewardGaugeCard } from '../../components/charts/RiskRewardGaugeCard';
-import { computeRiskReward } from '../../lib/stats';
+import { computePerformanceMetrics } from '../../lib/stats';
 import { useFilteredTrades } from '../../hooks/useFilteredTrades';
-import { calculateWinrate, calculateProfitFactor, calculateAvgRR, calculateMaxDrawdown, calculateExpectancy, calculateStreaks } from '../../lib/advancedTradingMetrics';
 import AdvancedDecisionEngine from '../../components/AdvancedDecisionEngine';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+import { ProfitFactorGauge } from '../../components/charts/ProfitFactorGauge';
+import { WinRateArc } from '../../components/charts/WinRateArc';
+import { PnlVolumeChart } from '../../components/charts/PnlVolumeChart';
+import { AvgWinLossBar } from '../../components/charts/AvgWinLossBar';
 
 export default function Dashboard() {
   const { user, profile } = useAuth();
   const { t, language } = useTranslation();
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [notebookEntries, setNotebookEntries] = useState<NotebookEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPaywall, setShowPaywall] = useState(false);
   
@@ -31,11 +37,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return;
-    const unsubscribe = subscribeToTrades(user.uid, (data) => {
+    
+    const unsubscribeTrades = subscribeToTrades(user.uid, (data) => {
       setTrades(data);
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    const unsubscribeNotebook = subscribeToNotebook(user.uid, (data) => {
+      setNotebookEntries(data);
+    });
+
+    return () => {
+      unsubscribeTrades();
+      unsubscribeNotebook();
+    };
   }, [user]);
 
   const {
@@ -45,19 +60,14 @@ export default function Dashboard() {
     avgRR,
     maxDrawdown,
     streak,
-    rrData,
-    currentBalance
+    currentBalance,
+    consistency,
+    summary,
+    cumulativePnlData
   } = useMemo(() => {
-    const performancePnL = filteredTrades
-      .filter(t => !t.type || t.type === 'trade')
-      .reduce((sum, trade) => sum + Number(trade.pnl), 0);
+    const { summary } = computePerformanceMetrics(filteredTrades);
     
-    const totalBalanceChange = filteredTrades.reduce((sum, trade) => sum + Number(trade.pnl), 0);
-    
-    const wr = calculateWinrate(filteredTrades);
-    const pf = calculateProfitFactor(filteredTrades);
-    const rr = calculateAvgRR(filteredTrades);
-    const dd = calculateMaxDrawdown(filteredTrades);
+    const totalBalanceChange = filteredTrades.reduce((sum, trade) => sum + Number(trade.pnl || 0), 0);
     const balance = (profile?.initialBalance || 0) + totalBalanceChange;
     
     // Streak Logic (only trades)
@@ -77,15 +87,30 @@ export default function Dashboard() {
       }
     }
 
+    // Cumulative P&L logic for consistency
+    const cumulative = [...filteredTrades]
+      .sort((a, b) => a.date.getTime() - b.date.getTime())
+      .reduce((acc: any[], trade, index) => {
+        const prev = acc.length > 0 ? acc[acc.length - 1].pnl : 0;
+        acc.push({
+          date: trade.date.toLocaleDateString(),
+          pnl: Number((prev + trade.pnl).toFixed(2)),
+          volume: Math.abs(trade.pnl)
+        });
+        return acc;
+      }, []);
+
     return {
-      totalPnL: performancePnL,
-      winRate: wr,
-      profitFactor: pf,
-      avgRR: rr,
-      maxDrawdown: dd,
+      totalPnL: summary.totalPnL,
+      winRate: summary.winRate,
+      profitFactor: summary.profitFactor,
+      avgRR: summary.avgRR,
+      maxDrawdown: summary.maxDrawdown,
       streak: s,
-      rrData: computeRiskReward(filteredTrades),
-      currentBalance: balance
+      currentBalance: balance,
+      consistency: summary.consistency,
+      summary,
+      cumulativePnlData: cumulative
     };
   }, [filteredTrades, profile?.initialBalance]);
 
@@ -154,14 +179,14 @@ export default function Dashboard() {
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="max-w-7xl mx-auto w-full space-y-6 pb-12"
+      className="w-full space-y-6 pb-12"
     >
       {/* Header & Quick Actions */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-2">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white tracking-tight">
-              {t.common.dashboard}
+              {t.common.welcome}, <span className="text-zoya-red">{profile?.displayName || user?.displayName || 'Trader'}</span>
             </h1>
             {streak > 0 && (
               <motion.div 
@@ -175,8 +200,15 @@ export default function Dashboard() {
             )}
           </div>
           <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
-            {t.common.welcome} <span className="text-zoya-red font-bold">ZoyaEdge</span>. 
-            L'analyse de vos performances en temps réel.
+            {trades.length > 0 ? (
+              <>
+                {t.dashboard.lastUpdated}: <span className="font-bold text-gray-700 dark:text-gray-200">
+                  {new Date(Math.max(...trades.map(t => t.date.getTime()))).toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </span>
+              </>
+            ) : (
+              t.dashboard.noTrades
+            )}
           </p>
         </div>
 
@@ -267,8 +299,35 @@ export default function Dashboard() {
         </motion.div>
       )}
 
-      {/* Stats Grid - Robust Dashboard Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+      {/* Primary Analytics Section (Trade View Models for Harmony) */}
+      <section className="mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <PnlVolumeChart 
+            data={cumulativePnlData} 
+            totalPnl={totalPnL} 
+            infoText="Profit ou perte nette cumulée sur la période sélectionnée."
+          />
+          <ProfitFactorGauge 
+            value={profitFactor} 
+            infoText="Indicateur de rentabilité. Ratio entre vos profits totaux et vos pertes totales (Cible > 1.5)."
+          />
+          <WinRateArc 
+            wins={summary.wins} 
+            losses={summary.losses} 
+            winRate={winRate} 
+            infoText="Pourcentage de trades gagnants par rapport au nombre total de trades."
+          />
+          <AvgWinLossBar 
+            avgWin={summary.avgWin} 
+            avgLoss={summary.avgLoss} 
+            avgRatio={summary.avgRR} 
+            infoText="Ratio entre le gain moyen et la perte moyenne pour évaluer l'espérance de votre stratégie."
+          />
+        </div>
+      </section>
+
+      {/* Secondary Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
         <StatCard
           title={t.dashboard.balance}
           value={formatCurrency(currentBalance)}
@@ -278,35 +337,12 @@ export default function Dashboard() {
           infoText="Votre capital actuel incluant les profits/pertes."
         />
         <StatCard
-          title={t.dashboard.pnl}
-          value={formatCurrency(totalPnL)}
-          icon={<Activity />}
-          iconClassName="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/50"
-          delay={0.1}
-          className={totalPnL >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}
-          infoText="Profit & Loss total généré."
-        />
-        <StatCard
-          title={t.dashboard.winrate}
-          value={formatPercentage(winRate)}
-          icon={<Target />}
-          iconClassName="bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50"
-          delay={0.2}
-        />
-        <StatCard
-          title="Profit Factor"
-          value={profitFactor.toFixed(2)}
-          icon={<TrendingUp />}
-          iconClassName="bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-100 dark:border-purple-900/50"
-          delay={0.3}
-        />
-        <StatCard
-          title="Max DD"
-          value={formatCurrency(maxDrawdown)}
-          icon={<Activity />}
-          iconClassName="bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50"
-          delay={0.4}
-          className={maxDrawdown > 1000 ? 'text-rose-600' : ''}
+          title="Consistency"
+          value={`${Math.round(consistency)}%`}
+          icon={<Zap />}
+          iconClassName="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50"
+          delay={0.35}
+          infoText="Indice de régularité basé sur votre discipline et gestion du risque."
         />
         <StatCard
           title="Positions"
@@ -314,24 +350,38 @@ export default function Dashboard() {
           icon={<BarChart3 />}
           iconClassName="bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400 border border-orange-100 dark:border-orange-900/50"
           delay={0.5}
+          infoText="Nombre total de positions de trading exécutées et enregistrées."
         />
-        <RiskRewardGaugeCard ratio={avgRR} delay={0.6} />
+        <StatCard
+          title="Max DD"
+          value={formatCurrency(maxDrawdown)}
+          icon={<Activity />}
+          iconClassName="bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50"
+          delay={0.4}
+          infoText="Pire baisse de capital (Drawdown Maximum) enregistrée sur la période."
+        />
       </div>
 
       {/* Charts Section */}
       {filteredTrades.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-1">
+            <PerformanceRadarChart 
+              trades={filteredTrades} 
+              infoText="Synthèse de votre efficacité basée sur le Profit Factor, R/R, Retour Moyen et Drawdown."
+            />
+          </div>
+          <div className="lg:col-span-1">
+            <PsychologyChart 
+              trades={filteredTrades}
+              infoText="Analyse de votre mindset de trading basée sur les émotions enregistrées (Confiance, Stress, Neutre)."
+            />
+          </div>
           <div className="lg:col-span-2">
             <PnLChart 
               trades={filteredTrades} 
               initialBalance={profile?.initialBalance}
               infoText="Évolution de votre capital (Solde + Profit/Perte) au fil du temps."
-            />
-          </div>
-          <div className="lg:col-span-1">
-            <PerformanceRadarChart 
-              trades={filteredTrades} 
-              infoText="Synthèse de votre efficacité basée sur le Profit Factor, R/R, Retour Moyen et Drawdown."
             />
           </div>
         </div>
@@ -348,7 +398,7 @@ export default function Dashboard() {
             <p className="text-xs text-gray-400 font-medium">Visualisation dynamique par liste, table ou calendrier.</p>
           </div>
         </div>
-        <TradeExplorer trades={filteredTrades} />
+        <TradeExplorer trades={filteredTrades} notebookEntries={notebookEntries} />
       </div>
 
       <PaywallModal

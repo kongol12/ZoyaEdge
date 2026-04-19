@@ -136,7 +136,7 @@ export default function Subscription() {
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="max-w-7xl mx-auto w-full space-y-12 pb-12"
+      className="w-full space-y-12 pb-12"
     >
       {/* Payment Gateway Coming Soon Notification */}
       <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/50 p-4 rounded-3xl flex items-center justify-center gap-3 shadow-inner">

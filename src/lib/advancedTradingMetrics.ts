@@ -8,28 +8,35 @@ export function calculateWinrate(trades: Trade[]): number {
 }
 
 export function calculateRR(trade: Trade): number {
-  if (trade.rr !== undefined) return trade.rr;
+  if (trade.rr !== undefined && trade.rr !== 0) return trade.rr;
+  
+  // Realized RR if we have risk and pnl
+  if (trade.pnl !== 0 && trade.risk && trade.risk > 0) {
+    return Math.max(0, trade.pnl / trade.risk);
+  }
+
   if (trade.stopLoss && trade.takeProfit && trade.entryPrice) {
     const risk = Math.abs(trade.entryPrice - trade.stopLoss);
     const reward = Math.abs(trade.takeProfit - trade.entryPrice);
     if (risk > 0) return reward / risk;
   }
-  return 0; // Default if no SL/TP
+  return 0; // Default if no SL/TP and no realized stats
 }
 
 export function calculateAvgRR(trades: Trade[]): number {
   const realTrades = trades.filter(t => !t.type || t.type === 'trade');
   if (realTrades.length === 0) return 0;
-  let totalRR = 0;
-  let count = 0;
-  for (const t of realTrades) {
-    const rr = calculateRR(t);
-    if (rr > 0) {
-      totalRR += rr;
-      count++;
-    }
-  }
-  return count > 0 ? totalRR / count : 0;
+  
+  const wins = realTrades.filter(t => Number(t.pnl || 0) > 0);
+  const losses = realTrades.filter(t => Number(t.pnl || 0) < 0);
+  
+  if (losses.length === 0) return wins.length > 0 ? 10 : 0;
+  if (wins.length === 0) return 0;
+  
+  const avgWin = wins.reduce((sum, t) => sum + Number(t.pnl || 0), 0) / wins.length;
+  const avgLoss = Math.abs(losses.reduce((sum, t) => sum + Number(t.pnl || 0), 0)) / losses.length;
+  
+  return avgWin / avgLoss;
 }
 
 export function calculateProfitFactor(trades: Trade[]): number {
@@ -58,14 +65,15 @@ export function calculateExpectancy(trades: Trade[]): number {
 }
 
 export function calculateMaxDrawdown(trades: Trade[]): number {
-  if (trades.length === 0) return 0;
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  if (realTrades.length === 0) return 0;
   
   let peak = 0;
   let currentEquity = 0;
   let maxDrawdown = 0;
   
   // Sort trades by date to ensure chronological order
-  const sortedTrades = [...trades].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const sortedTrades = [...realTrades].sort((a, b) => a.date.getTime() - b.date.getTime());
   
   for (const t of sortedTrades) {
     currentEquity += t.pnl;
@@ -82,7 +90,8 @@ export function calculateMaxDrawdown(trades: Trade[]): number {
 }
 
 export function calculateEquityCurve(trades: Trade[]): { date: string; equity: number }[] {
-  const sortedTrades = [...trades].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  const sortedTrades = [...realTrades].sort((a, b) => a.date.getTime() - b.date.getTime());
   let equity = 0;
   return sortedTrades.map(t => {
     equity += t.pnl;

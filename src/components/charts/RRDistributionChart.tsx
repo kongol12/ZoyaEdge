@@ -2,8 +2,9 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Trade } from '../../lib/db';
 import { calculateRR } from '../../lib/advancedTradingMetrics';
+import { InfoTooltip } from '../atoms/InfoTooltip';
 
-export default function RRDistributionChart({ trades }: { trades: Trade[] }) {
+export default function RRDistributionChart({ trades, infoText }: { trades: Trade[], infoText?: string }) {
   const data = React.useMemo(() => {
     const bins = { '<1': 0, '1-2': 0, '2-3': 0, '3-4': 0, '>4': 0 };
     trades.forEach(t => {
@@ -19,7 +20,10 @@ export default function RRDistributionChart({ trades }: { trades: Trade[] }) {
 
   return (
     <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg">
-      <h3 className="text-lg font-poppins font-black text-gray-900 dark:text-white mb-4">Distribution Risk/Reward</h3>
+      <div className="flex items-center gap-1.5 mb-4">
+        <h3 className="text-lg font-poppins font-black text-gray-900 dark:text-white uppercase tracking-tight">Distribution Risk/Reward</h3>
+        {infoText && <InfoTooltip text={infoText} />}
+      </div>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>

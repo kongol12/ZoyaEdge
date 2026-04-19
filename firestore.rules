@@ -216,7 +216,7 @@ service cloud.firestore {
              request.resource.data.content.size() <= 5000 &&
              (!( 'imageUrl' in request.resource.data) || (request.resource.data.imageUrl is string && request.resource.data.imageUrl.size() <= 2000)) &&
              request.resource.data.date is timestamp &&
-             request.resource.data.createdAt is timestamp;
+             (request.resource.data.createdAt is timestamp || request.resource.data.createdAt == request.time);
     }
 
     function isValidNotification() {

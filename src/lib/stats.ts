@@ -1,6 +1,11 @@
 import { Trade } from './db';
 import { formatRR } from './utils';
-import { calculateAvgRR } from './advancedTradingMetrics';
+import { 
+  calculateAvgRR, 
+  calculateWinrate, 
+  calculateProfitFactor, 
+  calculateMaxDrawdown 
+} from './advancedTradingMetrics';
 
 export function computeEquityCurve(trades: Trade[], initialBalance: number = 0) {
   let cumulative = initialBalance;
@@ -38,13 +43,15 @@ export function computeDrawdown(trades: Trade[]) {
 }
 
 export function computeWinrate(trades: Trade[]) {
-  if (trades.length === 0) return 0;
-  const wins = trades.filter(t => Number(t.pnl) > 0).length;
-  return Number(((wins / trades.length) * 100).toFixed(2));
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  if (realTrades.length === 0) return 0;
+  const wins = realTrades.filter(t => Number(t.pnl) > 0).length;
+  return Number(((wins / realTrades.length) * 100).toFixed(2));
 }
 
 export function computePnLByGroup(trades: Trade[], key: keyof Trade) {
-  const grouped = trades.reduce((acc, t) => {
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  const grouped = realTrades.reduce((acc, t) => {
     const groupKey = String(t[key] || 'Unknown');
     acc[groupKey] = (acc[groupKey] || 0) + Number(t.pnl);
     return acc;
@@ -54,7 +61,8 @@ export function computePnLByGroup(trades: Trade[], key: keyof Trade) {
 }
 
 export function computeTradesPerDay(trades: Trade[]) {
-  const grouped = trades.reduce((acc, t) => {
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  const grouped = realTrades.reduce((acc, t) => {
     const dateStr = t.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     acc[dateStr] = (acc[dateStr] || 0) + 1;
     return acc;
@@ -64,13 +72,14 @@ export function computeTradesPerDay(trades: Trade[]) {
 }
 
 export function computeRiskReward(trades: Trade[]) {
-  const wins = trades.filter(t => Number(t.pnl) > 0);
-  const losses = trades.filter(t => Number(t.pnl) < 0);
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  const wins = realTrades.filter(t => Number(t.pnl || 0) > 0);
+  const losses = realTrades.filter(t => Number(t.pnl || 0) < 0);
 
-  const avgWin = wins.length > 0 ? wins.reduce((sum, t) => sum + Number(t.pnl), 0) / wins.length : 0;
-  const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((sum, t) => sum + Number(t.pnl), 0)) / losses.length : 0;
+  const avgWin = wins.length > 0 ? wins.reduce((sum, t) => sum + Number(t.pnl || 0), 0) / wins.length : 0;
+  const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((sum, t) => sum + Number(t.pnl || 0), 0)) / losses.length : 0;
 
-  const rr = calculateAvgRR(trades);
+  const rr = calculateAvgRR(realTrades);
   return {
     avgWin: Number(avgWin.toFixed(2)),
     avgLoss: Number(avgLoss.toFixed(2)),
@@ -79,13 +88,30 @@ export function computeRiskReward(trades: Trade[]) {
 }
 
 export function computePerformanceMetrics(trades: Trade[]) {
-  if (trades.length === 0) {
+  const realTrades = trades.filter(t => !t.type || t.type === 'trade');
+  
+  if (realTrades.length === 0) {
     return {
+      summary: {
+        totalPnL: 0,
+        winRate: 0,
+        profitFactor: 0,
+        avgRR: 0,
+        maxDrawdown: 0,
+        totalTrades: 0,
+        wins: 0,
+        losses: 0,
+        avgWin: 0,
+        avgLoss: 0,
+        consistency: 0,
+        avgReturn: 0
+      },
       metrics: [
         { subject: 'Profit Factor', A: 0, fullMark: 100, value: '0' },
         { subject: 'R/R', A: 0, fullMark: 100, value: '0' },
         { subject: 'Avg Return', A: 0, fullMark: 100, value: '$0' },
         { subject: 'Max DD', A: 0, fullMark: 100, value: '$0' },
+        { subject: 'Consistency', A: 0, fullMark: 100, value: '0%' },
       ],
       overallScore: 0,
       status: 'Faible',
@@ -94,43 +120,51 @@ export function computePerformanceMetrics(trades: Trade[]) {
     };
   }
 
-  const wins = trades.filter(t => Number(t.pnl) > 0);
-  const losses = trades.filter(t => Number(t.pnl) < 0);
+  const totalPnL = realTrades.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
+  const avgReturn = totalPnL / realTrades.length;
 
-  const grossProfit = wins.reduce((sum, t) => sum + Number(t.pnl), 0);
-  const grossLoss = Math.abs(losses.reduce((sum, t) => sum + Number(t.pnl), 0));
+  const winRate = calculateWinrate(realTrades);
+  const profitFactor = calculateProfitFactor(realTrades);
+  const rr = calculateAvgRR(realTrades);
+  const maxDrawdown = calculateMaxDrawdown(realTrades);
 
-  const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? 99 : 0);
-  
+  // Consistency Calculation
+  const calculateConsistency = (trades: Trade[]) => {
+    if (trades.length < 5) return 50;
+    const journaledCount = trades.filter(t => t.strategy && t.strategy !== 'Autre' && t.strategy !== 'Other').length;
+    const journalScore = (journaledCount / trades.length) * 100;
+    const lots = trades.map(t => t.lotSize || 0);
+    const avgLot = lots.reduce((a, b) => a + b, 0) / lots.length;
+    const lotVariance = lots.reduce((a, b) => a + Math.pow(b - avgLot, 2), 0) / lots.length;
+    const lotCV = avgLot > 0 ? Math.sqrt(lotVariance) / avgLot : 1;
+    const lotScore = Math.max(0, 100 - (lotCV * 50));
+    const risks = trades.map(t => t.risk || 0).filter(r => r > 0);
+    let riskScore = 70;
+    if (risks.length > 0) {
+      const avgRisk = risks.reduce((a, b) => a + b, 0) / risks.length;
+      const riskVariance = risks.reduce((a, b) => a + Math.pow(a - avgRisk, 2), 0) / risks.length;
+      const riskCV = avgRisk > 0 ? Math.sqrt(riskVariance) / avgRisk : 1;
+      riskScore = Math.max(0, 100 - (riskCV * 50));
+    }
+    return (journalScore * 0.4) + (lotScore * 0.3) + (riskScore * 0.3);
+  };
+
+  const consistency = calculateConsistency(realTrades);
+
+  const wins = realTrades.filter(t => t.pnl > 0);
+  const losses = realTrades.filter(t => t.pnl < 0);
+  const grossProfit = wins.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
   const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
-  const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
-  const rr = calculateAvgRR(trades);
-
-  const totalPnL = trades.reduce((sum, t) => sum + Number(t.pnl), 0);
-  const avgReturn = totalPnL / trades.length;
-
-  let cumulative = 0;
-  let peak = 0;
-  let maxDrawdown = 0;
-  [...trades].sort((a, b) => a.date.getTime() - b.date.getTime()).forEach(t => {
-    cumulative += Number(t.pnl);
-    if (cumulative > peak) peak = cumulative;
-    const drawdown = cumulative - peak; // will be <= 0
-    if (drawdown < maxDrawdown) maxDrawdown = drawdown;
-  });
+  const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((sum, t) => sum + Number(t.pnl || 0), 0)) / losses.length : 0;
 
   // Normalization 0-100
-  const scorePF = Math.min((profitFactor / 2) * 100, 100);
-  const scoreRR = Math.min((rr / 2) * 100, 100);
-  
-  // Avg Return Score: 50 is break-even. 100 is avgReturn == avgWin. 0 is avgReturn == -avgLoss.
+  const scorePF = Math.min((profitFactor / 1.5) * 100, 100);
+  const scoreRR = Math.min((rr / 1.2) * 100, 100); 
   const maxMove = Math.max(avgWin, avgLoss, 1);
   const scoreAvgReturn = Math.max(0, Math.min(100, 50 + (avgReturn / maxMove) * 50));
+  const scoreMaxDD = Math.max(0, 100 - (Math.abs(maxDrawdown) / Math.max(grossProfit || 1, 1)) * 100);
 
-  // Max Drawdown Score: 100 is 0 DD. 0 is DD >= Gross Profit.
-  const scoreMaxDD = Math.max(0, 100 - (Math.abs(maxDrawdown) / Math.max(grossProfit, 1)) * 100);
-
-  const overallScore = (scorePF + scoreRR + scoreAvgReturn + scoreMaxDD) / 4;
+  const overallScore = Math.round((scorePF + scoreRR + scoreAvgReturn + scoreMaxDD + consistency) / 5);
 
   let status = 'Faible';
   let color = 'text-rose-500';
@@ -147,15 +181,54 @@ export function computePerformanceMetrics(trades: Trade[]) {
   }
 
   return {
+    summary: {
+      totalPnL,
+      winRate,
+      profitFactor,
+      avgRR: rr,
+      maxDrawdown,
+      totalTrades: realTrades.length,
+      wins: wins.length,
+      losses: losses.length,
+      avgWin,
+      avgLoss,
+      consistency,
+      avgReturn
+    },
     metrics: [
       { subject: 'Profit Factor', A: Math.round(scorePF), fullMark: 100, value: profitFactor.toFixed(2) },
       { subject: 'R/R', A: Math.round(scoreRR), fullMark: 100, value: formatRR(rr) },
       { subject: 'Avg Return', A: Math.round(scoreAvgReturn), fullMark: 100, value: `$${avgReturn.toFixed(2)}` },
       { subject: 'Max DD', A: Math.round(scoreMaxDD), fullMark: 100, value: `$${Math.abs(maxDrawdown).toFixed(2)}` },
+      { subject: 'Consistency', A: Math.round(consistency), fullMark: 100, value: `${Math.round(consistency)}%` },
     ],
-    overallScore: Math.round(overallScore),
+    overallScore,
     status,
     color,
     bg
   };
+}
+
+export function calculateTradeZoyaScore(trade: Trade) {
+  let score = 50; // Baseline
+
+  // 1. Result: Win is positive
+  if (trade.pnl > 0) score += 20;
+  if (trade.pnl < 0) score -= 10;
+
+  // 2. Risk Mgmt: Has SL/TP?
+  if (trade.stopLoss && trade.takeProfit) score += 10;
+  
+  // 3. RR: Is it a high Quality RR?
+  if (trade.rr && trade.rr >= 2) score += 10;
+  else if (trade.rr && trade.rr >= 1) score += 5;
+
+  // 4. Psychology: Emotion
+  if (trade.emotion === '🔥' || trade.emotion === 'confidence') score += 10;
+  if (trade.emotion === '😰' || trade.emotion === 'fear') score -= 15;
+
+  // 5. Discipline: Strategy
+  if (trade.strategy && trade.strategy !== 'Autre' && trade.strategy !== 'Other') score += 10;
+
+  return Math.max(0, Math.min(100, score));
 }

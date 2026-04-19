@@ -44,20 +44,8 @@ export default function Auth() {
     setLoading(true);
     setError(null);
     try {
-      // We need to check if the user is a super admin AFTER sign in
-      // but we can also check if they are allowed to sign in at all
       await signInWithGoogle();
-      
-      // Get current user after sign in
-      const user = auth.currentUser;
-      
-      if (user) {
-        const allowed = await isSuperAdmin(user.email);
-        if (!allowed) {
-          await logout();
-          setError("La connexion Google est réservée exclusivement aux Super Administrateurs. Veuillez utiliser votre Email et Mot de passe.");
-        }
-      }
+      // Everyone is allowed to sign in with Google now
     } catch (err: any) {
       if (err.code === 'auth/operation-not-allowed') {
         setError("La connexion Google n'est pas activée dans la console Firebase. Veuillez l'activer dans les paramètres d'Authentication.");

@@ -38,6 +38,7 @@ const translations = {
       profile: 'Profil',
       security: 'Sécurité',
       preferences: 'Préférences',
+      tradeView: 'Vue des Trades',
       categories: {
         principal: 'PRINCIPAL',
         analyse: 'ANALYSE',
@@ -215,6 +216,7 @@ const translations = {
       profile: 'Profile',
       security: 'Security',
       preferences: 'Preferences',
+      tradeView: 'Trade View',
       categories: {
         principal: 'PRINCIPAL',
         analyse: 'ANALYSIS',

@@ -72,7 +72,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
         </button>
       </div>
 
-      <nav className="flex-1 px-4 space-y-2">
+      <nav className="flex-1 px-4 space-y-2 overflow-y-auto scrollbar-hide py-2 pb-8">
         {menuItems.map((item) => (
           <Link
             key={item.path}

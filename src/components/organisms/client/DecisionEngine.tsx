@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Trade, getAIAnalysis, saveAIAnalysis } from '../../../lib/db';
 import { askAICoach, AICoachResponse } from '../../../lib/ai';
 import { AlertTriangle, Target, BrainCircuit, RefreshCw } from 'lucide-react';
+import { InfoTooltip } from '../../atoms/InfoTooltip';
 import { useAuth } from '../../../lib/auth';
 import { useTranslation } from '../../../lib/i18n';
 import { doc, updateDoc, increment } from 'firebase/firestore';
@@ -143,13 +144,16 @@ export default function DecisionEngine({ trades }: { trades: Trade[] }) {
           {/* SCORES UI */}
           <div className="grid grid-cols-1 xs:grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
-              { label: t.dashboard.riskScore, value: data.scores.risk_score },
-              { label: t.dashboard.disciplineScore, value: data.scores.discipline_score },
-              { label: t.dashboard.consistencyScore, value: data.scores.consistency_score },
+              { label: t.dashboard.riskScore, value: data.scores.risk_score, infoText: "Évaluation de votre gestion du risque et des drawdowns." },
+              { label: t.dashboard.disciplineScore, value: data.scores.discipline_score, infoText: "Mesure de votre respect du plan et absence d'overtrading." },
+              { label: t.dashboard.consistencyScore, value: data.scores.consistency_score, infoText: "Régularité de vos gains et stabilité de votre winrate." },
             ].map((score, i) => (
-              <div key={i} className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg">
+              <div key={i} className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg relative">
                 <div className="flex justify-between items-end mb-2">
-                  <span className="text-xs sm:text-sm font-bold text-gray-500 dark:text-gray-400">{score.label}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs sm:text-sm font-bold text-gray-500 dark:text-gray-400">{score.label}</span>
+                    <InfoTooltip text={score.infoText} />
+                  </div>
                   <span className="text-base sm:text-lg font-poppins font-black text-gray-900 dark:text-white">{score.value}</span>
                 </div>
                 <div className="h-2 w-full bg-gray-100 dark:bg-gray-900 rounded-full overflow-hidden">

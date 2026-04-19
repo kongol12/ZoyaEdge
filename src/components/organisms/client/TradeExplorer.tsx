@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Trade } from '../../../lib/db';
+import { Trade, NotebookEntry } from '../../../lib/db';
 import { formatCurrency, compactCurrency, cn, formatRR } from '../../../lib/utils';
 import { format, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from 'date-fns';
 import { 
@@ -11,7 +11,8 @@ import {
   ChevronRight,
   ArrowUpRight,
   ArrowDownRight,
-  Filter
+  Filter,
+  BookOpen
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from '../../../lib/i18n';
@@ -22,11 +23,12 @@ type ViewMode = 'list' | 'table' | 'calendar';
 
 interface TradeExplorerProps {
   trades: Trade[];
+  notebookEntries?: NotebookEntry[];
   defaultView?: ViewMode;
   onTradeClick?: (trade: Trade) => void;
 }
 
-export default function TradeExplorer({ trades, defaultView = 'list', onTradeClick }: TradeExplorerProps) {
+export default function TradeExplorer({ trades, notebookEntries = [], defaultView = 'list', onTradeClick }: TradeExplorerProps) {
   const { t, language } = useTranslation();
   const { profile } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
@@ -59,6 +61,15 @@ export default function TradeExplorer({ trades, defaultView = 'list', onTradeCli
     });
     return map;
   }, [trades]);
+
+  const notebookByDay = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    notebookEntries.forEach(entry => {
+      const dayKey = format(entry.date, 'yyyy-MM-dd');
+      map[dayKey] = true;
+    });
+    return map;
+  }, [notebookEntries]);
 
   const renderCalendar = () => {
     // Generate weekly stats
@@ -121,10 +132,9 @@ export default function TradeExplorer({ trades, defaultView = 'list', onTradeCli
                       onClick={() => setSelectedDate(isSelected ? null : date)}
                       className={cn(
                         "aspect-square sm:aspect-auto sm:min-h-[110px] p-1 sm:p-2 border border-gray-200 dark:border-gray-600 cursor-pointer transition-all hover:brightness-95 dark:hover:brightness-110 relative group",
-                        !isCurrentMonth ? "bg-gray-50/50 dark:bg-gray-900/10 opacity-30" : "bg-white dark:bg-gray-800",
-                        dayTrades.length > 0 && dailyPnL > 0.01 && profile?.calendarShowPnL !== false && "bg-emerald-500 text-white",
-                        dayTrades.length > 0 && dailyPnL < -0.01 && profile?.calendarShowPnL !== false && "bg-rose-500 text-white",
-                        dayTrades.length > 0 && Math.abs(dailyPnL) <= 0.01 && profile?.calendarShowPnL !== false && "bg-zinc-500 text-white",
+                        dayTrades.length > 0
+                          ? (dailyPnL > 0.01 ? "bg-forest-green text-white" : (dailyPnL < -0.01 ? "bg-trading-red text-white" : "bg-zinc-500 text-white"))
+                          : (!isCurrentMonth ? "bg-gray-50/50 dark:bg-gray-900/10 opacity-30 text-gray-400" : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"),
                         isSelected && "ring-2 ring-inset ring-zoya-red/50 z-10"
                       )}
                     >
@@ -136,6 +146,14 @@ export default function TradeExplorer({ trades, defaultView = 'list', onTradeCli
                           )}>
                             {format(date, 'd')}
                           </span>
+                          {notebookByDay[dayKey] && (
+                            <div className={cn(
+                              "text-zoya-red dark:text-zoya-red-light bg-white dark:bg-gray-800 rounded-md p-0.5 shadow-sm",
+                              dayTrades.length > 0 && "text-white bg-transparent shadow-none"
+                            )}>
+                              <BookOpen size={10} />
+                            </div>
+                          )}
                         </div>
                         
                         {dayTrades.length > 0 && profile?.calendarShowPnL !== false && (
@@ -143,33 +161,6 @@ export default function TradeExplorer({ trades, defaultView = 'list', onTradeCli
                             "mt-0.5 text-[8px] sm:text-xs font-black w-fit whitespace-nowrap text-white"
                           )}>
                              {compactCurrency(dailyPnL)}
-                          </div>
-                        )}
-
-                        {/* Mobile info - Dots right below gain */}
-                        <div className="sm:hidden flex flex-wrap gap-0.5 mt-0.5">
-                          {dayTrades.slice(0, 4).map((t, idx) => (
-                            <div key={idx} className={cn("w-1 h-1 rounded-full", t.direction === 'buy' ? "bg-emerald-500" : "bg-rose-500")} />
-                          ))}
-                        </div>
-                        
-                        {profile?.calendarShowTrades !== false && (
-                          <div className="mt-1.5 sm:mt-2.5 hidden sm:block space-y-1">
-                            {dayTrades.slice(0, 2).map((t, idx) => (
-                              <div key={idx} className="flex items-center gap-1 overflow-hidden leading-tight">
-                                <div className={cn("w-1 h-1 rounded-full shrink-0", t.direction === 'buy' ? (dayTrades.length > 0 ? "bg-white" : "bg-emerald-500") : (dayTrades.length > 0 ? "bg-white" : "bg-rose-500"))} />
-                                <span className={cn(
-                                  "text-[7.5px] font-bold truncate",
-                                  dayTrades.length > 0 ? "text-white/90" : "text-gray-500 dark:text-gray-400"
-                                )}>{t.pair}</span>
-                              </div>
-                            ))}
-                            {dayTrades.length > 2 && (
-                              <div className={cn(
-                                "text-[7px] font-black uppercase tracking-tighter",
-                                dayTrades.length > 0 ? "text-white/70" : "text-gray-400"
-                              )}>+{dayTrades.length - 2} items</div>
-                            )}
                           </div>
                         )}
                       </div>
@@ -181,7 +172,7 @@ export default function TradeExplorer({ trades, defaultView = 'list', onTradeCli
                 <div className={cn(
                   "aspect-square sm:aspect-auto sm:min-h-[110px] p-1 sm:p-2 border border-gray-200 dark:border-gray-600 flex flex-col items-center justify-center text-center transition-all",
                   weekTrades.length > 0 
-                    ? (weekPnL > 0.01 ? "bg-emerald-500 text-white" : (weekPnL < -0.01 ? "bg-rose-500 text-white" : "bg-zinc-500 text-white"))
+                    ? (weekPnL > 0.01 ? "bg-forest-green text-white" : (weekPnL < -0.01 ? "bg-trading-red text-white" : "bg-zinc-500 text-white"))
                     : "bg-gray-50/30 dark:bg-gray-900/5 opacity-50"
                 )}>
                   <span className={cn(

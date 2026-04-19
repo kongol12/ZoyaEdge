@@ -25,6 +25,7 @@ import Notebook from './pages/client/Notebook';
 import AICoach from './pages/client/AICoach';
 import Journal from './pages/client/Journal';
 import Academy from './pages/client/Academy';
+import TradeView from './pages/client/TradeView';
 import Statistics from './pages/client/Statistics';
 import Calendar from './pages/client/Calendar';
 import News from './pages/client/News';
@@ -149,6 +150,7 @@ function AppRoutes() {
         <Route path="notebook" element={<Notebook />} />
         <Route path="journal" element={<Journal />} />
         <Route path="academy" element={<Academy />} />
+        <Route path="trade-view" element={<TradeView />} />
         <Route path="statistics" element={<Statistics />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="news" element={<News />} />

@@ -3,10 +3,12 @@ import { useAuth } from '../../lib/auth';
 import { useTranslation } from '../../lib/i18n';
 import { motion, AnimatePresence } from 'motion/react';
 import { Target, TrendingUp, ShieldCheck, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router';
 
 export default function Onboarding() {
   const { updateProfile } = useAuth();
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -27,6 +29,8 @@ export default function Onboarding() {
         ...formData,
         onboarded: true
       });
+      // Explicit navigation to dashboard
+      navigate('/', { replace: true });
     } catch (error) {
       console.error("Onboarding error:", error);
     } finally {

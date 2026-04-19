@@ -9,6 +9,9 @@
   --color-zoya-red-dark: #E03340;
   --color-zoya-red-accent: rgba(255, 68, 79, 0.1);
 
+  --color-forest-green: #0B6623;
+  --color-trading-red: #D30000;
+
   /* Semantic Colors */
   --color-success: #10B981;
   --color-success-dark: #059669;
@@ -63,6 +66,14 @@
 
   .zoya-input {
     @apply bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-2xl p-3 focus:ring-2 focus:ring-zoya-red focus:border-transparent outline-none transition-all duration-300;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }
 
