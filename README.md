@@ -75,7 +75,7 @@ L'application suit une architecture **Full-Stack Hybride** :
 
 ## 📈 Recommandations pour la Mise en Production
 
-1. **Domaine Personnalisé** : Configurer un CNAME pour `app.zoyafx.com` vers l'instance Cloud Run.
+1. **Domaine Personnalisé** : Configurer un CNAME pour `app.zoyaedge.com` vers l'instance Cloud Run.
 2. **Secrets Management** : Utiliser un gestionnaire de secrets (Google Secret Manager) pour les clés API en production.
 3. **Monitoring** : Activer Firebase Analytics et Sentry pour le suivi des erreurs en temps réel.
 4. **Rate Limiting** : Le serveur Express inclut déjà un `express-rate-limit`, ajustez les seuils selon la charge réelle.
@@ -109,4 +109,4 @@ L'application suit une architecture **Full-Stack Hybride** :
 
 ---
 
-© 2026 ZoyaFX. Tous droits réservés.
+© 2026 ZoyaEdge. Tous droits réservés.

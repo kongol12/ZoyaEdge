@@ -2,360 +2,145 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    // Collection: users
-    // Document ID: {userId} (from Firebase Auth)
-    // Fields:
-    //   - email: string (required)
-    //   - displayName: string (optional)
-    //   - tradingStyle: string (optional)
-    //   - defaultRisk: number (optional)
-    //   - defaultLotSize: number (optional)
-    //   - currency: string (optional)
-    //   - onboarded: boolean (optional)
-    //   - calendarShowPnL: boolean (optional)
-    //   - calendarShowTrades: boolean (optional)
-    //   - createdAt: timestamp (required)
-    //
-    // Collection: users/{userId}/trades
-    // Document ID: auto-generated
-    // Fields:
-    //   - userId: string (required, must match parent userId)
-    //   - pair: string (required, max 20 chars)
-    //   - direction: string (required, 'buy' or 'sell')
-    //   - entryPrice: number (required, > 0)
-    //   - exitPrice: number (required, > 0)
-    //   - lotSize: number (required, > 0)
-    //   - pnl: number (required)
-    //   - strategy: string (required, max 50 chars)
-    //   - emotion: string (required, '😐', '😰', '🔥')
-    //   - session: string (required, 'London', 'NY', 'Asia')
-    //   - date: timestamp (required)
-    //   - createdAt: timestamp (required, immutable)
-    // ===============================================================
-
-    // Collection: users/{userId}/imports
-    // Document ID: auto-generated
-    // Fields:
-    //   - fileName: string (required)
-    //   - tradeCount: number (required)
-    //   - status: string (required, 'completed' or 'failed')
-    //   - createdAt: timestamp (required)
-    // ===============================================================
-
-    // Collection: users/{userId}/strategies
-    // Document ID: auto-generated
-    // Fields:
-    //   - name: string (required, max 50 chars)
-    //   - description: string (required, max 500 chars)
-    //   - marketConditions: list (required, list of strings)
-    //   - entryRules: list (required, list of strings)
-    //   - exitRules: list (required, list of strings)
-    //   - indicators: list (required, list of strings)
-    //   - createdAt: timestamp (required)
-    // Collection: broker_connections
-    // Document ID: auto-generated
-    // Fields:
-    //   - userId: string (required)
-    //   - platform: string (required, 'MT4', 'MT5', 'TradeLocker')
-    //   - accountName: string (required, max 50 chars)
-    //   - server: string (required, max 100 chars)
-    //   - login: string (required, max 50 chars)
-    //   - password: string (required, base64 encoded)
-    //   - status: string (required, 'connected', 'error', 'syncing')
-    //   - createdAt: timestamp (required)
-    //   - lastSync: timestamp (required)
-    // ===============================================================
+    // 0. Global Safety Net
+    match /{document=**} { allow read, write: if false; }
 
     // ===============================================================
-    // Helper Functions
+    // Section 1: Primitives & Identity
     // ===============================================================
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    function isAdmin() {
-      return isAuthenticated() && 
-             (isSuperAdmin() || 
-              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
-    }
-    function isSuperAdmin() {
-      return isAuthenticated() && 
-             (request.auth.token.email == 'kongolmandf@gmail.com' ||
-              (exists(/databases/$(database)/documents/app_settings/global) && 
-               request.auth.token.email in get(/databases/$(database)/documents/app_settings/global).data.superAdmins));
-    }
-    function isSuperAdminEmail(email) {
-      return isAuthenticated() && 
-             (email == 'kongolmandf@gmail.com' ||
-              (exists(/databases/$(database)/documents/app_settings/global) && 
-               email in get(/databases/$(database)/documents/app_settings/global).data.superAdmins));
-    }
-    function isAgent() {
-      return isAuthenticated() && 
-             (isAdmin() || 
-              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'agent'));
-    }
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    // Collection Group Rules
-    match /{path=**}/trades/{tradeId} {
-      allow read: if isAgent();
-    }
-
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
-    }
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-    function isValidString(field, minLen, maxLen) {
-      return request.resource.data[field] is string &&
-             request.resource.data[field].size() >= minLen &&
-             request.resource.data[field].size() <= maxLen;
-    }
-    function isValidOptionalString(field, minLen, maxLen) {
-      return !(field in request.resource.data) ||
-             (request.resource.data[field] is string &&
-              request.resource.data[field].size() >= minLen &&
-              request.resource.data[field].size() <= maxLen);
-    }
-    function isPositiveNumber(field) {
-      return request.resource.data[field] is number && request.resource.data[field] > 0;
-    }
     
-    // ===============================================================
-    // Domain Validators
-    // ===============================================================
-    function isValidUser() {
-      return hasOnlyAllowedFields(['email', 'displayName', 'tradingStyle', 'defaultRisk', 'defaultLotSize', 'currency', 'onboarded', 'subscription', 'subscriptionCycle', 'subscriptionStatus', 'subscriptionEndDate', 'createdAt', 'aiCredits', 'role', 'hasUsedTrial', 'updatedAt', 'bypassMaintenance', 'calendarShowPnL', 'calendarShowTrades', 'initialBalance']) &&
-             hasRequiredFields(['email', 'createdAt']) &&
-             isValidString('email', 3, 100) &&
-             isValidOptionalString('displayName', 1, 50) &&
-             isValidOptionalString('tradingStyle', 1, 50) &&
-             (!( 'defaultRisk' in request.resource.data) || request.resource.data.defaultRisk is number) &&
-             (!( 'defaultLotSize' in request.resource.data) || request.resource.data.defaultLotSize is number) &&
-             isValidOptionalString('currency', 1, 10) &&
-             (!( 'onboarded' in request.resource.data) || request.resource.data.onboarded is bool) &&
-             (!( 'calendarShowPnL' in request.resource.data) || request.resource.data.calendarShowPnL is bool) &&
-             (!( 'calendarShowTrades' in request.resource.data) || request.resource.data.calendarShowTrades is bool) &&
-             (!( 'subscription' in request.resource.data) || request.resource.data.subscription in ['free', 'pro', 'premium']) &&
-             (!( 'subscriptionCycle' in request.resource.data) || request.resource.data.subscriptionCycle in ['monthly', 'yearly']) &&
-             (!( 'subscriptionStatus' in request.resource.data) || request.resource.data.subscriptionStatus in ['active', 'expired', 'canceled', 'trialing', 'suspended']) &&
-             (!( 'subscriptionEndDate' in request.resource.data) || request.resource.data.subscriptionEndDate is timestamp) &&
-             (!( 'hasUsedTrial' in request.resource.data) || request.resource.data.hasUsedTrial is bool) &&
-             (!( 'initialBalance' in request.resource.data) || request.resource.data.initialBalance is number) &&
-             (!( 'aiCredits' in request.resource.data) || (request.resource.data.aiCredits is number && request.resource.data.aiCredits >= 0)) &&
-             (!( 'role' in request.resource.data) || request.resource.data.role in ['user', 'agent', 'admin']) &&
-             (!( 'bypassMaintenance' in request.resource.data) || request.resource.data.bypassMaintenance is bool) &&
-             request.resource.data.createdAt is timestamp;
-    }
+    function isSignedIn() { return request.auth != null; }
+    function isEmailVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isSuperAdmin() { return isSignedIn() && request.auth.token.email.toLowerCase() == 'kongolmandf@gmail.com'; }
     
-    function isValidTrade(userId) {
-      return hasOnlyAllowedFields(['userId', 'pair', 'direction', 'entryPrice', 'exitPrice', 'lotSize', 'pnl', 'strategy', 'emotion', 'session', 'date', 'createdAt', 'importId', 'stopLoss', 'takeProfit', 'rr', 'risk', 'reward', 'platform', 'commission', 'swap', 'closedAt', 'breakEven', 'hiddenByClient', 'updatedAt', 'isDemo', 'type', 'assetType', 'ticket']) &&
-             hasRequiredFields(['userId', 'pnl', 'strategy', 'date', 'createdAt']) &&
-             request.resource.data.userId == userId &&
-             (!( 'pair' in request.resource.data) || isValidString('pair', 1, 50)) &&
-             (!( 'direction' in request.resource.data) || request.resource.data.direction in ['buy', 'sell']) &&
-             (!( 'entryPrice' in request.resource.data) || request.resource.data.entryPrice is number) &&
-             (!( 'exitPrice' in request.resource.data) || request.resource.data.exitPrice is number) &&
-             (!( 'lotSize' in request.resource.data) || request.resource.data.lotSize is number) &&
-             request.resource.data.pnl is number &&
-             isValidString('strategy', 1, 100) &&
-             (!( 'emotion' in request.resource.data) || request.resource.data.emotion in ['😐', '😰', '🔥', 'neutral', 'fear', 'confidence']) &&
-             (!( 'session' in request.resource.data) || request.resource.data.session in ['London', 'NY', 'Asia', 'london', 'newyork', 'asia', 'other']) &&
-             request.resource.data.date is timestamp &&
-             request.resource.data.createdAt is timestamp &&
-             (!( 'type' in request.resource.data) || request.resource.data.type in ['trade', 'deposit', 'withdrawal', 'adjustment']) &&
-             (!( 'assetType' in request.resource.data) || request.resource.data.assetType in ['forex', 'indices', 'crypto', 'commodities', 'futures', 'synthetic']) &&
-             (!( 'ticket' in request.resource.data) || request.resource.data.ticket is number) &&
-             isValidOptionalString('importId', 1, 100);
+    // Admin check via RBAC document
+    function isAdmin() { 
+      return isSuperAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'agent']); 
     }
 
-    function isValidImport() {
-      return hasOnlyAllowedFields(['fileName', 'tradeCount', 'status', 'createdAt']) &&
-             hasRequiredFields(['fileName', 'tradeCount', 'status', 'createdAt']) &&
-             isValidString('fileName', 1, 255) &&
-             request.resource.data.tradeCount is number &&
-             request.resource.data.status in ['completed', 'failed'] &&
-             request.resource.data.createdAt is timestamp;
-    }
-
-    function isValidStrategy() {
-      return hasOnlyAllowedFields(['name', 'description', 'marketConditions', 'entryRules', 'exitRules', 'indicators', 'createdAt']) &&
-             hasRequiredFields(['name', 'description', 'marketConditions', 'entryRules', 'exitRules', 'indicators', 'createdAt']) &&
-             isValidString('name', 1, 50) &&
-             isValidString('description', 0, 500) &&
-             request.resource.data.marketConditions is list &&
-             request.resource.data.entryRules is list &&
-             request.resource.data.exitRules is list &&
-             request.resource.data.indicators is list &&
-             request.resource.data.createdAt is timestamp;
-    }
-
-    function isValidAIAnalysis() {
-      return hasOnlyAllowedFields(['date', 'mode', 'metrics', 'response', 'updatedAt']) &&
-             hasRequiredFields(['date', 'mode', 'metrics', 'response']) &&
-             request.resource.data.date is timestamp &&
-             ( !('mode' in request.resource.data) || request.resource.data.mode in ['CONCISE', 'STANDARD', 'DETAILED'] ) &&
-             request.resource.data.metrics is map &&
-             request.resource.data.response is map;
-    }
-
-    function isValidNotebookEntry(userId) {
-      return hasOnlyAllowedFields(['userId', 'date', 'content', 'imageUrl', 'createdAt']) &&
-             hasRequiredFields(['userId', 'date', 'content', 'createdAt']) &&
-             request.resource.data.userId == userId &&
-             request.resource.data.content is string &&
-             request.resource.data.content.size() <= 5000 &&
-             (!( 'imageUrl' in request.resource.data) || (request.resource.data.imageUrl is string && request.resource.data.imageUrl.size() <= 2000)) &&
-             request.resource.data.date is timestamp &&
-             (request.resource.data.createdAt is timestamp || request.resource.data.createdAt == request.time);
-    }
-
-    function isValidNotification() {
-      return hasOnlyAllowedFields(['title', 'message', 'type', 'read', 'createdAt']) &&
-             hasRequiredFields(['title', 'message', 'type', 'read', 'createdAt']) &&
-             isValidString('title', 1, 100) &&
-             isValidString('message', 1, 2000) &&
-             request.resource.data.type in ['info', 'warning', 'error', 'success'] &&
-             request.resource.data.read is bool &&
-             request.resource.data.createdAt is timestamp;
-    }
-
-    function isValidPayment() {
-      return hasOnlyAllowedFields(['userId', 'amount', 'currency', 'status', 'plan', 'method', 'createdAt', 'isDemo']) &&
-             hasRequiredFields(['userId', 'amount', 'currency', 'status', 'plan', 'method', 'createdAt']) &&
-             request.resource.data.amount is number &&
-             isValidString('currency', 3, 3) &&
-             request.resource.data.status in ['completed', 'pending', 'failed', 'refunded'] &&
-             request.resource.data.plan in ['pro', 'premium'] &&
-             request.resource.data.method in ['stripe', 'paypal', 'crypto'] &&
-             request.resource.data.createdAt is timestamp;
-    }
-
-    function isValidBrokerConnection() {
-      return hasOnlyAllowedFields(['userId', 'platform', 'accountName', 'syncKey', 'brokerServer', 'brokerLogin', 'investorPassword', 'connectionType', 'status', 'createdAt', 'lastSync']) &&
-             hasRequiredFields(['userId', 'platform', 'accountName', 'status', 'createdAt']) &&
-             request.resource.data.userId == request.auth.uid &&
-             request.resource.data.platform in ['MT4', 'MT5', 'TradeLocker'] &&
-             isValidString('accountName', 1, 50) &&
-             ( !('syncKey' in request.resource.data) || isValidString('syncKey', 1, 100) ) &&
-             ( !('brokerServer' in request.resource.data) || isValidString('brokerServer', 1, 100) ) &&
-             ( !('brokerLogin' in request.resource.data) || isValidString('brokerLogin', 1, 50) ) &&
-             ( !('investorPassword' in request.resource.data) || isValidString('investorPassword', 1, 100) ) &&
-             ( !('connectionType' in request.resource.data) || request.resource.data.connectionType in ['ea', 'cloud'] ) &&
-             request.resource.data.status in ['waiting', 'active', 'error'] &&
-             request.resource.data.createdAt is timestamp &&
-             ( !('lastSync' in request.resource.data) || request.resource.data.lastSync is timestamp );
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
     }
 
     // ===============================================================
-    // Rules
+    // Section 2: Validation Blueprints (The "Anti-Update-Gap")
     // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'createdAt']) &&
+             data.email is string && data.email.size() <= 100 &&
+             data.createdAt is timestamp &&
+             (!('role' in data) || data.role in ['user', 'agent', 'admin']) &&
+             (!('subscription' in data) || data.subscription in ['free', 'pro', 'premium']) &&
+             (!('aiCredits' in data) || (data.aiCredits is int && data.aiCredits >= 0));
+    }
+
+    function isValidTrade(data, userId) {
+      return data.keys().hasAll(['userId', 'pnl', 'strategy', 'date', 'createdAt']) &&
+             data.userId == userId &&
+             data.pnl is number &&
+             data.strategy is string && data.strategy.size() <= 100 &&
+             data.date is timestamp &&
+             data.createdAt is timestamp &&
+             (!('pair' in data) || (data.pair is string && data.pair.size() <= 20)) &&
+             (!('direction' in data) || data.direction in ['buy', 'sell']) &&
+             (!('lotSize' in data) || data.lotSize is number);
+    }
+
+    function isValidBrokerConnection(data, userId) {
+      return data.keys().hasAll(['userId', 'platform', 'accountName', 'status', 'createdAt']) &&
+             data.userId == userId &&
+             data.platform in ['MT4', 'MT5', 'TradeLocker'] &&
+             data.accountName is string && data.accountName.size() <= 50 &&
+             data.status in ['active', 'waiting', 'error'] &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Section 3: Domain Rules
+    // ===============================================================
+
+    // --- Users Collection ---
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAgent();
-      allow create: if isOwner(userId) && isValidUser() && request.resource.data.role == 'user';
-      allow update: if (isOwner(userId) && isValidUser() && 
-                    request.resource.data.createdAt == resource.data.createdAt &&
-                    request.resource.data.role == resource.data.role &&
-                    (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['hasUsedTrial', 'bypassMaintenance']) || 
-                     (resource.data.hasUsedTrial == false && request.resource.data.hasUsedTrial == true))) ||
-                    (isAdmin() && isValidUser() && 
-                     (isSuperAdmin() || request.resource.data.role == resource.data.role));
-      allow delete: if isAdmin();
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
       
-      match /ai_reports/{docId} {
-        allow read, write: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || userId == request.auth.uid);
-      }
+      allow create: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().role == 'user' && // Prevent self-elevation
+                    incoming().subscription == 'free'; // Prevent self-upgrading
+      
+      allow update: if (isOwner(userId) && 
+                      isValidUser(incoming()) && 
+                      incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'tradingStyle', 'defaultRisk', 'defaultLotSize', 'currency', 'onboarded', 'calendarShowPnL', 'calendarShowTrades', 'initialBalance', 'updatedAt', 'onboarded'])) ||
+                    isAdmin();
 
+      // --- Sub-collections ---
       match /trades/{tradeId} {
-        allow read: if isOwner(userId) || isAgent();
-        allow create: if isOwner(userId) && isValidTrade(userId);
-        allow update: if (isOwner(userId) && isValidTrade(userId) && 
-                      request.resource.data.createdAt == resource.data.createdAt) ||
-                      isAdmin();
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidTrade(incoming(), userId) && isValidId(tradeId);
+        allow update: if isOwner(userId) && isValidTrade(incoming(), userId) && 
+                      incoming().diff(existing()).affectedKeys().hasOnly(['pair', 'direction', 'entryPrice', 'exitPrice', 'lotSize', 'pnl', 'strategy', 'emotion', 'session', 'date', 'stopLoss', 'takeProfit', 'updatedAt']);
         allow delete: if isOwner(userId) || isAdmin();
       }
 
-      match /imports/{importId} {
-        allow read: if isOwner(userId) || isAgent();
-        allow create: if isOwner(userId) && isValidImport();
-        allow update: if (isOwner(userId) && isValidImport() && 
-                      request.resource.data.createdAt == resource.data.createdAt) ||
-                      isAdmin();
-        allow delete: if isOwner(userId) || isAdmin();
+      match /ai_reports/{reportId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if false; // Server-side only (Admin SDK)
+      }
+
+      match /ai_coach/{docId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if false; // Server-side only (for cache)
       }
 
       match /strategies/{strategyId} {
-        allow read: if isOwner(userId) || isAgent();
-        allow create: if isOwner(userId) && isValidStrategy();
-        allow update: if (isOwner(userId) && isValidStrategy() && 
-                      request.resource.data.createdAt == resource.data.createdAt) ||
-                      isAdmin();
-        allow delete: if isOwner(userId) || isAdmin();
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId);
       }
 
       match /notebook/{entryId} {
-        allow read: if isOwner(userId) || isAgent();
-        allow create: if isOwner(userId) && isValidNotebookEntry(userId);
-        allow update: if (isOwner(userId) && isValidNotebookEntry(userId) && 
-                      request.resource.data.createdAt == resource.data.createdAt) ||
-                      isAdmin();
-        allow delete: if isOwner(userId) || isAdmin();
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId);
       }
 
       match /notifications/{notifId} {
-        allow read: if isOwner(userId) || isAgent();
-        allow create: if isOwner(userId) && isValidNotification();
-        allow update: if (isOwner(userId) && isValidNotification() && 
-                      request.resource.data.createdAt == resource.data.createdAt) ||
-                      isAdmin();
-        allow delete: if isOwner(userId) || isAdmin();
+        allow read: if isOwner(userId);
+        allow update: if isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+        allow delete: if isOwner(userId);
       }
     }
 
+    // --- Global Broker Connections ---
     match /broker_connections/{connectionId} {
-      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAgent();
-      allow create: if isAuthenticated() && isValidBrokerConnection();
-      allow update: if ((isAuthenticated() && resource.data.userId == request.auth.uid) && 
-                    isValidBrokerConnection() && 
-                    request.resource.data.createdAt == resource.data.createdAt &&
-                    request.resource.data.userId == resource.data.userId) ||
+      allow read: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isSignedIn() && isValidBrokerConnection(incoming(), request.auth.uid) && isValidId(connectionId);
+      
+      allow update: if (isSignedIn() && existing().userId == request.auth.uid && 
+                      isValidBrokerConnection(incoming(), request.auth.uid) &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['accountName', 'brokerServer', 'brokerLogin', 'investorPassword', 'connectionType', 'updatedAt'])) ||
                     isAdmin();
-      allow delete: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      
+      allow delete: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
     }
 
-    match /payments/{paymentId} {
-      allow read: if isAgent() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow write: if isAdmin();
+    // --- Admin & Global Config ---
+    match /app_settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
     }
 
     match /bug_reports/{reportId} {
-      allow read: if isAgent();
-      allow create: if isAuthenticated();
-      allow update: if isAgent();
-      allow delete: if isAdmin();
-    }
-
-    match /admin_notifications/{notifId} {
-      allow read: if isAgent();
-      allow write: if isSuperAdmin();
+      allow create: if isSignedIn();
+      allow read, write: if isAdmin();
     }
 
     match /global_notifications/{notifId} {
-      allow read: if isAuthenticated();
+      allow read: if isSignedIn();
       allow write: if isSuperAdmin();
-    }
-
-    match /app_settings/{settingId} {
-      allow read: if true; // Global settings readable by everyone (for maintenance mode)
-      allow write: if isSuperAdmin(); // Only Super Admins can change global settings
     }
   }
 }

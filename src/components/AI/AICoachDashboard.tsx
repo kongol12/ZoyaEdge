@@ -56,14 +56,6 @@ export default function AICoachDashboard() {
       setMetrics(result.metrics);
       setAiResponse(result.aiResponse);
       
-      // Store in ai_reports
-      await addDoc(collection(db, 'users', user.uid, 'ai_reports'), {
-        date: new Date(),
-        mode: analysisMode,
-        metrics: result.metrics,
-        response: result.aiResponse
-      });
-
       setActiveTab('RECOMMENDATIONS');
     } catch (err: any) {
       console.error(err);

@@ -11,6 +11,7 @@
 
 //--- Input parameters
 input string   InpSyncKey     = ""; // Clé de synchronisation ZoyaEdge
+input string   InpWebhookSecret = ""; // Secret HMAC ZoyaEdge (généré depuis l'app)
 input string   InpWebhookURL  = "https://ais-dev-rfxiof64ksocck56i2gztu-109322411969.europe-west3.run.app/api/webhook/mt5"; // URL du Webhook
 input int      InpSyncTimer   = 3600; // Intervalle de synchronisation (en secondes, défaut: 1h)
 input bool     InpSendPush    = true; // Envoyer des notifications Push sur mobile (MetaQuotes ID)
@@ -149,6 +150,9 @@ void SyncData()
       // Send to server
       char post[], result[];
       string headers = "Content-Type: application/json\r\n";
+      if(InpWebhookSecret != "")
+         headers += "x-zoyaedge-signature: " + HmacSHA256(InpWebhookSecret, json) + "\r\n";
+
       StringToCharArray(json, post, 0, WHOLE_ARRAY, CP_UTF8);
       string result_headers;
       int res = WebRequest("POST", InpWebhookURL, headers, 5000, post, result, result_headers);
@@ -167,4 +171,45 @@ void SyncData()
         }
      }
   }
+
+string HmacSHA256(const string key, const string message)
+{
+   uchar keyBytes[], msgBytes[];
+   StringToCharArray(key, keyBytes, 0, WHOLE_ARRAY, CP_UTF8);
+   StringToCharArray(message, msgBytes, 0, WHOLE_ARRAY, CP_UTF8);
+   int kLen = ArraySize(keyBytes) - 1;
+   int mLen = ArraySize(msgBytes) - 1;
+   ArrayResize(keyBytes, kLen);
+   ArrayResize(msgBytes, mLen);
+
+   uchar paddedKey[64];
+   ArrayInitialize(paddedKey, 0);
+   for(int i = 0; i < kLen && i < 64; i++) paddedKey[i] = keyBytes[i];
+
+   uchar ipad[64], opad[64];
+   for(int i = 0; i < 64; i++) {
+      ipad[i] = paddedKey[i] ^ 0x36;
+      opad[i] = paddedKey[i] ^ 0x5C;
+   }
+
+   uchar inner[];
+   ArrayResize(inner, 64 + mLen);
+   ArrayCopy(inner, ipad, 0, 0, 64);
+   ArrayCopy(inner, msgBytes, 64, 0, mLen);
+   uchar innerHash[];
+   CryptEncode(CRYPT_HASH_SHA256, inner, inner, innerHash);
+
+   int hLen = ArraySize(innerHash);
+   uchar outer[];
+   ArrayResize(outer, 64 + hLen);
+   ArrayCopy(outer, opad, 0, 0, 64);
+   ArrayCopy(outer, innerHash, 64, 0, hLen);
+   uchar outerHash[];
+   CryptEncode(CRYPT_HASH_SHA256, outer, outer, outerHash);
+
+   string result = "";
+   for(int i = 0; i < ArraySize(outerHash); i++)
+      result += StringFormat("%02x", outerHash[i]);
+   return result;
+}
 //+------------------------------------------------------------------+

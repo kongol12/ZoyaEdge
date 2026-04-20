@@ -1,89 +1,26 @@
 {
   "entities": {
     "User": {
-      "title": "User",
-      "description": "A user of the ZoyaEdge app.",
+      "title": "User Profile",
+      "description": "User account information and subscription status.",
       "type": "object",
       "properties": {
-        "email": { "type": "string", "format": "email" },
+        "email": { "type": "string" },
         "displayName": { "type": "string" },
-        "tradingStyle": { "type": "string" },
-        "defaultRisk": { "type": "number" },
-        "defaultLotSize": { "type": "number" },
-        "currency": { "type": "string" },
-        "onboarded": { "type": "boolean" },
         "role": { "type": "string", "enum": ["user", "agent", "admin"] },
-        "bypassMaintenance": { "type": "boolean", "description": "Whether the user can bypass maintenance mode." },
-        "aiCredits": { "type": "number", "description": "Remaining AI credits for the user." },
         "subscription": { "type": "string", "enum": ["free", "pro", "premium"] },
+        "subscriptionStatus": { "type": "string", "enum": ["active", "trialing", "expired", "suspended"] },
         "subscriptionCycle": { "type": "string", "enum": ["monthly", "yearly"] },
-        "subscriptionStatus": { "type": "string", "enum": ["active", "expired", "canceled", "trialing", "suspended"] },
         "subscriptionEndDate": { "type": "string", "format": "date-time" },
-        "hasUsedTrial": { "type": "boolean" },
-        "initialBalance": { "type": "number" },
-        "calendarShowPnL": { "type": "boolean", "description": "Toggle to show PnL on trade calendar." },
-        "calendarShowTrades": { "type": "boolean", "description": "Toggle to show trade details on trade calendar." },
+        "aiCredits": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "onboarded": { "type": "boolean" }
       },
       "required": ["email", "createdAt"]
     },
-    "BugReport": {
-      "title": "BugReport",
-      "description": "A report of a bug or system issue.",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string" },
-        "title": { "type": "string" },
-        "description": { "type": "string" },
-        "severity": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
-        "status": { "type": "string", "enum": ["open", "in-progress", "resolved", "closed"] },
-        "type": { "type": "string", "enum": ["client", "system"] },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["userId", "title", "description", "severity", "status", "type", "createdAt"]
-    },
-    "AdminNotification": {
-      "title": "AdminNotification",
-      "description": "A notification for administrators.",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "message": { "type": "string" },
-        "type": { "type": "string", "enum": ["info", "warning", "error", "success"] },
-        "read": { "type": "boolean" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["title", "message", "type", "read", "createdAt"]
-    },
-    "GlobalNotification": {
-      "title": "GlobalNotification",
-      "description": "A notification for all users.",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "message": { "type": "string" },
-        "type": { "type": "string", "enum": ["info", "warning", "error", "success"] },
-        "read": { "type": "boolean" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["title", "message", "type", "read", "createdAt"]
-    },
-    "AppSettings": {
-      "title": "AppSettings",
-      "description": "Global application settings.",
-      "type": "object",
-      "properties": {
-        "maintenanceMode": { "type": "boolean" },
-        "aiModel": { "type": "string" },
-        "defaultCredits": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["maintenanceMode", "aiModel", "defaultCredits", "updatedAt"]
-    },
     "Trade": {
-      "title": "Trade",
-      "description": "A financial transaction record (trade, deposit, withdrawal, or adjustment).",
+      "title": "Trading Record",
+      "description": "A single trade execution record.",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
@@ -91,149 +28,79 @@
         "direction": { "type": "string", "enum": ["buy", "sell"] },
         "entryPrice": { "type": "number" },
         "exitPrice": { "type": "number" },
-        "stopLoss": { "type": "number" },
-        "takeProfit": { "type": "number" },
         "lotSize": { "type": "number" },
         "pnl": { "type": "number" },
         "strategy": { "type": "string" },
-        "emotion": { "type": "string", "enum": ["😐", "😰", "🔥", "neutral", "fear", "confidence"] },
-        "session": { "type": "string", "enum": ["London", "NY", "Asia", "london", "newyork", "asia", "other"] },
+        "emotion": { "type": "string" },
+        "session": { "type": "string" },
         "date": { "type": "string", "format": "date-time" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "importId": { "type": "string", "description": "Optional reference to the import batch." },
-        "type": { "type": "string", "enum": ["trade", "deposit", "withdrawal", "adjustment"] },
-        "rr": { "type": "number" },
-        "risk": { "type": "number" },
-        "reward": { "type": "number" },
-        "platform": { "type": "string" },
-        "assetType": { "type": "string", "enum": ["forex", "indices", "crypto", "commodities", "futures", "synthetic"] },
-        "commission": { "type": "number" },
-        "swap": { "type": "number" },
-        "closedAt": { "type": "string", "format": "date-time" },
-        "hiddenByClient": { "type": "boolean" },
-        "isDemo": { "type": "boolean" }
-      },
-      "required": ["userId", "pnl", "strategy", "date", "createdAt"]
-    },
-    "Import": {
-      "title": "Import",
-      "description": "A record of a CSV import batch.",
-      "type": "object",
-      "properties": {
-        "fileName": { "type": "string" },
-        "tradeCount": { "type": "number" },
-        "status": { "type": "string", "enum": ["completed", "failed"] },
+        "ticket": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["fileName", "tradeCount", "status", "createdAt"]
-    },
-    "AIAnalysis": {
-      "title": "AIAnalysis",
-      "description": "The latest AI coach analysis for a user.",
-      "type": "object",
-      "properties": {
-        "summary": { "type": "object" },
-        "scores": { "type": "object" },
-        "alerts": { "type": "array" },
-        "actions": { "type": "array" },
-        "coach_decision": { "type": "object" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["summary", "scores", "alerts", "actions", "coach_decision", "updatedAt"]
-    },
-    "Notification": {
-      "title": "Notification",
-      "description": "A notification for a specific user.",
-      "type": "object",
-      "properties": {
-        "title": { "type": "string" },
-        "message": { "type": "string" },
-        "type": { "type": "string", "enum": ["info", "warning", "error", "success"] },
-        "read": { "type": "boolean" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["title", "message", "type", "read", "createdAt"]
+      "required": ["userId", "pnl", "strategy", "date"]
     },
     "BrokerConnection": {
-      "title": "BrokerConnection",
-      "description": "A connection to a trading platform via EA or API.",
+      "title": "Broker Sync Connection",
+      "description": "Settings for MT4/MT5/Cloud sync.",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
         "platform": { "type": "string", "enum": ["MT4", "MT5", "TradeLocker"] },
         "accountName": { "type": "string" },
-        "brokerServer": { "type": "string" },
-        "brokerLogin": { "type": "string" },
-        "investorPassword": { "type": "string" },
         "syncKey": { "type": "string" },
-        "connectionType": { "type": "string", "enum": ["ea", "cloud"] },
-        "status": { "type": "string", "enum": ["waiting", "active", "error"] },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "lastSync": { "type": "string", "format": "date-time" }
-      },
-      "required": ["userId", "platform", "accountName", "status", "createdAt"]
-    },
-    "Payment": {
-      "title": "Payment",
-      "description": "A payment record for a subscription.",
-      "type": "object",
-      "properties": {
-        "userId": { "type": "string" },
-        "amount": { "type": "number" },
-        "currency": { "type": "string" },
-        "status": { "type": "string", "enum": ["completed", "pending", "failed", "refunded"] },
-        "plan": { "type": "string", "enum": ["pro", "premium"] },
-        "method": { "type": "string", "enum": ["stripe", "paypal", "crypto"] },
+        "webhookSecret": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "waiting", "error"] },
+        "lastSync": { "type": "string", "format": "date-time" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "amount", "currency", "status", "plan", "method", "createdAt"]
+      "required": ["userId", "platform", "accountName", "status"]
+    },
+    "AICoachCache": {
+      "title": "AI Coach Cache",
+      "description": "Cached result of an AI analysis to prevent redundant API calls.",
+      "type": "object",
+      "properties": {
+        "tradesHash": { "type": "string" },
+        "result": { "type": "object" },
+        "cachedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "AIReport": {
+      "title": "AI Performance Report",
+      "description": "An archived report generated by the AI Coach.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "mode": { "type": "string" },
+        "metrics": { "type": "object" },
+        "response": { "type": "object" }
+      }
     }
   },
   "firestore": {
     "/users/{userId}": {
-      "schema": { "$ref": "#/entities/User" },
-      "description": "User profiles."
-    },
-    "/payments/{paymentId}": {
-      "schema": { "$ref": "#/entities/Payment" },
-      "description": "Global payment records."
+      "schema": "User",
+      "description": "Root user profile document."
     },
     "/users/{userId}/trades/{tradeId}": {
-      "schema": { "$ref": "#/entities/Trade" },
-      "description": "Trades belonging to a user."
-    },
-    "/users/{userId}/imports/{importId}": {
-      "schema": { "$ref": "#/entities/Import" },
-      "description": "History of CSV imports."
+      "schema": "Trade",
+      "description": "Collection of user trades."
     },
     "/users/{userId}/ai_coach/latest": {
-      "schema": { "$ref": "#/entities/AIAnalysis" },
-      "description": "The latest AI analysis for a user."
+      "schema": "AICoachCache",
+      "description": "Latest AI analysis cache."
     },
-    "/users/{userId}/notifications/{notifId}": {
-      "schema": { "$ref": "#/entities/Notification" },
-      "description": "User-specific notifications."
+    "/users/{userId}/ai_reports/{reportId}": {
+      "schema": "AIReport",
+      "description": "Archive of AI reports."
     },
     "/broker_connections/{connectionId}": {
-      "schema": { "$ref": "#/entities/BrokerConnection" },
-      "description": "Broker connections for EA sync."
-    },
-    "/bug_reports/{reportId}": {
-      "schema": { "$ref": "#/entities/BugReport" },
-      "description": "System and client bug reports."
-    },
-    "/admin_notifications/{notifId}": {
-      "schema": { "$ref": "#/entities/AdminNotification" },
-      "description": "Notifications for staff."
-    },
-    "/global_notifications/{notifId}": {
-      "schema": { "$ref": "#/entities/GlobalNotification" },
-      "description": "Global announcements for all users."
+      "schema": "BrokerConnection",
+      "description": "Global broker connections for sync."
     },
     "/app_settings/global": {
-      "schema": { "$ref": "#/entities/AppSettings" },
-      "description": "Global app configuration."
+      "schema": { "type": "object" },
+      "description": "Global application settings."
     }
   }
 }

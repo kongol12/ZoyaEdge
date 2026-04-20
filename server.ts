@@ -7,6 +7,7 @@ import path from 'path';
 import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import rateLimit from 'express-rate-limit';
+import crypto from 'crypto';
 
 const app = express();
 const PORT = 3000;
@@ -63,6 +64,115 @@ const webhookLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Rate limit exceeded for webhook." }
+});
+
+// Helper for HMAC Verification
+function verifyHMACSignature(
+  rawBody: string,
+  signature: string | undefined,
+  secret: string
+): boolean {
+  if (!signature) return false;
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(rawBody, 'utf8')
+    .digest('hex');
+  const sigBuf = Buffer.from(signature, 'hex');
+  const expBuf = Buffer.from(expected, 'hex');
+  if (sigBuf.length !== expBuf.length) return false;
+  return crypto.timingSafeEqual(sigBuf, expBuf);
+}
+
+// MT5 Webhook Route - Declared BEFORE global express.json()
+app.post('/api/webhook/mt5', webhookLimiter, express.raw({ type: 'application/json' }), async (req: any, res: any) => {
+  const rawBody = req.body instanceof Buffer ? req.body.toString('utf8') : JSON.stringify(req.body);
+  let parsedBody: any;
+  try {
+    parsedBody = JSON.parse(rawBody);
+  } catch {
+    return res.status(400).json({ error: "Invalid JSON payload" });
+  }
+
+  const { syncKey, pair, direction, lotSize, entryPrice, exitPrice, pnl, timestamp, ticket } = parsedBody;
+  const signature = req.headers['x-zoyaedge-signature'] as string | undefined;
+
+  if (!syncKey) return res.status(400).json({ error: "Missing syncKey" });
+
+  // Anti-replay : fenêtre de 5 minutes
+  const now = Math.floor(Date.now() / 1000);
+  if (!timestamp || Math.abs(now - timestamp) > 300) {
+    return res.status(401).json({ error: "Timestamp invalide ou requête expirée." });
+  }
+
+  if (!db) return res.status(503).json({ error: "Database service unavailable" });
+
+  try {
+    const connectionsRef = db.collection('broker_connections');
+    const q = await connectionsRef.where('syncKey', '==', syncKey).limit(1).get();
+    if (q.empty) return res.status(404).json({ error: "Invalid syncKey" });
+
+    const connectionDoc = q.docs[0];
+    const connectionData = connectionDoc.data();
+    const userId = connectionData.userId;
+    const webhookSecret = connectionData.webhookSecret;
+
+    // Vérification HMAC si secret configuré
+    if (webhookSecret) {
+      if (!verifyHMACSignature(rawBody, signature, webhookSecret)) {
+        console.warn(`[Webhook] HMAC failed for syncKey: ${syncKey}`);
+        return res.status(401).json({ error: "Signature HMAC invalide." });
+      }
+    }
+
+    // Vérification abonnement
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+
+    const userData = userDoc.data()!;
+    const subscription = userData.subscription || 'free';
+    const subscriptionStatus = userData.subscriptionStatus || 'active';
+    const subscriptionEndDate = userData.subscriptionEndDate?.toDate();
+    const isValid =
+      (subscription === 'pro' || subscription === 'premium') &&
+      (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') &&
+      (!subscriptionEndDate || subscriptionEndDate > new Date());
+
+    if (!isValid) {
+      await connectionDoc.ref.update({ status: 'error' });
+      return res.status(403).json({ error: "Abonnement expiré ou invalide." });
+    }
+
+    // Déduplication par ticket
+    const tradesRef = db.collection('users').doc(userId).collection('trades');
+    if (ticket) {
+      const existing = await tradesRef.where('ticket', '==', ticket).limit(1).get();
+      if (!existing.empty) {
+        return res.json({ success: true, skipped: true, reason: "ticket already synced" });
+      }
+    }
+
+    await tradesRef.add({
+      userId, pair, direction,
+      entryPrice: entryPrice ?? exitPrice,
+      exitPrice, lotSize, pnl,
+      ticket: ticket || null,
+      strategy: "EA Sync",
+      emotion: "😐",
+      session: "EA",
+      date: admin.firestore.Timestamp.fromMillis(timestamp * 1000),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    await connectionDoc.ref.update({
+      status: 'active',
+      lastSync: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Webhook error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 app.use(express.json());
@@ -471,7 +581,7 @@ app.post('/api/admin/users/create', authLimiter, verifySuperAdmin, async (req, r
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       onboarded: false,
       subscription: 'free',
-      aiCredits: 10,
+      aiCredits: 3, // 3 analyses Discovery offertes
     });
 
     res.json({ success: true, userId: userRecord.uid });
@@ -495,31 +605,120 @@ app.post('/api/admin/users/:userId/update', verifyAdmin, async (req, res) => {
 // ... existing code ...
 });
 
-async function checkAndDeductAICredit(userId: string, db: admin.firestore.Firestore): Promise<boolean> {
+// AI Cache functions
+function hashTradesData(trades: any[]): string {
+  return crypto
+    .createHash('md5')
+    .update(JSON.stringify(trades))
+    .digest('hex');
+}
+
+async function getAICache(userId: string, tradesHash: string, db: admin.firestore.Firestore): Promise<any | null> {
+  try {
+    const cacheRef = db.collection('users').doc(userId).collection('ai_coach').doc('latest');
+    const doc = await cacheRef.get();
+    if (!doc.exists) return null;
+    const data = doc.data()!;
+    // Cache valide 6 heures si les trades n'ont pas changé
+    const cacheAge = Date.now() - data.cachedAt?.toMillis();
+    if (data.tradesHash === tradesHash && cacheAge < 6 * 60 * 60 * 1000) {
+      return data.result;
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function setAICache(userId: string, tradesHash: string, result: any, db: admin.firestore.Firestore): Promise<void> {
+  try {
+    const cacheRef = db.collection('users').doc(userId).collection('ai_coach').doc('latest');
+    await cacheRef.set({
+      tradesHash,
+      result,
+      cachedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) { console.error('Cache write failed:', e); }
+}
+
+// Limites mensuelles par plan
+const AI_LIMITS = {
+  free: 3,      // 3 analyses lifetime (converties en "crédits" initiaux)
+  pro: 30,      // 30 analyses/mois
+  premium: 9999 // Illimité
+};
+
+// Routing modèle Gemini par mode
+function getGeminiModel(mode: string, subscription: string): string {
+  if (subscription === 'premium') return 'gemini-2.0-flash';
+  if (mode === 'DETAILED') return 'gemini-2.0-flash';
+  if (mode === 'CONCISE') return 'gemini-2.0-flash-lite';
+  return 'gemini-2.0-flash'; // STANDARD
+}
+
+// Limite tokens par mode
+function getMaxTokens(mode: string): number {
+  if (mode === 'CONCISE') return 300;
+  if (mode === 'STANDARD') return 700;
+  return 1000; // DETAILED
+}
+
+// Limite trades envoyés à l'IA par mode
+function getTradeLimit(mode: string): number {
+  if (mode === 'CONCISE') return 20;
+  if (mode === 'STANDARD') return 50;
+  return 100; // DETAILED
+}
+
+async function checkAndDeductAICredit(userId: string, db: admin.firestore.Firestore): Promise<{ allowed: boolean; reason?: string }> {
   const userRef = db.collection('users').doc(userId);
-  
   return db.runTransaction(async (transaction) => {
     const userDoc = await transaction.get(userRef);
-    if (!userDoc.exists) return false;
-    
+    if (!userDoc.exists) return { allowed: false, reason: "User not found" };
     const userData = userDoc.data()!;
     const subscription = userData.subscription || 'free';
-    
-    // Pro et Premium : crédits illimités (ou très élevés)
-    if (subscription === 'pro' || subscription === 'premium') {
-      return true;
-    }
-    
-    // Free : vérification des crédits
+
+    if (subscription === 'premium') return { allowed: true };
+
     const credits = userData.aiCredits ?? 0;
-    if (credits <= 0) return false;
-    
+    if (credits <= 0) {
+      const planLabel = subscription === 'pro' ? 'Premium' : 'Pro';
+      return { 
+        allowed: false, 
+        reason: `Vous avez atteint votre limite d'analyses IA ce mois-ci. Passez à ${planLabel} pour continuer.`
+      };
+    }
     transaction.update(userRef, {
       aiCredits: admin.firestore.FieldValue.increment(-1)
     });
-    return true;
+    return { allowed: true };
   });
 }
+
+// Webhook Secret Generation Endpoint
+app.post('/api/connections/:connectionId/generate-secret', verifyUser, async (req: any, res: any) => {
+  const { connectionId } = req.params;
+  const userId = req.user.uid;
+  if (!db) return res.status(503).json({ error: "Database unavailable" });
+  try {
+    const connectionRef = db.collection('broker_connections').doc(connectionId);
+    const connectionDoc = await connectionRef.get();
+    if (!connectionDoc.exists) return res.status(404).json({ error: "Connection not found" });
+    if (connectionDoc.data()?.userId !== userId) return res.status(403).json({ error: "Unauthorized" });
+
+    const webhookSecret = crypto.randomBytes(32).toString('hex');
+    await connectionRef.update({
+      webhookSecret,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({
+      success: true,
+      webhookSecret,
+      message: "Copiez ce secret maintenant. Il ne sera plus affiché."
+    });
+  } catch (error) {
+    console.error("Error generating webhook secret:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // AI Coach Proxy Endpoint
 app.post('/api/ai/coach', verifyUser, async (req: any, res: any) => {
@@ -532,10 +731,13 @@ app.post('/api/ai/coach', verifyUser, async (req: any, res: any) => {
   if (!db) return res.status(503).json({ error: "Service de base de données indisponible" });
 
   try {
-    const hasCredit = await checkAndDeductAICredit(req.user.uid, db!);
-    if (!hasCredit) {
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
+    const subscription = userDoc.data()?.subscription || 'free';
+
+    const creditCheck = await checkAndDeductAICredit(req.user.uid, db!);
+    if (!creditCheck.allowed) {
       return res.status(402).json({ 
-        error: "Crédits IA épuisés. Passez à Pro pour un accès illimité." 
+        error: creditCheck.reason || "Crédits IA épuisés. Passez à Pro pour un accès illimité." 
       });
     }
 
@@ -569,7 +771,7 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
 `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: getGeminiModel(input.mode || 'STANDARD', subscription),
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -581,7 +783,22 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
     
     // Clean JSON if model wraps it in markdown
     const cleanedText = text.replace(/```json\n?|```/g, '').trim();
-    res.json(JSON.parse(cleanedText));
+    const aiAnalysis = JSON.parse(cleanedText);
+
+    // Save to Firestore from server-side (bypasses rules)
+    try {
+      await db.collection('users').doc(req.user.uid).collection('ai_reports').add({
+        date: admin.firestore.Timestamp.now(),
+        mode: input.mode || 'STANDARD',
+        metrics: input.metrics,
+        response: aiAnalysis
+      });
+      console.log(`[AI Coach] Report saved successfully for user: ${req.user.uid}`);
+    } catch (saveError) {
+      console.error("[AI Coach] Failed to save report to Firestore:", saveError);
+    }
+
+    res.json(aiAnalysis);
   } catch (error: any) {
     handleGeminiError(error, res);
   }
@@ -589,56 +806,91 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
 
 // AI Coach Ask Endpoint
 app.post('/api/ai/ask', verifyUser, async (req: any, res: any) => {
-  const { trades, language, strategies, instruction } = req.body;
-  
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: "GEMINI_API_KEY non configurée sur le serveur." });
-  }
+  const { trades, language, strategies, instruction, mode = 'STANDARD' } = req.body;
 
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(500).json({ error: "GEMINI_API_KEY non configurée." });
+  }
   if (!db) return res.status(503).json({ error: "Service de base de données indisponible" });
 
-  try {
-    const hasCredit = await checkAndDeductAICredit(req.user.uid, db!);
-    if (!hasCredit) {
-      return res.status(402).json({ 
-        error: "Crédits IA épuisés. Passez à Pro pour un accès illimité." 
-      });
-    }
+  // Récupérer le plan utilisateur pour le routing
+  const userDoc = await db.collection('users').doc(req.user.uid).get();
+  const subscription = userDoc.data()?.subscription || 'free';
 
+  // Vérifier cache
+  const tradeLimit = getTradeLimit(mode);
+  const tradesToAnalyze = (trades || []).slice(-tradeLimit);
+  const tradesHash = hashTradesData(tradesToAnalyze);
+  const cached = await getAICache(req.user.uid, tradesHash, db);
+  if (cached) {
+    return res.json({ ...cached, fromCache: true });
+  }
+
+  // Vérifier crédits
+  const creditCheck = await checkAndDeductAICredit(req.user.uid, db);
+  if (!creditCheck.allowed) {
+    return res.status(402).json({ error: creditCheck.reason });
+  }
+
+  try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const model = getGeminiModel(mode, subscription);
+    const maxTokens = getMaxTokens(mode);
+
     const prompt = `
 Analyze this trading dataset and return structured output only.
-IMPORTANT: All text fields (message, action, reason, next_focus) MUST be in ${language === 'fr' ? 'French (Français)' : 'English'}.
+IMPORTANT: All text fields MUST be in ${language === 'fr' ? 'French (Français)' : 'English'}.
+MODE: ${mode}
+${mode === 'CONCISE' ? 'CONCISE: Return only coach_decision, 1 summary sentence, max 3 actions.' : ''}
+${mode === 'DETAILED' ? 'DETAILED: Full breakdown — performance, psychology, risk, behavioral patterns, strategic recommendations.' : ''}
 
-USER STRATEGY DEFINITIONS:
-${strategies?.length > 0 ? JSON.stringify(strategies) : "No custom strategies defined. Use default trading knowledge."}
+USER STRATEGIES:
+${strategies?.length > 0 ? JSON.stringify(strategies) : "No custom strategies."}
 
-DATA:
-${JSON.stringify(trades || [])}
+TRADES DATA (last ${tradeLimit}):
+${JSON.stringify(tradesToAnalyze)}
 
-MODE:
-HYBRID
-
-STRICT OUTPUT FORMAT REQUIRED:
-JSON ONLY
+STRICT JSON OUTPUT ONLY:
 `;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-lite",
+      model,
       contents: prompt,
       config: {
         systemInstruction: instruction,
         responseMimeType: "application/json",
+        maxOutputTokens: maxTokens,
       }
     });
 
     const text = response.text;
     if (!text) throw new Error("Réponse vide de l'IA");
-    
     const cleanedText = text.replace(/```json\n?|```/g, '').trim();
-    res.json(JSON.parse(cleanedText));
+    const result = JSON.parse(cleanedText);
+
+    // Sauvegarder en cache
+    await setAICache(req.user.uid, tradesHash, result, db);
+
+    res.json(result);
   } catch (error: any) {
     handleGeminiError(error, res);
+  }
+});
+
+// Admin Monthly Credit Reset
+app.post('/api/admin/reset-monthly-credits', verifySuperAdmin, async (req: any, res: any) => {
+  if (!db) return res.status(503).json({ error: "Database unavailable" });
+  try {
+    const usersSnapshot = await db.collection('users').where('subscription', '==', 'pro').get();
+    const batch = db.batch();
+    usersSnapshot.docs.forEach(doc => {
+      batch.update(doc.ref, { aiCredits: 30 });
+    });
+    await batch.commit();
+    res.json({ success: true, updated: usersSnapshot.size });
+  } catch (error) {
+    console.error("Monthly reset error:", error);
+    res.status(500).json({ error: "Reset failed" });
   }
 });
 
