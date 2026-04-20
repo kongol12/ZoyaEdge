@@ -16,7 +16,9 @@ service cloud.firestore {
     
     // Admin check via RBAC document
     function isAdmin() { 
-      return isSuperAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'agent']); 
+      return isSuperAdmin() || (isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'agent']); 
     }
 
     function incoming() { return request.resource.data; }
@@ -70,12 +72,12 @@ service cloud.firestore {
       allow list: if isAdmin();
       
       allow create: if isOwner(userId) && isValidUser(incoming()) && 
-                    incoming().role == 'user' && // Prevent self-elevation
-                    incoming().subscription == 'free'; // Prevent self-upgrading
+                    incoming().role == 'user' && 
+                    (incoming().subscription == 'free' || incoming().subscription == 'pro'); 
       
       allow update: if (isOwner(userId) && 
                       isValidUser(incoming()) && 
-                      incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'tradingStyle', 'defaultRisk', 'defaultLotSize', 'currency', 'onboarded', 'calendarShowPnL', 'calendarShowTrades', 'initialBalance', 'updatedAt', 'onboarded'])) ||
+                      incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'tradingStyle', 'defaultRisk', 'defaultLotSize', 'currency', 'onboarded', 'calendarShowPnL', 'calendarShowTrades', 'initialBalance', 'updatedAt', 'onboarded', 'hasUsedTrial', 'subscription', 'subscriptionStatus', 'subscriptionEndDate', 'aiCredits'])) ||
                     isAdmin();
 
       // --- Sub-collections ---
@@ -94,7 +96,13 @@ service cloud.firestore {
 
       match /ai_coach/{docId} {
         allow read: if isOwner(userId) || isAdmin();
-        allow write: if false; // Server-side only (for cache)
+        allow write: if isOwner(userId);
+      }
+
+      match /imports/{importId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId);
+        allow delete: if isOwner(userId) || isAdmin();
       }
 
       match /strategies/{strategyId} {
@@ -125,6 +133,17 @@ service cloud.firestore {
                     isAdmin();
       
       allow delete: if (isSignedIn() && existing().userId == request.auth.uid) || isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /admin_notifications/{notifId} {
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
     }
 
     // --- Admin & Global Config ---

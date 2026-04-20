@@ -8,6 +8,7 @@ import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
+import cors from 'cors';
 
 const app = express();
 const PORT = 3000;
@@ -16,6 +17,8 @@ const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || '';
 
 // Trust proxy is required for express-rate-limit to work correctly behind the AI Studio proxy
 app.set('trust proxy', 1);
+
+app.use(cors());
 
 // Inactivity shutdown logic (Development only)
 // Automatically shuts down the server after 1 hour of no requests to save resources.
@@ -605,7 +608,7 @@ app.post('/api/admin/users/:userId/update', verifyAdmin, async (req, res) => {
 // ... existing code ...
 });
 
-// AI Cache functions
+// --- AI Cache functions ---
 function hashTradesData(trades: any[]): string {
   return crypto
     .createHash('md5')
@@ -891,6 +894,223 @@ app.post('/api/admin/reset-monthly-credits', verifySuperAdmin, async (req: any, 
   } catch (error) {
     console.error("Monthly reset error:", error);
     res.status(500).json({ error: "Reset failed" });
+  }
+});
+
+// --- ARAKA Mobile Money Integration ---
+let arakaToken: string | null = null;
+let arakaTokenExpiry: number = 0;
+
+async function getArakaUrl() {
+  const mode = (process.env.ARAKA_MODE || 'sandbox').toLowerCase();
+  const isSandbox = mode === 'sandbox';
+  const defaultUrl = isSandbox ? 'https://api-sandbox.araka.cd' : 'https://api.araka.cd';
+  let url = (process.env.ARAKA_API_URL || defaultUrl).trim().replace(/\/$/, '');
+  
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
+  return url;
+}
+
+async function getArakaToken() {
+  if (arakaToken && Date.now() < arakaTokenExpiry) return arakaToken;
+  
+  const mode = (process.env.ARAKA_MODE || 'sandbox').toLowerCase();
+  const isSandbox = mode === 'sandbox';
+  const url = await getArakaUrl();
+  
+  let email = isSandbox ? (process.env.ARAKA_SANDBOX_EMAIL || process.env.ARAKA_EMAIL) : process.env.ARAKA_EMAIL;
+  let password = isSandbox ? (process.env.ARAKA_SANDBOX_PASSWORD || process.env.ARAKA_PASSWORD) : process.env.ARAKA_PASSWORD;
+  
+  if (!email || !password) throw new Error('Identifiants ARAKA (Email/Password) non configurés.');
+  
+  // Nettoyage des espaces potentiellement copiés/collés par erreur
+  email = email.trim();
+  password = password.trim();
+
+  console.log(`[Araka Auth] Tentative de connexion (Mode: ${mode}) avec l'email: '${email}' sur ${url}`);
+
+  try {
+    const response = await fetch(`${url}/api/login`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'User-Agent': 'ZoyaEdge-Server/1.0'
+      },
+      // On envoie uniquement les deux champs standards
+      body: JSON.stringify({ 
+        emailAddress: email, 
+        password: password
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Araka login failed (${response.status}): ${errorText}`);
+    }
+    
+    const data: any = await response.json();
+    arakaToken = data.token || data.accessToken || data.bearerToken;
+    if (!arakaToken) throw new Error('Araka response missing token field');
+    arakaTokenExpiry = Date.now() + (23 * 60 * 60 * 1000); 
+    return arakaToken;
+  } catch (e: any) {
+    console.error("[Araka] Auth Error:", e);
+    throw e;
+  }
+}
+
+app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any) => {
+  const { amount, currency, phoneNumber, provider, planId } = req.body;
+  if (!amount || !phoneNumber || !provider) return res.status(400).json({ error: "Paramètres manquants" });
+
+  try {
+    const token = await getArakaToken();
+    const mode = (process.env.ARAKA_MODE || 'sandbox').toLowerCase();
+    const isSandbox = mode === 'sandbox';
+    const url = await getArakaUrl();
+    
+    const pageId = isSandbox ? (process.env.ARAKA_SANDBOX_PAYMENT_PAGE_ID || process.env.ARAKA_PAYMENT_PAGE_ID) : process.env.ARAKA_PAYMENT_PAGE_ID;
+    if (!pageId) throw new Error('ARAKA_PAYMENT_PAGE_ID non configuré');
+
+    const transactionReference = `ZOYA_${req.user.uid.slice(0, 5)}_${Date.now()}`;
+    
+    const payload = {
+      order: {
+        paymentPageId: pageId,
+        customerFullName: req.user.name || "Zoya User",
+        customerPhoneNumber: phoneNumber,
+        customerEmailAddress: req.user.email || "user@zoyaedge.com",
+        transactionReference: transactionReference,
+        amount: parseFloat(amount),
+        currency: currency || "USD",
+        redirectURL: `${process.env.APP_URL}/subscription/callback`
+      },
+      paymentChannel: {
+        channel: "MOBILEMONEY",
+        provider: provider, // MPESA, ORANGE, AIRTEL
+        walletID: phoneNumber
+      }
+    };
+
+    const response = await fetch(`${url}/api/Pay/paymentrequest`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'ZoyaEdge-Server/1.0'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { message: errorText };
+      }
+      return res.status(response.status).json({ 
+        error: "Erreur Araka", 
+        details: errorData 
+      });
+    }
+
+    const result = await response.json();
+    
+    // Log temp transaction in Firestore
+    if (db) {
+      await db.collection('payments').add({
+        userId: req.user.uid,
+        amount,
+        currency: currency || "USD",
+        status: 'pending',
+        plan: planId,
+        method: 'mobile_money',
+        provider,
+        transactionReference,
+        transactionId: result.transactionId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    console.error("Mobile Money Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/payments/mobile-money/status/:reference', verifyUser, async (req: any, res: any) => {
+  const { reference } = req.params;
+  try {
+    const token = await getArakaToken();
+    const url = await getArakaUrl();
+    
+    const response = await fetch(`${url}/api/Reporting/transactionstatusbyreference/${reference}`, {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'ZoyaEdge-Server/1.0'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: "Vérification échouée", details: errorText });
+    }
+    const result = await response.json();
+    
+    // Result can be "SUCCESSFUL", "FAILED", "PENDING" etc (depends on Araka)
+    const status = result.status?.toUpperCase();
+    const isSuccess = status === 'SUCCESSFUL' || status === 'COMPLETED';
+    const isFailed = status === 'FAILED' || status === 'CANCELLED' || status === 'REJECTED';
+
+    if ((isSuccess || isFailed) && db) {
+      const q = await db.collection('payments')
+        .where('userId', '==', req.user.uid)
+        .where('transactionReference', '==', reference)
+        .limit(1)
+        .get();
+
+      if (!q.empty) {
+        const paymentDoc = q.docs[0];
+        const paymentData = paymentDoc.data();
+        
+        if (isSuccess && paymentData.status !== 'completed') {
+          await paymentDoc.ref.update({ 
+            status: 'completed',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          
+          // UPGRADE USER
+          const userRef = db.collection('users').doc(paymentData.userId);
+          const durationDays = paymentData.cycle === 'yearly' ? 365 : 31;
+          const endDate = new Date();
+          endDate.setDate(endDate.getDate() + durationDays);
+
+          await userRef.update({
+            subscription: paymentData.plan,
+            subscriptionStatus: 'active',
+            subscriptionEndDate: admin.firestore.Timestamp.fromDate(endDate),
+            aiCredits: paymentData.plan === 'pro' ? 30 : 9999,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        } else if (isFailed && paymentData.status === 'pending') {
+          await paymentDoc.ref.update({ 
+            status: 'failed',
+            failureReason: result.message || result.statusDescription || "Transaction échouée",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      }
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
