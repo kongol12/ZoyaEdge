@@ -966,11 +966,11 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
     const url = await getArakaUrl();
     
     // Fetch multi-currency config from app_settings
-    let pageId = process.env.ARAKA_PAYMENT_PAGE_ID;
+    let pageId = process.env.ARAKA_PAYMENT_PAGE_ID; // Old default = CDF
     
     // Check specific env vars based on currency
-    if (currency === 'CDF' && process.env.ARAKA_PAYMENT_PAGE_ID_CDF) {
-      pageId = process.env.ARAKA_PAYMENT_PAGE_ID_CDF;
+    if (currency === 'CDF' && process.env.ARAKA_PAYMENT_PAGE_ID) {
+      pageId = process.env.ARAKA_PAYMENT_PAGE_ID;
     } else if (currency === 'USD' && process.env.ARAKA_PAYMENT_PAGE_ID_USD) {
       pageId = process.env.ARAKA_PAYMENT_PAGE_ID_USD;
     }

@@ -251,7 +251,6 @@ export default function AdminSettings() {
                 type="text"
                 value={settings?.arakaUsdPageId || ''}
                 placeholder="Ex: xxx-xxxx-xxxx-xxxx"
-                onBlur={(e) => handleUpdate('arakaUsdPageId', e.target.value)}
                 onChange={(e) => setSettings({ ...settings, arakaUsdPageId: e.target.value } as AppSettings)}
                 className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
               />
@@ -263,11 +262,26 @@ export default function AdminSettings() {
                 type="text"
                 value={settings?.arakaCdfPageId || ''}
                 placeholder="Ex: xxx-xxxx-xxxx-xxxx"
-                onBlur={(e) => handleUpdate('arakaCdfPageId', e.target.value)}
                 onChange={(e) => setSettings({ ...settings, arakaCdfPageId: e.target.value } as AppSettings)}
                 className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
               />
             </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() => {
+                if (settings) {
+                  // Save all modified fields in settings state to firestore
+                  updateDoc(doc(db, 'app_settings', 'global'), {
+                    ...settings,
+                    updatedAt: serverTimestamp()
+                  });
+                }
+              }}
+              className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
+            >
+              <Save size={18} /> Enregistrer les configurations
+            </button>
           </div>
           <p className="text-xs text-gray-500">
             Ces Page IDs permettent d'activer le paiement multidevise. Si vide, le système utilisera la variable d'environnement de fallback.
