@@ -34,86 +34,76 @@ interface PaymentRecord {
 export default function FinanceManagement() {
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isSeeding, setIsSeeding] = useState(false);
-  const [showDemo, setShowDemo] = useState(false);
   const [stats, setStats] = useState({
-    totalRevenue: 0,
-    monthlyRevenue: 0,
+    totalRevenueUSD: 0,
+    totalRevenueCDF: 0,
+    monthlyRevenueUSD: 0,
+    monthlyRevenueCDF: 0,
     activeSubscriptions: 0,
     conversionRate: 0,
-    chartData: [] as { name: string, revenue: number }[]
+    chartData: [] as { name: string, revenueUSD: number, revenueCDF: number }[]
   });
 
-  const handleSeed = async () => {
-    if (!confirm("Générer 20 transactions fictives pour la démonstration ?")) return;
-    setIsSeeding(true);
-    try {
-      await seedMockTransactions(20);
-      alert("Transactions générées avec succès !");
-    } catch (error) {
-      console.error(error);
-      alert("Erreur lors du seeding.");
-    } finally {
-      setIsSeeding(false);
-    }
-  };
-
-  const handleClearDemo = async () => {
-    if (!confirm("Supprimer toutes les données de démonstration ?")) return;
-    setIsSeeding(true);
-    try {
-      await clearDemoPayments();
-      alert("Données de démo supprimées !");
-    } catch (error) {
-      console.error(error);
-      alert("Erreur lors de la suppression.");
-    } finally {
-      setIsSeeding(false);
-    }
-  };
-
   useEffect(() => {
+    // Ne prendre que de vraies données (plus de isDemo)
     const q = query(collection(db, 'payments'), orderBy('createdAt', 'desc'), limit(100));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const allData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as PaymentRecord);
-      
-      // Filter based on toggle
-      const data = allData.filter(p => showDemo || !p.isDemo);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as PaymentRecord);
       
       setPayments(data);
       
-      // Calculate basic stats
-      const total = data.reduce((acc, curr) => acc + (curr.status === 'completed' ? curr.amount : 0), 0);
+      // Calculate basic stats for USD and CDF
+      let tUSD = 0, tCDF = 0, mUSD = 0, mCDF = 0;
+      
       const now = new Date();
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const monthly = data.reduce((acc, curr) => {
-        if (curr.status === 'completed' && curr.createdAt.toDate() >= firstDayOfMonth) {
-          return acc + curr.amount;
+      
+      data.forEach(curr => {
+        if (curr.status === 'completed') {
+           if (curr.currency === 'CDF') {
+             tCDF += curr.amount;
+             if (curr.createdAt && curr.createdAt.toDate() >= firstDayOfMonth) mCDF += curr.amount;
+           } else {
+             // Treat anything else (USD, missing) as USD
+             tUSD += curr.amount;
+             if (curr.createdAt && curr.createdAt.toDate() >= firstDayOfMonth) mUSD += curr.amount;
+           }
         }
-        return acc;
-      }, 0);
+      });
 
-      // Calculate chart data from payments
-      const monthlyData: { [key: string]: number } = {};
+      // Calculate chart data from real payments
+      const monthlyData: { [key: string]: { usd: number, cdf: number } } = {};
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       
       data.forEach(p => {
-        if (p.status === 'completed') {
+        if (p.status === 'completed' && p.createdAt) {
           const date = p.createdAt.toDate();
           const monthName = months[date.getMonth()];
-          monthlyData[monthName] = (monthlyData[monthName] || 0) + p.amount;
+          if (!monthlyData[monthName]) monthlyData[monthName] = { usd: 0, cdf: 0 };
+          
+          if (p.currency === 'CDF') {
+            monthlyData[monthName].cdf += p.amount;
+          } else {
+            monthlyData[monthName].usd += p.amount;
+          }
         }
       });
 
       const formattedChartData = months
-        .map((name, index) => ({ name, revenue: monthlyData[name] || 0 }))
+        .map((name, index) => ({ 
+          name, 
+          revenueUSD: monthlyData[name]?.usd || 0,
+          revenueCDF: monthlyData[name]?.cdf || 0
+        }))
         .filter((_, i) => i <= now.getMonth());
 
       setStats(prev => ({
         ...prev,
-        totalRevenue: total,
-        monthlyRevenue: monthly,
-        chartData: formattedChartData
+        totalRevenueUSD: tUSD,
+        totalRevenueCDF: tCDF,
+        monthlyRevenueUSD: mUSD,
+        monthlyRevenueCDF: mCDF,
+        chartData: formattedChartData.length > 0 ? formattedChartData : [{ name: months[now.getMonth()], revenueUSD: 0, revenueCDF: 0 }]
       }));
       setLoading(false);
     });
@@ -136,13 +126,6 @@ export default function FinanceManagement() {
     };
   }, []);
 
-  const chartData = [
-    { name: 'Jan', revenue: 4500 },
-    { name: 'Feb', revenue: 5200 },
-    { name: 'Mar', revenue: 4800 },
-    { name: 'Apr', revenue: stats.monthlyRevenue || 6100 },
-  ];
-
   return (
     <div className="space-y-8 pb-10">
       <div className="flex justify-between items-start">
@@ -151,33 +134,6 @@ export default function FinanceManagement() {
           <p className="text-gray-500 dark:text-gray-400">Suivi des revenus, abonnements et performances comptables.</p>
         </div>
         <div className="flex gap-3">
-          <button 
-            onClick={() => setShowDemo(!showDemo)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-xl border font-bold text-sm transition-all",
-              showDemo 
-                ? "bg-amber-100 border-amber-200 text-amber-700 dark:bg-amber-900/30 dark:border-amber-800" 
-                : "bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-600 dark:text-gray-400"
-            )}
-          >
-            {showDemo ? "Cacher Démo" : "Voir Démo"}
-          </button>
-          <button 
-            onClick={handleClearDemo}
-            disabled={isSeeding}
-            className="flex items-center gap-2 bg-rose-500 text-white px-4 py-2 rounded-xl shadow-lg shadow-rose-500/20 font-bold text-sm hover:bg-rose-600 transition-colors disabled:opacity-50"
-          >
-            <Trash2 size={18} />
-            Nettoyer Démo
-          </button>
-          <button 
-            onClick={handleSeed}
-            disabled={isSeeding}
-            className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-xl shadow-lg shadow-indigo-500/20 font-bold text-sm hover:bg-indigo-600 transition-colors disabled:opacity-50"
-          >
-            {isSeeding ? <RefreshCw className="animate-spin" size={18} /> : <Database size={18} />}
-            Seed Demo Data
-          </button>
           <button className="flex items-center gap-2 bg-white dark:bg-gray-800 px-4 py-2 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 font-bold text-sm">
             <Calendar size={18} className="text-indigo-500" />
             Ce Mois
@@ -192,10 +148,10 @@ export default function FinanceManagement() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Revenu Total', value: `${stats.totalRevenue.toLocaleString()}$`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20', trend: '+12.5%' },
-          { label: 'Revenu Mensuel', value: `${stats.monthlyRevenue.toLocaleString()}$`, icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20', trend: '+8.2%' },
-          { label: 'Abonnés Actifs', value: stats.activeSubscriptions, icon: Users, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20', trend: '+5.1%' },
-          { label: 'Taux Conversion', value: `${stats.conversionRate.toFixed(1)}%`, icon: CreditCard, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20', trend: '+2.4%' },
+          { label: 'Revenu Total USD', value: `${stats.totalRevenueUSD.toLocaleString()} $`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-900/20', trend: '+12.5%' },
+          { label: 'Revenu Total CDF', value: `${stats.totalRevenueCDF.toLocaleString()} FC`, icon: Wallet, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20', trend: '+8.2%' },
+          { label: 'Revenu Mensuel USD', value: `${stats.monthlyRevenueUSD.toLocaleString()} $`, icon: TrendingUp, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20', trend: '+5.1%' },
+          { label: 'Revenu Mensuel CDF', value: `${stats.monthlyRevenueCDF.toLocaleString()} FC`, icon: CreditCard, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20', trend: '+2.4%' },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
@@ -213,8 +169,8 @@ export default function FinanceManagement() {
                 {stat.trend}
               </div>
             </div>
-            <p className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider">{stat.label}</p>
-            <p className="text-2xl font-poppins font-black text-gray-900 dark:text-white mt-1">{stat.value}</p>
+            <p className="text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-wider">{stat.label}</p>
+            <p className="text-xl font-poppins font-black text-gray-900 dark:text-white mt-1">{stat.value}</p>
           </motion.div>
         ))}
       </div>
@@ -230,17 +186,25 @@ export default function FinanceManagement() {
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 dark:bg-gray-900 rounded-xl">
                 <div className="w-2 h-2 rounded-full bg-zoya-red" />
-                <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">Revenu</span>
+                <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">USD</span>
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 dark:bg-gray-900 rounded-xl">
+                <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">CDF</span>
               </div>
             </div>
           </div>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={stats.chartData}>
+              <AreaChart data={stats.chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorRevenueUSD" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#DC2626" stopOpacity={0.1}/>
                     <stop offset="95%" stopColor="#DC2626" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorRevenueCDF" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
@@ -251,10 +215,19 @@ export default function FinanceManagement() {
                   tick={{ fontSize: 12, fontWeight: 600, fill: '#9CA3AF' }} 
                 />
                 <YAxis 
+                  yAxisId="left"
                   axisLine={false} 
                   tickLine={false} 
                   tick={{ fontSize: 12, fontWeight: 600, fill: '#9CA3AF' }}
                   tickFormatter={(value) => `${value}$`}
+                />
+                <YAxis 
+                  yAxisId="right"
+                  orientation="right"
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fontWeight: 600, fill: '#9CA3AF' }}
+                  tickFormatter={(value) => `${value}F`}
                 />
                 <Tooltip 
                   contentStyle={{ 
@@ -267,12 +240,24 @@ export default function FinanceManagement() {
                   itemStyle={{ color: '#fff' }}
                 />
                 <Area 
+                  yAxisId="left"
                   type="monotone" 
-                  dataKey="revenue" 
+                  dataKey="revenueUSD" 
+                  name="Revenus USD"
                   stroke="#DC2626" 
-                  strokeWidth={4}
+                  strokeWidth={3}
                   fillOpacity={1} 
-                  fill="url(#colorRevenue)" 
+                  fill="url(#colorRevenueUSD)" 
+                />
+                <Area 
+                  yAxisId="right"
+                  type="monotone" 
+                  dataKey="revenueCDF" 
+                  name="Revenus CDF"
+                  stroke="#6366f1" 
+                  strokeWidth={3}
+                  fillOpacity={1} 
+                  fill="url(#colorRevenueCDF)" 
                 />
               </AreaChart>
             </ResponsiveContainer>

@@ -12,6 +12,9 @@ interface AppSettings {
   aiModel: string;
   defaultCredits: number;
   superAdmins: string[];
+  exchangeRate: number;
+  arakaUsdPageId: string;
+  arakaCdfPageId: string;
   updatedAt: any;
 }
 
@@ -27,7 +30,13 @@ export default function AdminSettings() {
 
     const unsubscribe = onSnapshot(doc(db, 'app_settings', 'global'), (snapshot) => {
       if (snapshot.exists()) {
-        setSettings(snapshot.data() as AppSettings);
+        const data = snapshot.data();
+        setSettings({
+          ...data,
+          exchangeRate: data.exchangeRate || 2800,
+          arakaUsdPageId: data.arakaUsdPageId || '',
+          arakaCdfPageId: data.arakaCdfPageId || '',
+        } as AppSettings);
       } else {
         // Initialize default settings if they don't exist
         const defaultSettings: AppSettings = {
@@ -35,6 +44,9 @@ export default function AdminSettings() {
           aiModel: 'gemini-1.5-pro',
           defaultCredits: 10,
           superAdmins: ['kongolmandf@gmail.com'],
+          exchangeRate: 2800,
+          arakaUsdPageId: '',
+          arakaCdfPageId: '',
           updatedAt: serverTimestamp()
         };
         setDoc(doc(db, 'app_settings', 'global'), defaultSettings);
@@ -209,6 +221,57 @@ export default function AdminSettings() {
               </div>
             )}
           </div>
+        </div>
+        
+        {/* Payment Configuration */}
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-6 md:col-span-2">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center text-emerald-600">
+              <CreditCard size={24} />
+            </div>
+            <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white">Configuration Paiements (Araka)</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Taux de Change (1 USD en CDF)</label>
+              <input
+                type="number"
+                value={settings?.exchangeRate || 2800}
+                onChange={(e) => handleUpdate('exchangeRate', parseFloat(e.target.value))}
+                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
+              />
+            </div>
+            {/* Keeping spacing */}
+            <div className="hidden md:block"></div>
+
+            <div>
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Page ID Araka (USD)</label>
+              <input
+                type="text"
+                value={settings?.arakaUsdPageId || ''}
+                placeholder="Ex: xxx-xxxx-xxxx-xxxx"
+                onBlur={(e) => handleUpdate('arakaUsdPageId', e.target.value)}
+                onChange={(e) => setSettings({ ...settings, arakaUsdPageId: e.target.value } as AppSettings)}
+                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Page ID Araka (CDF)</label>
+              <input
+                type="text"
+                value={settings?.arakaCdfPageId || ''}
+                placeholder="Ex: xxx-xxxx-xxxx-xxxx"
+                onBlur={(e) => handleUpdate('arakaCdfPageId', e.target.value)}
+                onChange={(e) => setSettings({ ...settings, arakaCdfPageId: e.target.value } as AppSettings)}
+                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">
+            Ces Page IDs permettent d'activer le paiement multidevise. Si vide, le système utilisera la variable d'environnement de fallback.
+          </p>
         </div>
       </div>
 

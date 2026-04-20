@@ -11,6 +11,9 @@ import { AlertTriangle } from 'lucide-react';
 
 // Client Pages
 import Auth from './pages/Auth';
+import ActivityAdmin from './pages/admin/ActivityAdmin';
+
+// Existing imports remain as they are below
 import Dashboard from './pages/client/Dashboard';
 import AddTrade from './pages/client/AddTrade';
 import ImportTrades from './pages/client/ImportTrades';
@@ -173,6 +176,7 @@ function AppRoutes() {
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/finance" element={<FinanceManagement />} />
+          <Route path="/admin/activities" element={<ActivityAdmin />} />
           <Route path="/admin/trade-reports" element={<TradeReporting />} />
           <Route path="/admin/subscription-reports" element={<SubscriptionReports />} />
           <Route path="/admin/clients" element={<ClientManagement />} />

@@ -5,6 +5,9 @@ import { useAuth } from '../../lib/auth';
 import { useTranslation } from '../../lib/i18n';
 import { cn } from '../../lib/utils';
 
+import { db } from '../../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+
 export default function Subscription() {
   const { user, profile, updateProfile } = useAuth();
   const { t } = useTranslation();
@@ -17,14 +20,34 @@ export default function Subscription() {
   const [mmStatus, setMmStatus] = useState<'idle' | 'initiating' | 'pending' | 'success' | 'error'>('idle');
   const [mmError, setMmError] = useState("");
   const [transactionRef, setTransactionRef] = useState("");
+  
+  // Nouveaux états multidevises
+  const [currency, setCurrency] = useState<'USD' | 'CDF'>('USD');
+  const [exchangeRate, setExchangeRate] = useState(2800);
 
-  const plans = [
+  // Charger le taux de change
+  React.useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const docRef = doc(db, 'app_settings', 'global');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists() && docSnap.data().exchangeRate) {
+          setExchangeRate(docSnap.data().exchangeRate);
+        }
+      } catch (err) {
+        console.error("Erreur de chargement du taux de change", err);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  const basePlans = [
     {
       id: 'free',
       name: 'Discovery',
       description: 'Découvrez ZoyaEdge et posez les bases de votre discipline.',
-      monthlyPrice: 0,
-      yearlyPrice: 0,
+      monthlyPriceUSD: 5,
+      yearlyPriceUSD: 50,
       features: [
         { label: '30 trades manuels / mois', included: true },
         { label: 'Dashboard & Statistiques de base', included: true },
@@ -43,8 +66,8 @@ export default function Subscription() {
       id: 'pro',
       name: 'Pro',
       description: '7 jours d\'essai offerts. Pour les traders actifs qui veulent performer.',
-      monthlyPrice: 9.99,
-      yearlyPrice: 79,
+      monthlyPriceUSD: 20,
+      yearlyPriceUSD: 200,
       features: [
         { label: 'Trades manuels illimités', included: true },
         { label: 'Synchronisation MT5 (1 compte)', included: true },
@@ -65,8 +88,8 @@ export default function Subscription() {
       id: 'premium',
       name: 'Elite',
       description: 'L\'arsenal complet pour les professionnels et prop-firms.',
-      monthlyPrice: 19.99,
-      yearlyPrice: 159,
+      monthlyPriceUSD: 50,
+      yearlyPriceUSD: 500,
       features: [
         { label: 'Trades manuels illimités', included: true },
         { label: 'Synchronisation MT5 (Comptes illimités)', included: true },
@@ -83,22 +106,27 @@ export default function Subscription() {
     },
   ];
 
+  const plans = basePlans.map(plan => ({
+    ...plan,
+    monthlyPrice: currency === 'USD' ? plan.monthlyPriceUSD : plan.monthlyPriceUSD * exchangeRate,
+    yearlyPrice: currency === 'USD' ? plan.yearlyPriceUSD : plan.yearlyPriceUSD * exchangeRate,
+  }));
+
   // Fonction d'affichage du prix
   function displayPrice(plan: typeof plans[0]): string {
-    if (plan.monthlyPrice === 0) return '$0';
-    if (billingCycle === 'yearly') return `$${plan.yearlyPrice}/an`;
-    return `$${plan.monthlyPrice}/mois`;
+    const symbol = currency;
+    if (billingCycle === 'yearly') return `${plan.yearlyPrice.toLocaleString()} ${symbol}/an`;
+    return `${plan.monthlyPrice.toLocaleString()} ${symbol}/mois`;
   }
 
   function displaySavings(plan: typeof plans[0]): string | null {
-    if (plan.monthlyPrice === 0) return null;
     const monthlyCost = plan.monthlyPrice * 12;
     const savings = Math.round(monthlyCost - plan.yearlyPrice);
-    return billingCycle === 'yearly' ? `Économisez $${savings}/an` : null;
+    return billingCycle === 'yearly' && savings > 0 ? `Économisez ${savings.toLocaleString()} ${currency}/an` : null;
   }
 
   const handleSubscribe = async (planId: string) => {
-    if (planId === 'free' || planId === profile?.subscription) return;
+    if (planId === profile?.subscription) return;
     
     const plan = plans.find(p => p.id === planId);
     if (!plan) return;
@@ -131,7 +159,7 @@ export default function Subscription() {
         body: JSON.stringify({
           planId: selectedPlanForMM.id,
           amount: price,
-          currency: "USD",
+          currency: currency,
           phoneNumber,
           provider: mmProvider,
           cycle: billingCycle
@@ -140,15 +168,18 @@ export default function Subscription() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Échec de l'initiation du paiement");
+        const detailMsg = error.details ? JSON.stringify(error.details) : '';
+        throw new Error(error.error ? `${error.error} ${detailMsg}` : "Échec de l'initiation du paiement");
       }
 
       const result = await response.json();
-      setTransactionRef(result.transactionReference || result.customerReference || result.originatingTransactionId);
+      
+      const pollId = result.transactionId || result.transactionReference || result.customerReference;
+      setTransactionRef(pollId);
       setMmStatus('pending');
       
       // Start Polling
-      startPollingStatus(result.transactionReference || result.customerReference);
+      startPollingStatus(pollId);
 
     } catch (err: any) {
       setMmStatus('error');
@@ -174,15 +205,17 @@ export default function Subscription() {
         });
         const result = await response.json();
 
-        const status = result.status?.toUpperCase();
-        if (status === 'SUCCESSFUL' || status === 'COMPLETED') {
+        // Utiliser le statut normalisé par notre propre backend
+        const status = result._statusText || result.status?.toUpperCase() || (result.data && result.data.status?.toUpperCase());
+        
+        if (status === 'SUCCESSFUL' || status === 'COMPLETED' || status === 'SUCCESS' || status === '00') {
           setMmStatus('success');
           clearInterval(interval);
           // Actualiser le profile
           setTimeout(() => {
             window.location.reload();
           }, 2000);
-        } else if (status === 'FAILED' || status === 'CANCELLED' || status === 'REJECTED') {
+        } else if (status === 'FAILED' || status === 'CANCELLED' || status === 'REJECTED' || status === 'ERROR') {
           setMmStatus('error');
           const errMsg = result.message || result.statusDescription || "La transaction a échoué ou a été annulée.";
           setMmError(errMsg);
@@ -349,20 +382,42 @@ export default function Subscription() {
         </p>
 
         {/* Billing Toggle */}
-        <div className="flex items-center justify-center gap-4 mb-8">
-          <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-white' : 'text-gray-400'}`}>
+        <div className="flex items-center justify-center gap-4 mb-4">
+          <span className={`text-sm font-medium ${billingCycle === 'monthly' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}>
             Mensuel
           </span>
           <button
             onClick={() => setBillingCycle(prev => prev === 'monthly' ? 'yearly' : 'monthly')}
-            className={`relative w-14 h-7 rounded-full transition-colors duration-200 ${billingCycle === 'yearly' ? 'bg-green-500' : 'bg-gray-600'}`}
+            className={`relative w-14 h-7 rounded-full transition-colors duration-200 ${billingCycle === 'yearly' ? 'bg-zoya-red' : 'bg-gray-300 dark:bg-gray-600'}`}
           >
             <span className={`absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${billingCycle === 'yearly' ? 'translate-x-7' : 'translate-x-0'}`} />
           </button>
-          <span className={`text-sm font-medium ${billingCycle === 'yearly' ? 'text-white' : 'text-gray-400'}`}>
+          <span className={`text-sm font-medium ${billingCycle === 'yearly' ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}>
             Annuel
-            <span className="ml-1 text-xs text-green-400 font-bold">-20%</span>
+            <span className="ml-1 text-xs text-emerald-500 font-bold">-20%</span>
           </span>
+        </div>
+
+        {/* Currency Toggle */}
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <button
+            onClick={() => setCurrency('USD')}
+            className={cn(
+              "px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm",
+              currency === 'USD' ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700"
+            )}
+          >
+            USD ($)
+          </button>
+          <button
+            onClick={() => setCurrency('CDF')}
+            className={cn(
+              "px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm",
+              currency === 'CDF' ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700"
+            )}
+          >
+            CDF (FC)
+          </button>
         </div>
       </div>
 

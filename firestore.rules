@@ -12,7 +12,12 @@ service cloud.firestore {
     function isSignedIn() { return request.auth != null; }
     function isEmailVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
-    function isSuperAdmin() { return isSignedIn() && request.auth.token.email.toLowerCase() == 'kongolmandf@gmail.com'; }
+    function isSuperAdmin() { 
+      return isSignedIn() && 
+             'email' in request.auth.token && 
+             request.auth.token.email != null && 
+             request.auth.token.email.lower() == 'kongolmandf@gmail.com'; 
+    }
     
     // Admin check via RBAC document
     function isAdmin() { 
@@ -66,7 +71,11 @@ service cloud.firestore {
     // Section 3: Domain Rules
     // ===============================================================
 
-    // --- Users Collection ---
+    // --- Sub-collections (with collectionGroup for admins) ---
+    match /{path=**}/trades/{tradeId} {
+      allow read: if isAdmin();
+    }
+
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
@@ -136,19 +145,20 @@ service cloud.firestore {
     }
 
     match /payments/{paymentId} {
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if (isSignedIn() && resource.data.userId == request.auth.uid) || isAdmin();
       allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow write: if isAdmin();
     }
 
     match /admin_notifications/{notifId} {
       allow read: if isAdmin();
-      allow write: if isSuperAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
     }
 
     // --- Admin & Global Config ---
     match /app_settings/{settingId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isSuperAdmin();
     }
 
@@ -160,6 +170,16 @@ service cloud.firestore {
     match /global_notifications/{notifId} {
       allow read: if isSignedIn();
       allow write: if isSuperAdmin();
+    }
+
+    match /system_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+    }
+
+    match /activities/{actId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
     }
   }
 }
