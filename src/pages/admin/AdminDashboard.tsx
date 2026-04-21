@@ -84,26 +84,44 @@ export default function AdminDashboard() {
 
     // 3. Fetch Global Recent Trades (using collectionGroup)
     const qTrades = query(collectionGroup(db, 'trades'), orderBy('createdAt', 'desc'), limit(10));
-    const unsubscribeTrades = onSnapshot(qTrades, (snapshot) => {
+    const unsubscribeTrades = onSnapshot(qTrades, async (snapshot) => {
       const trades = snapshot.docs.map(doc => ({
         id: doc.id,
         ...(doc.data() as any),
         date: doc.data().date?.toDate() || new Date(),
         createdAt: doc.data().createdAt?.toDate() || new Date()
       }));
-      setRecentTrades(trades);
-      
-      // Update activities with trades
-      setRecentActivities(prev => {
-        const otherActivities = prev.filter(a => a.type !== 'trade');
-        const tradeActivities = trades.slice(0, 5).map(t => ({
-          id: `trade-${t.id}`,
-          msg: `Nouveau trade: ${t.pair} (${t.direction})`,
-          time: t.createdAt,
-          type: 'trade'
-        }));
-        return [...otherActivities, ...tradeActivities].sort((a, b) => b.time.getTime() - a.time.getTime()).slice(0, 5);
-      });
+
+      // Enrich trades with user names
+      try {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        const userMap: Record<string, any> = {};
+        usersSnap.docs.forEach(d => userMap[d.id] = d.data());
+
+        const enrichedTrades = trades.map(t => {
+          const profile = userMap[t.userId];
+          return {
+            ...t,
+            userName: profile?.displayName || profile?.name || profile?.email?.split('@')[0] || t.userId.substring(0, 8)
+          };
+        });
+        setRecentTrades(enrichedTrades);
+
+        // Update activities with trades
+        setRecentActivities(prev => {
+          const otherActivities = prev.filter(a => a.type !== 'trade');
+          const tradeActivities = enrichedTrades.slice(0, 5).map(t => ({
+            id: `trade-${t.id}`,
+            msg: `Nouveau trade: ${t.userName} - ${t.pair} (${t.direction})`,
+            time: t.createdAt,
+            type: 'trade'
+          }));
+          return [...otherActivities, ...tradeActivities].sort((a, b) => b.time.getTime() - a.time.getTime()).slice(0, 5);
+        });
+      } catch (err) {
+        console.error("Enrichment error:", err);
+        setRecentTrades(trades);
+      }
       
       setLoading(false);
     }, (error) => {
@@ -123,7 +141,7 @@ export default function AdminDashboard() {
         const otherActivities = prev.filter(a => a.type !== 'user');
         const userActivities = newUsers.map(u => ({
           id: `user-${u.id}`,
-          msg: `Nouvel utilisateur: ${u.email}`,
+          msg: `Nouveau client: ${u.displayName || u.email || u.id}`,
           time: u.createdAt,
           type: 'user'
         }));
@@ -230,7 +248,7 @@ export default function AdminDashboard() {
                           <User size={14} className="text-gray-400" />
                         </div>
                         <span className="text-xs font-bold text-gray-900 dark:text-white truncate max-w-[100px]">
-                          {trade.userId.substring(0, 8)}...
+                          {trade.userName}
                         </span>
                       </div>
                     </td>

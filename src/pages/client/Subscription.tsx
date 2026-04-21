@@ -8,34 +8,56 @@ import { cn } from '../../lib/utils';
 import { db } from '../../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
+import ZoyaPayCheckout from '../../components/organisms/client/ZoyaPayCheckout';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
 export default function Subscription() {
   const { user, profile, updateProfile } = useAuth();
   const { t } = useTranslation();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showMobileMoneyModal, setShowMobileMoneyModal] = useState(false);
-  const [selectedPlanForMM, setSelectedPlanForMM] = useState<any>(null);
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [mmProvider, setMmProvider] = useState("MPESA");
-  const [mmStatus, setMmStatus] = useState<'idle' | 'initiating' | 'pending' | 'success' | 'error'>('idle');
-  const [mmError, setMmError] = useState("");
-  const [transactionRef, setTransactionRef] = useState("");
+  const [showZoyaPayCheckout, setShowZoyaPayCheckout] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
+  const [success, setSuccess] = useState(false);
   
-  // Nouveaux états multidevises
+  // Nouveaux états multidevises et tarification dynamic
   const [currency, setCurrency] = useState<'USD' | 'CDF'>('USD');
   const [exchangeRate, setExchangeRate] = useState(2800);
+  const [dynamicPricing, setDynamicPricing] = useState({
+    discoveryMonthlyUSD: 0,
+    discoveryYearlyUSD: 0,
+    proMonthlyUSD: 20,
+    proYearlyUSD: 200,
+    premiumMonthlyUSD: 50,
+    premiumYearlyUSD: 500,
+    globalDiscount: 0,
+    transactionFee: 2,
+    vatRate: 16
+  });
 
-  // Charger le taux de change
+  // Charger le taux de change et les prix
   React.useEffect(() => {
     const fetchSettings = async () => {
       try {
         const docRef = doc(db, 'app_settings', 'global');
         const docSnap = await getDoc(docRef);
-        if (docSnap.exists() && docSnap.data().exchangeRate) {
-          setExchangeRate(docSnap.data().exchangeRate);
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.exchangeRate) setExchangeRate(data.exchangeRate);
+          setDynamicPricing({
+            discoveryMonthlyUSD: data.discoveryMonthlyUSD ?? 0,
+            discoveryYearlyUSD: data.discoveryYearlyUSD ?? 0,
+            proMonthlyUSD: data.proMonthlyUSD ?? 20,
+            proYearlyUSD: data.proYearlyUSD ?? 200,
+            premiumMonthlyUSD: data.premiumMonthlyUSD ?? 50,
+            premiumYearlyUSD: data.premiumYearlyUSD ?? 500,
+            globalDiscount: data.globalDiscount ?? 0,
+            transactionFee: data.transactionFee ?? 2,
+            vatRate: data.vatRate ?? 16
+          });
         }
       } catch (err) {
-        console.error("Erreur de chargement du taux de change", err);
+        console.error("Erreur de chargement des paramètres financiers", err);
       }
     };
     fetchSettings();
@@ -43,11 +65,11 @@ export default function Subscription() {
 
   const basePlans = [
     {
-      id: 'free',
+      id: 'discovery',
       name: 'Discovery',
       description: 'Découvrez ZoyaEdge et posez les bases de votre discipline.',
-      monthlyPriceUSD: 5,
-      yearlyPriceUSD: 50,
+      monthlyPriceUSD: dynamicPricing.discoveryMonthlyUSD,
+      yearlyPriceUSD: dynamicPricing.discoveryYearlyUSD,
       features: [
         { label: '30 trades manuels / mois', included: true },
         { label: 'Dashboard & Statistiques de base', included: true },
@@ -66,8 +88,8 @@ export default function Subscription() {
       id: 'pro',
       name: 'Pro',
       description: '7 jours d\'essai offerts. Pour les traders actifs qui veulent performer.',
-      monthlyPriceUSD: 20,
-      yearlyPriceUSD: 200,
+      monthlyPriceUSD: dynamicPricing.proMonthlyUSD,
+      yearlyPriceUSD: dynamicPricing.proYearlyUSD,
       features: [
         { label: 'Trades manuels illimités', included: true },
         { label: 'Synchronisation MT5 (1 compte)', included: true },
@@ -88,8 +110,8 @@ export default function Subscription() {
       id: 'premium',
       name: 'Elite',
       description: 'L\'arsenal complet pour les professionnels et prop-firms.',
-      monthlyPriceUSD: 50,
-      yearlyPriceUSD: 500,
+      monthlyPriceUSD: dynamicPricing.premiumMonthlyUSD,
+      yearlyPriceUSD: dynamicPricing.premiumYearlyUSD,
       features: [
         { label: 'Trades manuels illimités', included: true },
         { label: 'Synchronisation MT5 (Comptes illimités)', included: true },
@@ -106,15 +128,25 @@ export default function Subscription() {
     },
   ];
 
-  const plans = basePlans.map(plan => ({
-    ...plan,
-    monthlyPrice: currency === 'USD' ? plan.monthlyPriceUSD : plan.monthlyPriceUSD * exchangeRate,
-    yearlyPrice: currency === 'USD' ? plan.yearlyPriceUSD : plan.yearlyPriceUSD * exchangeRate,
-  }));
+  const plans = basePlans.map(plan => {
+    const discountMultiplier = 1 - (dynamicPricing.globalDiscount / 100);
+    const mPriceUSD = plan.monthlyPriceUSD * discountMultiplier;
+    const yPriceUSD = plan.yearlyPriceUSD * discountMultiplier;
+
+    return {
+      ...plan,
+      monthlyPrice: currency === 'USD' ? mPriceUSD : mPriceUSD * exchangeRate,
+      yearlyPrice: currency === 'USD' ? yPriceUSD : yPriceUSD * exchangeRate,
+    };
+  });
 
   // Fonction d'affichage du prix
   function displayPrice(plan: typeof plans[0]): string {
     const symbol = currency;
+    const price = billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice;
+    
+    if (price === 0) return "Gratuit";
+    
     if (billingCycle === 'yearly') return `${plan.yearlyPrice.toLocaleString()} ${symbol}/an`;
     return `${plan.monthlyPrice.toLocaleString()} ${symbol}/mois`;
   }
@@ -131,100 +163,31 @@ export default function Subscription() {
     const plan = plans.find(p => p.id === planId);
     if (!plan) return;
 
-    setSelectedPlanForMM(plan);
-    setShowMobileMoneyModal(true);
-    setMmStatus('idle');
-    setMmError('');
-  };
-
-  const handleMobileMoneyPayment = async () => {
-    if (!phoneNumber || phoneNumber.length < 10) {
-      setMmError("Veuillez entrer un numéro de téléphone valide.");
-      return;
+    if (plan.id === 'discovery' && plan.monthlyPrice === 0) {
+       await updateProfile({ 
+          subscription: 'discovery',
+          subscriptionStatus: 'active',
+          subscriptionEndDate: null
+       });
+       alert("Votre plan Discovery gratuit est maintenant actif !");
+       return;
     }
 
-    setMmStatus('initiating');
-    setMmError("");
-
-    try {
-      const price = billingCycle === 'monthly' ? selectedPlanForMM.monthlyPrice : selectedPlanForMM.yearlyPrice;
-      const token = await user?.getIdToken();
-      
-      const response = await fetch('/api/payments/mobile-money/pay', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          planId: selectedPlanForMM.id,
-          amount: price,
-          currency: currency,
-          phoneNumber,
-          provider: mmProvider,
-          cycle: billingCycle
-        })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        const detailMsg = error.details ? JSON.stringify(error.details) : '';
-        throw new Error(error.error ? `${error.error} ${detailMsg}` : "Échec de l'initiation du paiement");
-      }
-
-      const result = await response.json();
-      
-      const pollId = result.transactionId || result.transactionReference || result.customerReference;
-      setTransactionRef(pollId);
-      setMmStatus('pending');
-      
-      // Start Polling
-      startPollingStatus(pollId);
-
-    } catch (err: any) {
-      setMmStatus('error');
-      setMmError(err.message);
-    }
+    setSelectedPlan({
+      id: plan.id,
+      name: plan.name,
+      price: billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice
+    });
+    setShowZoyaPayCheckout(true);
   };
 
-  const startPollingStatus = (ref: string) => {
-    let attempts = 0;
-    const interval = setInterval(async () => {
-      attempts++;
-      if (attempts > 30) { // 5 minutes (10s interval)
-        setMmStatus('error');
-        setMmError("Le délai d'attente est dépassé. Veuillez vérifier votre application Mobile Money.");
-        clearInterval(interval);
-        return;
-      }
-
-      try {
-        const token = await user?.getIdToken();
-        const response = await fetch(`/api/payments/mobile-money/status/${ref}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const result = await response.json();
-
-        // Utiliser le statut normalisé par notre propre backend
-        const status = result._statusText || result.status?.toUpperCase() || (result.data && result.data.status?.toUpperCase());
-        
-        if (status === 'SUCCESSFUL' || status === 'COMPLETED' || status === 'SUCCESS' || status === '00') {
-          setMmStatus('success');
-          clearInterval(interval);
-          // Actualiser le profile
-          setTimeout(() => {
-            window.location.reload();
-          }, 2000);
-        } else if (status === 'FAILED' || status === 'CANCELLED' || status === 'REJECTED' || status === 'ERROR') {
-          setMmStatus('error');
-          const errMsg = result.message || result.statusDescription || "La transaction a échoué ou a été annulée.";
-          setMmError(errMsg);
-          clearInterval(interval);
-        }
-      } catch (e) {
-        console.error("Polling error", e);
-      }
-    }, 10000);
+  const handlePaymentSuccess = async (paymentData: any) => {
+    setShowZoyaPayCheckout(false);
+    setSuccess(true);
+    setTimeout(() => setSuccess(false), 5000);
+    // Subscription status is updated server-side, 
+    // AuthProvider will pick up changes automatically via onSnapshot or next reload.
+    console.log("Payment completed and verified:", paymentData);
   };
 
   const handleStartTrial = async () => {
@@ -251,7 +214,7 @@ export default function Subscription() {
     }, 1500);
   };
 
-  const canUseTrial = !profile?.hasUsedTrial && (!profile?.subscription || profile?.subscription === 'free');
+  const canUseTrial = !profile?.hasUsedTrial && (!profile?.subscription || profile?.subscription === 'discovery' || profile?.subscription === 'free');
 
   return (
     <motion.div 
@@ -259,116 +222,27 @@ export default function Subscription() {
       animate={{ opacity: 1, y: 0 }}
       className="w-full space-y-12 pb-12"
     >
-      {/* Mobile Money Modal */}
-      {showMobileMoneyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white dark:bg-gray-900 rounded-3xl p-8 max-w-md w-full shadow-2xl relative overflow-hidden"
-          >
-            <button 
-              onClick={() => setShowMobileMoneyModal(false)}
-              className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-            >
-              <X size={20} />
-            </button>
-
-            <div className="text-center space-y-4 mb-8">
-              <div className="w-16 h-16 bg-zoya-red/10 rounded-2xl flex items-center justify-center mx-auto text-zoya-red">
-                <Smartphone size={32} />
-              </div>
-              <h2 className="text-2xl font-black font-poppins">Payer par Mobile Money</h2>
-              <p className="text-gray-500 text-sm">
-                Abonnement <strong>{selectedPlanForMM?.name}</strong> • {displayPrice(selectedPlanForMM)}
-              </p>
-            </div>
-
-            {mmStatus === 'idle' || mmStatus === 'error' || mmStatus === 'initiating' ? (
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-bold mb-2 ml-1">Choix de l'opérateur</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {['MPESA', 'ORANGE', 'AIRTEL'].map((prov) => (
-                      <button
-                        key={prov}
-                        onClick={() => setMmProvider(prov)}
-                        className={cn(
-                          "py-3 rounded-xl text-xs font-bold border-2 transition-all",
-                          mmProvider === prov 
-                            ? "border-zoya-red bg-zoya-red/5 text-zoya-red" 
-                            : "border-gray-100 dark:border-gray-800 hover:border-gray-200"
-                        )}
-                      >
-                        {prov}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold mb-2 ml-1">Numéro de téléphone</label>
-                  <input
-                    type="tel"
-                    placeholder="Ex: +243812345678"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border-2 border-transparent focus:border-zoya-red transition-all"
-                  />
-                </div>
-
-                {mmError && (
-                  <p className="text-red-500 text-xs font-medium text-center">{mmError}</p>
-                )}
-
-                <button
-                  onClick={handleMobileMoneyPayment}
-                  disabled={mmStatus === 'initiating'}
-                  className="w-full py-4 rounded-2xl bg-zoya-red text-white font-bold shadow-lg shadow-zoya-red/20 flex items-center justify-center gap-2"
-                >
-                  {mmStatus === 'initiating' ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>Payer Maintenant</>
-                  )}
-                </button>
-              </div>
-            ) : mmStatus === 'pending' ? (
-              <div className="text-center space-y-6 py-8">
-                <div className="w-16 h-16 border-4 border-zoya-red border-t-transparent rounded-full animate-spin mx-auto" />
-                <div className="space-y-2">
-                  <h3 className="text-xl font-bold">Veuillez patienter...</h3>
-                  <p className="text-sm text-gray-500">
-                    Confirmez la transaction sur votre téléphone en entrant votre code PIN quand vous recevez le prompt USSD.
-                  </p>
-                </div>
-              </div>
-            ) : mmStatus === 'success' ? (
-              <div className="text-center space-y-6 py-8">
-                <div className="w-16 h-16 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto">
-                  <Check size={32} />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-xl font-bold">Paiement Réussi !</h3>
-                  <p className="text-sm text-gray-500">
-                    Votre compte est en cours d'activation. L'application va se recharger automatiquement.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-
-            <p className="text-[10px] text-gray-400 text-center mt-8">
-              Paiement sécurisé via ARAKA. Vos fonds ne sont prélevés qu'après validation de votre code PIN secret.
-            </p>
-          </motion.div>
-        </div>
+      {/* ZoyaPay Checkout */}
+      {selectedPlan && (
+        <ZoyaPayCheckout 
+          isOpen={showZoyaPayCheckout}
+          onClose={() => setShowZoyaPayCheckout(false)}
+          plan={selectedPlan}
+          billingCycle={billingCycle}
+          currency={currency}
+          exchangeRate={exchangeRate}
+          transactionFeeRate={dynamicPricing.transactionFee}
+          vatRate={dynamicPricing.vatRate}
+          userProfile={profile}
+          onPaymentSuccess={handlePaymentSuccess}
+        />
       )}
 
-      {/* Payment Gateway Coming Soon Notification */}
+      {/* Payment Gateway Notification */}
       <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/50 p-4 rounded-3xl flex items-center justify-center gap-3 shadow-inner">
         <Shield className="text-emerald-600 dark:text-emerald-400" size={20} />
         <p className="text-sm font-poppins font-bold text-emerald-900 dark:text-emerald-200 text-center">
-          Paiements Mobile Money (Araka) activés ! Payez via M-Pesa, Orange ou Airtel.
+          Système de paiement ZoyaPay sécurisé actif ! Payez en quelques clics via Mobile Money.
         </p>
       </div>
 

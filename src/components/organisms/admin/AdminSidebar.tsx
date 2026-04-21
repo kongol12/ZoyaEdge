@@ -12,7 +12,8 @@ import {
   Bug, 
   Bell, 
   Shield, 
-  DollarSign, 
+  DollarSign,
+  CreditCard,
   PieChart, 
   BarChart3,
   Terminal
@@ -36,6 +37,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/admin', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
     { icon: DollarSign, label: 'Finances', path: '/admin/finance', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+    { icon: CreditCard, label: 'Tarification', path: '/admin/pricing', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
+    { icon: CreditCard, label: 'Transactions', path: '/admin/transactions', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
     { icon: Terminal, label: 'Activités Système', path: '/admin/activities', color: 'text-zinc-500 bg-zinc-50 dark:bg-zinc-900/20' },
     { icon: BarChart3, label: 'Rapports Trades', path: '/admin/trade-reports', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
     { icon: PieChart, label: 'Abonnements', path: '/admin/subscription-reports', color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },

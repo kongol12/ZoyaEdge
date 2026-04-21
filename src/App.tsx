@@ -48,7 +48,9 @@ import ClientManagement from './pages/admin/ClientManagement';
 import SystemReports from './pages/admin/SystemReports';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminSettings from './pages/admin/AdminSettings';
+import PricingManagement from './pages/admin/PricingManagement';
 import FinanceManagement from './pages/admin/FinanceManagement';
+import Transactions from './pages/admin/Transactions';
 import TradeReporting from './pages/admin/TradeReporting';
 import SubscriptionReports from './pages/admin/SubscriptionReports';
 
@@ -176,6 +178,8 @@ function AppRoutes() {
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/finance" element={<FinanceManagement />} />
+          <Route path="/admin/pricing" element={<PricingManagement />} />
+          <Route path="/admin/transactions" element={<Transactions />} />
           <Route path="/admin/activities" element={<ActivityAdmin />} />
           <Route path="/admin/trade-reports" element={<TradeReporting />} />
           <Route path="/admin/subscription-reports" element={<SubscriptionReports />} />

@@ -18,7 +18,12 @@ const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || '';
 // Trust proxy is required for express-rate-limit to work correctly behind the AI Studio proxy
 app.set('trust proxy', 1);
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.APP_URL || 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-zoyaedge-signature'],
+}));
 
 // Inactivity shutdown logic (Development only)
 // Automatically shuts down the server after 1 hour of no requests to save resources.
@@ -222,6 +227,97 @@ async function verifyUser(req: any, res: any, next: any) {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Helper to finalize payment and upgrade user account
+async function finalizePayment(txId: string, resultData: any) {
+  if (!db) return;
+
+  const q = await db.collection('payments')
+    .where('transactionId', '==', txId)
+    .limit(1)
+    .get();
+
+  if (q.empty) {
+    console.warn(`[Payment] Finalization failed: Transaction ${txId} not found in DB.`);
+    return;
+  }
+
+  const paymentDoc = q.docs[0];
+  const paymentData = paymentDoc.data();
+
+  // IDEMPOTENCY: Stop if already processed
+  if (paymentData.status === 'completed') {
+    return { success: true, alreadyProcessed: true };
+  }
+
+  // Double check status with Araka if resultData isn't already verified
+  const rawStatus = resultData.status || resultData.statusCode || resultData.transactionStatus || resultData.Status || (resultData.data && resultData.data.status);
+  const status = (typeof rawStatus === 'string' ? rawStatus : '').toUpperCase();
+  const desc = (typeof (resultData.statusDescription || resultData.message || "") === 'string' ? (resultData.statusDescription || resultData.message || "") : '').toUpperCase();
+  
+  const isSuccess = status === 'SUCCESSFUL' || status === 'COMPLETED' || status === 'SUCCESS' || status === '200' || status === 'APPROVED' || desc === 'APPROVED';
+  const isFailed = status === 'FAILED' || status === 'CANCELLED' || status === 'REJECTED' || status === 'ERROR' || status === '400';
+
+  if (isSuccess) {
+    await paymentDoc.ref.update({ 
+      status: 'completed',
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    const userRef = db.collection('users').doc(paymentData.userId);
+    const durationDays = paymentData.cycle === 'yearly' ? 365 : 31;
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + durationDays);
+
+    await userRef.update({
+      subscription: paymentData.plan,
+      subscriptionCycle: paymentData.cycle || 'monthly',
+      subscriptionStatus: 'active',
+      subscriptionEndDate: admin.firestore.Timestamp.fromDate(endDate),
+      aiCredits: paymentData.plan === 'pro' ? 30 : 9999,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    await db.collection('activities').add({
+      message: `Abonnement ${paymentData.plan} activé avec succès.`,
+      type: 'payment',
+      severity: 'info',
+      userId: paymentData.userId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    return { success: true };
+  } else if (isFailed) {
+    await paymentDoc.ref.update({ 
+      status: 'failed',
+      failureReason: resultData.message || resultData.statusDescription || "Transaction échouée",
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return { success: false, failed: true };
+  }
+  
+  return { success: false, pending: true };
+}
+
+// Araka Webhook Endpoint
+app.post('/api/payments/araka-callback', webhookLimiter, async (req, res) => {
+  const result = req.body;
+  const txId = result.transactionId || result.transactionReference || (result.data && result.data.transactionId);
+  
+  console.log(`[Araka Webhook] Received callback for Tx: ${txId}`, JSON.stringify(result));
+
+  if (!txId) return res.status(400).send("Missing transaction ID");
+
+  try {
+    const finalResult = await finalizePayment(txId, result);
+    // If not successful/failed (maybe pending), we don't acknowledge so Araka retries if needed
+    // but usually Araka webhook is sent only once or at set intervals
+    res.status(200).send("OK");
+  } catch (err) {
+    console.error("[Araka Webhook] Processing error:", err);
+    res.status(500).send("Internal Error");
+  }
 });
 
 // Initialize Firebase Admin lazily or safely
@@ -926,7 +1022,7 @@ async function getArakaToken() {
   email = email.trim();
   password = password.trim();
 
-  console.log(`[Araka Auth] Tentative stricte de connexion avec l'email: '${email}' sur ${url}`);
+  console.log(`[Araka Auth] Connexion sur ${url}`);
 
     try {
     const response = await fetch(`${url}/api/login`, {
@@ -958,23 +1054,30 @@ async function getArakaToken() {
 }
 
 app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any) => {
-  const { amount, currency, phoneNumber, provider, planId } = req.body;
-  if (!amount || !phoneNumber || !provider) return res.status(400).json({ error: "Paramètres manquants" });
+  const { amount, currency, phoneNumber, provider, planId, billingCycle, fee, vat, vatRate, feeRate, userName } = req.body;
+  if (!amount || !phoneNumber || !provider || !planId || !billingCycle) {
+    return res.status(400).json({ error: "Paramètres manquants (amount, phoneNumber, provider, planId, billingCycle requis)" });
+  }
+
+  // Server-side Phone Normalization for Araka (DRC Format: 243XXXXXXXXX)
+  let normalizedPhone = phoneNumber.replace(/\D/g, '');
+  if (normalizedPhone.startsWith('0') && normalizedPhone.length === 10) {
+    normalizedPhone = '243' + normalizedPhone.slice(1);
+  } else if (normalizedPhone.length === 9) {
+    normalizedPhone = '243' + normalizedPhone;
+  }
+  
+  if (normalizedPhone.length !== 12 || !normalizedPhone.startsWith('243')) {
+    // Fallback or potential warning, but for now we follow the logic
+  }
 
   try {
     const token = await getArakaToken();
     const url = await getArakaUrl();
     
     // Fetch multi-currency config from app_settings
-    let pageId = process.env.ARAKA_PAYMENT_PAGE_ID; // Old default = CDF
+    let pageId = process.env.ARAKA_PAYMENT_PAGE_ID; 
     
-    // Check specific env vars based on currency
-    if (currency === 'CDF' && process.env.ARAKA_PAYMENT_PAGE_ID) {
-      pageId = process.env.ARAKA_PAYMENT_PAGE_ID;
-    } else if (currency === 'USD' && process.env.ARAKA_PAYMENT_PAGE_ID_USD) {
-      pageId = process.env.ARAKA_PAYMENT_PAGE_ID_USD;
-    }
-
     if (db) {
       try {
         const settingsSnap = await db.collection('app_settings').doc('global').get();
@@ -991,16 +1094,16 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
       }
     }
 
-    if (!pageId) throw new Error('ARAKA_PAYMENT_PAGE_ID de production non configuré pour cette devise');
+    if (!pageId) throw new Error('ARAKA_PAYMENT_PAGE_ID non configuré pour cette devise');
 
     const transactionReference = `ZOYA_${req.user.uid.slice(0, 5)}_${Date.now()}`;
     
     const payload = {
       order: {
         paymentPageId: pageId,
-        customerFullName: req.user.name || "Zoya User",
-        customerPhoneNumber: phoneNumber,
-        customerEmailAddress: req.user.email || "user@zoyaedge.com",
+        customerFullName: userName || req.user.name || req.user.email?.split('@')[0] || "Zoya User",
+        customerPhoneNumber: normalizedPhone,
+        customerEmailAddress: req.user.email,
         transactionReference: transactionReference,
         amount: parseFloat(amount),
         currency: currency || "USD",
@@ -1009,7 +1112,7 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
       paymentChannel: {
         channel: "MOBILEMONEY",
         provider: provider, // MPESA, ORANGE, AIRTEL
-        walletID: phoneNumber
+        walletID: normalizedPhone
       }
     };
 
@@ -1033,21 +1136,27 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
       }
       console.error("[Araka Payment Request Failed]:", response.status, errorData);
       return res.status(response.status).json({ 
-        error: "Erreur Araka", 
-        details: errorData 
+        error: "Le fournisseur de paiement a rejeté la requête.", 
+        details: errorData?.message || errorText 
       });
     }
 
     const result = await response.json();
     
-    // Log temp transaction in Firestore
     if (db) {
       await db.collection('payments').add({
         userId: req.user.uid,
-        amount,
+        userName: userName || req.user.name || req.user.email?.split('@')[0] || "Client ZoyaEdge",
+        userEmail: req.user.email,
+        amount: parseFloat(amount),
         currency: currency || "USD",
         status: 'pending',
         plan: planId,
+        cycle: billingCycle,
+        fee: fee || 0,
+        vat: vat || 0,
+        vatRate: vatRate || 0,
+        feeRate: feeRate || 0,
         method: 'mobile_money',
         provider,
         transactionReference,
@@ -1055,14 +1164,8 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      // System Journaling
-      await db.collection('system_logs').add({
-        event: 'PAYMENT_INITIATED',
-        details: { provider, planId, amount, currency, transactionId: result.transactionId },
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
       await db.collection('activities').add({
-        message: `Client ${req.user.email} a initié un paiement Mobile Money (${provider}).`,
+        message: `Client ${userName || req.user.email} a initié un paiement ${currency} pour le plan ${planId}.`,
         type: 'payment',
         severity: 'info',
         userId: req.user.uid,
@@ -1070,7 +1173,6 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
       });
     }
 
-    // Explicitly return transactionId and transactionReference to the frontend
     res.json({ 
       ...result, 
       transactionId: result.transactionId,
@@ -1078,7 +1180,7 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
     });
   } catch (error: any) {
     console.error("Mobile Money Error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Erreur lors de l'initialisation du paiement." });
   }
 });
 
@@ -1108,86 +1210,14 @@ app.get('/api/payments/mobile-money/status/:txId', verifyUser, async (req: any, 
     const result = await response.json();
     console.log(`[Araka Polling] Status pour transId ${txId}:`, JSON.stringify(result));
     
-    // Result can be "SUCCESSFUL", "FAILED", "PENDING" etc (depends on Araka)
-    const rawStatus = result.status || result.statusCode || result.transactionStatus || result.Status || (result.data && result.data.status);
-    const rawDesc = result.statusDescription || result.message || "";
-    const status = (typeof rawStatus === 'string' ? rawStatus : '').toUpperCase();
-    const desc = (typeof rawDesc === 'string' ? rawDesc : '').toUpperCase();
+    // Use shared finalization logic
+    const finalizationResult = await finalizePayment(txId, result);
     
-    // Extension des clés de succès
-    const isSuccess = status === 'SUCCESSFUL' || status === 'COMPLETED' || status === 'SUCCESS' || status === '200' || status === 'APPROVED' || desc === 'APPROVED';
-    const isFailed = status === 'FAILED' || status === 'CANCELLED' || status === 'REJECTED' || status === 'ERROR' || status === '400';
-
-    if ((isSuccess || isFailed) && db) {
-      const q = await db.collection('payments')
-        .where('userId', '==', req.user.uid)
-        .where('transactionId', '==', txId)
-        .limit(1)
-        .get();
-
-      if (!q.empty) {
-        const paymentDoc = q.docs[0];
-        const paymentData = paymentDoc.data();
-        
-        if (isSuccess && paymentData.status !== 'completed') {
-          await paymentDoc.ref.update({ 
-            status: 'completed',
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          
-          // UPGRADE USER
-          const userRef = db.collection('users').doc(paymentData.userId);
-          const durationDays = paymentData.cycle === 'yearly' ? 365 : 31;
-          const endDate = new Date();
-          endDate.setDate(endDate.getDate() + durationDays);
-
-          await userRef.update({
-            subscription: paymentData.plan,
-            subscriptionStatus: 'active',
-            subscriptionEndDate: admin.firestore.Timestamp.fromDate(endDate),
-            aiCredits: paymentData.plan === 'pro' ? 30 : 9999,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-
-          // System Journaling
-          await db.collection('system_logs').add({
-            event: 'PAYMENT_UPGRADED_ACCOUNT',
-            details: { userId: paymentData.userId, transactionId: txId, plan: paymentData.plan },
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          await db.collection('activities').add({
-            message: `Abonnement ${paymentData.plan} activé avec succès.`,
-            type: 'payment',
-            severity: 'info',
-            userId: paymentData.userId,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-        } else if (isFailed && paymentData.status === 'pending') {
-          await paymentDoc.ref.update({ 
-            status: 'failed',
-            failureReason: result.message || result.statusDescription || "Transaction échouée",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-
-          // System Journaling
-          await db.collection('system_logs').add({
-            event: 'PAYMENT_FAILED',
-            details: { userId: paymentData.userId, transactionId: txId, error: result.message },
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-          await db.collection('activities').add({
-            message: `L'achat de l'abonnement a échoué.`,
-            type: 'payment',
-            severity: 'error',
-            userId: paymentData.userId,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-          });
-        }
-      }
-    }
+    const rawStatus = result.status || result.statusCode || result.transactionStatus || result.Status || (result.data && result.data.status);
+    const status = (typeof rawStatus === 'string' ? rawStatus : '').toUpperCase();
 
     // Force normalized output to guarantee frontend catch
-    const finalStatusText = isSuccess ? 'SUCCESS' : (isFailed ? 'FAILED' : status);
+    const finalStatusText = finalizationResult?.success ? 'SUCCESS' : (finalizationResult?.failed ? 'FAILED' : status);
     res.json({ ...result, _statusText: finalStatusText });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

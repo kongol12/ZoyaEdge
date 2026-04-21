@@ -98,7 +98,7 @@ export default function UserManagement() {
       u.displayName || 'N/A',
       u.email,
       u.role || 'user',
-      u.subscription || 'free',
+      u.subscription || 'discovery',
       u.aiCredits || 0,
       u.subscriptionStatus || 'inactive'
     ]);
@@ -120,7 +120,7 @@ export default function UserManagement() {
       Nom: u.displayName || 'N/A',
       Email: u.email,
       Role: u.role || 'user',
-      Abonnement: u.subscription || 'free',
+      Abonnement: u.subscription || 'discovery',
       Credits_AI: u.aiCredits || 0,
       Statut: u.subscriptionStatus || 'inactive',
       Cree_le: u.createdAt?.toDate?.()?.toLocaleString() || 'N/A'
@@ -233,7 +233,7 @@ export default function UserManagement() {
                   </td>
                   <td className="px-6 py-4">
                     <select 
-                      value={user.subscription || 'free'}
+                      value={user.subscription || 'discovery'}
                       onChange={(e) => handleUpdateSubscription(user.id, e.target.value)}
                       className={cn(
                         "text-xs font-bold px-3 py-1.5 rounded-xl border-none outline-none focus:ring-2 focus:ring-zoya-red transition-all",
@@ -242,7 +242,7 @@ export default function UserManagement() {
                         "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
                       )}
                     >
-                      <option value="free">Free</option>
+                      <option value="discovery">Discovery</option>
                       <option value="pro">Pro</option>
                       <option value="premium">Premium</option>
                     </select>

@@ -4,7 +4,6 @@ import { doc, onSnapshot, updateDoc, serverTimestamp, setDoc } from 'firebase/fi
 import { Settings, Cpu, CreditCard, ShieldCheck, Save, AlertTriangle, RefreshCw } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../lib/auth';
-import { motion } from 'motion/react';
 import { OperationType, handleFirestoreError } from '../../lib/db';
 
 interface AppSettings {
@@ -12,9 +11,6 @@ interface AppSettings {
   aiModel: string;
   defaultCredits: number;
   superAdmins: string[];
-  exchangeRate: number;
-  arakaUsdPageId: string;
-  arakaCdfPageId: string;
   updatedAt: any;
 }
 
@@ -32,10 +28,11 @@ export default function AdminSettings() {
       if (snapshot.exists()) {
         const data = snapshot.data();
         setSettings({
-          ...data,
-          exchangeRate: data.exchangeRate || 2800,
-          arakaUsdPageId: data.arakaUsdPageId || '',
-          arakaCdfPageId: data.arakaCdfPageId || '',
+          maintenanceMode: data.maintenanceMode || false,
+          aiModel: data.aiModel || 'gemini-1.5-pro',
+          defaultCredits: data.defaultCredits || 10,
+          superAdmins: data.superAdmins || ['kongolmandf@gmail.com'],
+          updatedAt: data.updatedAt
         } as AppSettings);
       } else {
         // Initialize default settings if they don't exist
@@ -44,9 +41,6 @@ export default function AdminSettings() {
           aiModel: 'gemini-1.5-pro',
           defaultCredits: 10,
           superAdmins: ['kongolmandf@gmail.com'],
-          exchangeRate: 2800,
-          arakaUsdPageId: '',
-          arakaCdfPageId: '',
           updatedAt: serverTimestamp()
         };
         setDoc(doc(db, 'app_settings', 'global'), defaultSettings);
@@ -222,77 +216,12 @@ export default function AdminSettings() {
             )}
           </div>
         </div>
-        
-        {/* Payment Configuration */}
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-6 md:col-span-2">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center text-emerald-600">
-              <CreditCard size={24} />
-            </div>
-            <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white">Configuration Paiements (Araka)</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Taux de Change (1 USD en CDF)</label>
-              <input
-                type="number"
-                value={settings?.exchangeRate || 2800}
-                onChange={(e) => handleUpdate('exchangeRate', parseFloat(e.target.value))}
-                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
-              />
-            </div>
-            {/* Keeping spacing */}
-            <div className="hidden md:block"></div>
-
-            <div>
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Page ID Araka (USD)</label>
-              <input
-                type="text"
-                value={settings?.arakaUsdPageId || ''}
-                placeholder="Ex: xxx-xxxx-xxxx-xxxx"
-                onChange={(e) => setSettings({ ...settings, arakaUsdPageId: e.target.value } as AppSettings)}
-                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Page ID Araka (CDF)</label>
-              <input
-                type="text"
-                value={settings?.arakaCdfPageId || ''}
-                placeholder="Ex: xxx-xxxx-xxxx-xxxx"
-                onChange={(e) => setSettings({ ...settings, arakaCdfPageId: e.target.value } as AppSettings)}
-                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <button
-              onClick={() => {
-                if (settings) {
-                  // Save all modified fields in settings state to firestore
-                  updateDoc(doc(db, 'app_settings', 'global'), {
-                    ...settings,
-                    updatedAt: serverTimestamp()
-                  });
-                }
-              }}
-              className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
-            >
-              <Save size={18} /> Enregistrer les configurations
-            </button>
-          </div>
-          <p className="text-xs text-gray-500">
-            Ces Page IDs permettent d'activer le paiement multidevise. Si vide, le système utilisera la variable d'environnement de fallback.
-          </p>
-        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg">
         <h3 className="text-lg font-poppins font-black text-gray-900 dark:text-white mb-4">Dernière Mise à Jour</h3>
         <p className="text-sm text-gray-500">
-          Les paramètres globaux ont été modifiés pour la dernière fois le : 
+          Les paramètres globaux (Système) ont été modifiés pour la dernière fois le : 
           <span className="font-bold text-gray-900 dark:text-white ml-2">
             {settings?.updatedAt?.toDate() ? settings.updatedAt.toDate().toLocaleString() : 'Inconnu'}
           </span>
