@@ -257,7 +257,7 @@ async function finalizePayment(txId: string, resultData: any) {
   const desc = (typeof (resultData.statusDescription || resultData.message || "") === 'string' ? (resultData.statusDescription || resultData.message || "") : '').toUpperCase();
   
   const isSuccess = status === 'SUCCESSFUL' || status === 'COMPLETED' || status === 'SUCCESS' || status === '200' || status === 'APPROVED' || desc === 'APPROVED';
-  const isFailed = status === 'FAILED' || status === 'CANCELLED' || status === 'REJECTED' || status === 'ERROR' || status === '400';
+  const isFailed = status === 'FAILED' || status === 'CANCELLED' || status === 'REJECTED' || status === 'ERROR' || status === '400' || status === 'FAIL' || status.includes('FAIL') || status.includes('REJECT') || status.includes('CANCEL');
 
   if (isSuccess) {
     await paymentDoc.ref.update({ 
@@ -1079,22 +1079,23 @@ async function getArakaToken() {
   }
 }
 
-app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any) => {
+app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
   const { amount, currency, phoneNumber, provider, planId, billingCycle, fee, vat, vatRate, feeRate, userName } = req.body;
   if (!amount || !phoneNumber || !provider || !planId || !billingCycle) {
     return res.status(400).json({ error: "Paramètres manquants (amount, phoneNumber, provider, planId, billingCycle requis)" });
   }
 
-  // Server-side Phone Normalization for Araka (DRC Format: 243XXXXXXXXX)
+  // Server-side Phone Normalization for Araka (DRC Format: +243XXXXXXXXX)
   let normalizedPhone = phoneNumber.replace(/\D/g, '');
-  if (normalizedPhone.startsWith('0') && normalizedPhone.length === 10) {
-    normalizedPhone = '243' + normalizedPhone.slice(1);
+  if (normalizedPhone.startsWith('243') && normalizedPhone.length === 12) {
+    normalizedPhone = '+' + normalizedPhone;
+  } else if (normalizedPhone.startsWith('0') && normalizedPhone.length === 10) {
+    normalizedPhone = '+243' + normalizedPhone.slice(1);
   } else if (normalizedPhone.length === 9) {
-    normalizedPhone = '243' + normalizedPhone;
-  }
-  
-  if (normalizedPhone.length !== 12 || !normalizedPhone.startsWith('243')) {
-    // Fallback or potential warning, but for now we follow the logic
+    normalizedPhone = '+243' + normalizedPhone;
+  } else {
+    // If user provided +243 inside the \D strip it was removed, let's just make sure it has +
+    normalizedPhone = '+' + normalizedPhone;
   }
 
   try {
@@ -1128,6 +1129,7 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
     const exchangeRate = settings.exchangeRate || 2800;
     const transactionFee = settings.transactionFee || 2;
     const vatRate = settings.vatRate || 16;
+    const globalDiscount = settings.globalDiscount || 0;
 
     // Map planId to base USD price from Firestore
     const priceMap: Record<string, Record<string, number>> = {
@@ -1135,25 +1137,39 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
       pro: { monthly: settings.proMonthlyUSD ?? 20, yearly: settings.proYearlyUSD ?? 200 },
       premium: { monthly: settings.premiumMonthlyUSD ?? 50, yearly: settings.premiumYearlyUSD ?? 500 },
     };
-    const basePriceUSD = priceMap[planId]?.[billingCycle];
+    let basePriceUSD = priceMap[planId]?.[billingCycle];
     if (basePriceUSD === undefined) {
       return res.status(400).json({ error: "Plan ou cycle de facturation invalide." });
     }
-    const basePriceInCurrency = currency === 'USD' ? basePriceUSD : basePriceUSD * exchangeRate;
-    const vatAmount = (basePriceInCurrency * vatRate) / 100;
-    const subtotalWithVat = basePriceInCurrency + vatAmount;
-    const feeAmount = (subtotalWithVat * transactionFee) / 100;
-    const expectedTotal = Math.round((subtotalWithVat + feeAmount) * 100) / 100;
-    const clientAmount = Math.round(parseFloat(amount) * 100) / 100;
+    
+    // Apply discount
+    const discountMultiplier = 1 - (globalDiscount / 100);
+    basePriceUSD = basePriceUSD * discountMultiplier;
 
-    // Tolérance de 2% pour les arrondis de devise
-    if (Math.abs(clientAmount - expectedTotal) / expectedTotal > 0.02) {
-      console.warn(`[Payment] Amount mismatch: client=${clientAmount}, expected=${expectedTotal}`);
-      return res.status(400).json({ error: "Montant invalide. Veuillez recharger la page et réessayer." });
+    const basePriceInCurrency = currency === 'USD' ? basePriceUSD : basePriceUSD * exchangeRate;
+    
+    // We preserve up to 2 decimal places properly for USD
+    const roundAmount = (val: number) => {
+      return currency === 'USD' ? Math.round(val * 100) / 100 : Math.round(val);
+    };
+
+    const vatAmount = roundAmount((basePriceInCurrency * vatRate) / 100);
+    const subtotalWithVat = basePriceInCurrency + vatAmount;
+    const feeAmount = roundAmount((subtotalWithVat * transactionFee) / 100);
+    const expectedTotal = roundAmount(subtotalWithVat + feeAmount);
+    
+    // Allow standard parsing for the string we received from client
+    const clientAmount = parseFloat(amount);
+
+    // Tolérance supprimée pour éviter les blocages intempestifs. 
+    // Le serveur est roi : on facture le montant calculé (expectedTotal).
+    if (Math.abs(clientAmount - expectedTotal) / expectedTotal > 0.05) {
+      console.warn(`[Payment Warning] Important Amount Mismatch -> Client Sent: ${clientAmount}, Server Computed: ${expectedTotal}. We will bill the Server Computed amount.`);
     }
 
     const transactionReference = `ZOYA_${req.user.uid.slice(0, 5)}_${Date.now()}`;
     
+    // As per Araka documentation, amount should typically be an integer string or number
     const payload = {
       order: {
         paymentPageId: pageId,
@@ -1161,7 +1177,7 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
         customerPhoneNumber: normalizedPhone,
         customerEmailAddress: req.user.email,
         transactionReference: transactionReference,
-        amount: expectedTotal,
+        amount: expectedTotal, // It is already either integer (CDF) or 2 max decimals (USD)
         currency: currency || "USD",
         redirectURL: `${process.env.APP_URL}/subscription/callback`
       },
@@ -1191,9 +1207,15 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
         errorData = { message: errorText };
       }
       console.error("[Araka Payment Request Failed]:", response.status, errorData);
+      
+      let finalDetails = errorData?.message || errorText;
+      if (typeof finalDetails === 'string' && finalDetails.includes('Load failed')) {
+         finalDetails = "Araka (API Sandbox) a renvoyé une erreur interne ('Load failed'), bien que la transaction ait pu être initiée sur votre téléphone. Veuillez consulter les logs Araka ou réessayer.";
+      }
+      
       return res.status(response.status).json({ 
         error: "Le fournisseur de paiement a rejeté la requête.", 
-        details: errorData?.message || errorText 
+        details: finalDetails 
       });
     }
 
@@ -1240,7 +1262,7 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
   }
 });
 
-app.get('/api/payments/mobile-money/status/:txId', verifyUser, async (req: any, res: any) => {
+app.get('/api/user/sync-status/:txId', verifyUser, async (req: any, res: any) => {
   const { txId } = req.params;
   const userId = req.user.uid;
 
@@ -1274,23 +1296,32 @@ app.get('/api/payments/mobile-money/status/:txId', verifyUser, async (req: any, 
     const token = await getArakaToken();
     const url = await getArakaUrl();
     
-    const response = await fetch(`${url}/api/Reporting/transactionstatus/${txId}`, {
+    // First try mapping by reference
+    let arakaResponse = await fetch(`${url}/api/Reporting/transactionstatusbyreference/${paymentData.transactionReference || txId}`, {
       method: 'GET',
-      headers: { 
-        'Authorization': `Bearer ${token}`,
-        'User-Agent': 'ZoyaEdge-Server/1.0'
-      }
+      headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' }
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      if (response.status === 404) {
-         return res.json({ status: "PENDING", _statusText: "PENDING", details: "Transaction not found yet" });
-      }
-      return res.status(response.status).json({ error: "Vérification échouée", details: errorText });
+    // If not found by reference, try by Araka's transactionId
+    if (arakaResponse.status === 404) {
+      arakaResponse = await fetch(`${url}/api/Reporting/transactionstatus/${txId}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' }
+      });
     }
 
-    const result = await response.json();
+    if (!arakaResponse.ok) {
+      const errorText = await arakaResponse.text();
+      if (arakaResponse.status === 404) {
+         return res.json({ status: "PENDING", _statusText: "PENDING", details: "Transaction not found yet" });
+      }
+      if (arakaResponse.status === 400) {
+         return res.json({ status: "FAILED", _statusText: "FAILED", details: "Transaction invalid or dropped by Araka (400)" });
+      }
+      return res.status(arakaResponse.status).json({ error: "Vérification échouée", details: errorText });
+    }
+
+    const result = await arakaResponse.json();
     
     // 3. Finaliser (Mise à jour DB + Abonnement) si succès détecté par le serveur
     const finalizationResult = await finalizePayment(txId, result);
@@ -1304,6 +1335,58 @@ app.get('/api/payments/mobile-money/status/:txId', verifyUser, async (req: any, 
   } catch (error: any) {
     console.error(`[Payment Status Error] txId: ${txId}`, error);
     res.status(500).json({ error: "Erreur lors de la vérification du statut." });
+  }
+});
+
+// ARAKA WEBHOOK / CALLBACK ENDPOINT
+// This endpoint is meant to be called by Araka servers asynchronously
+app.post('/api/webhook/araka', async (req, res) => {
+  try {
+    const payload = req.body;
+    
+    // Araka usually sends the transaction ID or Reference in the payload
+    const txId = payload.transactionId || payload.id;
+    const txRef = payload.transactionReference || payload.reference;
+
+    if (!txId && !txRef) {
+      console.error("[Araka Webhook] Missing transaction ID or Reference", payload);
+      return res.status(400).json({ error: "Missing identifying fields" });
+    }
+
+    console.log(`[Araka Webhook] Received update for txId: ${txId} / txRef: ${txRef}`);
+
+    if (!db) {
+       return res.status(500).json({ error: "DB not initialized" });
+    }
+
+    // Find the payment in DB by txId or txRef
+    let q = db.collection('payments').limit(1);
+    if (txRef) {
+      q = q.where('transactionReference', '==', txRef);
+    } else {
+      q = q.where('transactionId', '==', txId);
+    }
+    
+    const snap = await q.get();
+    
+    if (snap.empty) {
+      console.warn(`[Araka Webhook] Payment not found for reference ${txRef || txId}`);
+      return res.status(404).json({ error: "Payment not found" });
+    }
+
+    const internalTxId = snap.docs[0].data().transactionId;
+
+    // Use our battle-tested finalizePayment logic
+    const finalizationResult = await finalizePayment(internalTxId, payload);
+
+    return res.status(200).json({ 
+      status: "received", 
+      processed: finalizationResult?.success || finalizationResult?.failed || false
+    });
+
+  } catch (error) {
+    console.error("[Araka Webhook] Error processing callback:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

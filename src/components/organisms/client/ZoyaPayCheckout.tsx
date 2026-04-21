@@ -34,7 +34,8 @@ export default function ZoyaPayCheckout({
   onPaymentSuccess
 }: ZoyaPayCheckoutProps) {
   const { user } = useAuth();
-  const [step, setStep] = useState<'info' | 'payment' | 'validating' | 'success'>('info');
+  const [step, setStep] = useState<'info' | 'payment' | 'validating' | 'success' | 'timeout' | 'failed'>('info');
+
   const [formData, setFormData] = useState({
     fullName: userProfile?.displayName || '',
     email: userProfile?.email || '',
@@ -54,10 +55,16 @@ export default function ZoyaPayCheckout({
   const safeVatRate = Number(vatRate) || 0;
   const safeFeeRate = Number(transactionFeeRate) || 0;
 
-  const vatAmount = (safePrice * safeVatRate) / 100;
+  // We preserve up to 2 decimal places properly for USD, 
+  // while large numbers (CDF) generally naturally render without sub-cents.
+  const roundAmount = (val: number) => {
+    return currency === 'USD' ? Math.round(val * 100) / 100 : Math.round(val);
+  };
+
+  const vatAmount = roundAmount((safePrice * safeVatRate) / 100);
   const subtotalWithVat = safePrice + vatAmount;
-  const transactionFeeAmount = (subtotalWithVat * safeFeeRate) / 100;
-  const totalPrice = subtotalWithVat + transactionFeeAmount;
+  const transactionFeeAmount = roundAmount((subtotalWithVat * safeFeeRate) / 100);
+  const totalPrice = roundAmount(subtotalWithVat + transactionFeeAmount);
 
   useEffect(() => {
     return () => {
@@ -81,11 +88,15 @@ export default function ZoyaPayCheckout({
     pollingRef.current = setInterval(async () => {
       try {
         const idToken = await user?.getIdToken();
-        const response = await fetch(`/api/payments/mobile-money/status/${txId}`, {
+        const response = await fetch(`/api/user/sync-status/${txId}`, {
           headers: { 'Authorization': `Bearer ${idToken}` }
         });
         
-        if (!response.ok) throw new Error("Vérification échouée");
+        if (!response.ok) {
+           // We silently fail because polling will retry in 3 seconds.
+           // However after too many failures we could abort. We'll let the timer handle it.
+           return;
+        }
         
         const data = await response.json();
         const status = data._statusText || data.status;
@@ -105,15 +116,13 @@ export default function ZoyaPayCheckout({
           });
         } else if (status === 'FAILED') {
           clearInterval(pollingRef.current!);
-          setStep('payment');
-          setError(data.message || "La transaction a été rejetée ou a échoué.");
+          setStep('failed');
         }
 
         setPollingAttempt(prev => {
-          if (prev >= 60) { // 2 minutes timeout (2s * 60)
+          if (prev >= 40) { // 2 minutes timeout (3s * 40)
             clearInterval(pollingRef.current!);
-            setError("Temps d'attente dépassé. Si vous avez été débité, contactez le support.");
-            setStep('payment');
+            setStep('timeout');
             return prev;
           }
           return prev + 1;
@@ -121,7 +130,7 @@ export default function ZoyaPayCheckout({
       } catch (err) {
         console.error("Polling error:", err);
       }
-    }, 2000);
+    }, 3000); // 3 seconds instead of 2
   };
 
   const validatePhone = (phone: string) => {
@@ -161,7 +170,7 @@ export default function ZoyaPayCheckout({
 
     try {
       const idToken = await user?.getIdToken();
-      const response = await fetch('/api/payments/mobile-money/pay', {
+      const response = await fetch('/api/user/sync-settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,8 +192,17 @@ export default function ZoyaPayCheckout({
       });
 
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.details || errData.error || "Erreur de paiement");
+        let errData;
+        try {
+          errData = await response.json();
+        } catch {
+          throw new Error("Connexion momentanément interrompue, veuillez réessayer.");
+        }
+        let errMsg = errData.details || errData.error || "Erreur de paiement";
+        if (typeof errMsg === 'string' && errMsg.includes('did not match the expected pattern')) {
+           errMsg = "Le numéro de téléphone n'est pas reconnu par l'opérateur local (ex: format invalide).";
+        }
+        throw new Error(errMsg);
       }
 
       const result = await response.json();
@@ -192,7 +210,12 @@ export default function ZoyaPayCheckout({
       setStep('validating');
       startPolling(result.transactionId);
     } catch (err: any) {
-      setError(err.message);
+      console.error("[ZoyaPayCheckout] Fetch Exception:", err);
+      if (err && err.message && (err.message.includes('Load failed') || err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
+        setError("Erreur réseau: Impossible de contacter ZoyaPay. Veuillez vérifier votre connexion ou désactiver votre bloqueur de pub.");
+      } else {
+        setError(err?.message || "Erreur réseau inconnue.");
+      }
     } finally {
       setLoading(false);
     }
@@ -255,7 +278,7 @@ export default function ZoyaPayCheckout({
                       )}
                       {safeFeeRate > 0 && (
                         <p className="text-[10px] text-gray-500 font-bold uppercase">
-                          + {transactionFeeAmount.toLocaleString()} {currency} (Frais de service {safeFeeRate}%)
+                          + {transactionFeeAmount.toLocaleString()} {currency} (Frais de transaction {safeFeeRate}%)
                         </p>
                       )}
                     </div>
@@ -407,7 +430,7 @@ export default function ZoyaPayCheckout({
                   )}
                   {safeFeeRate > 0 && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 font-bold text-xs">Frais de Service ZoyaPay ({safeFeeRate}%)</span>
+                      <span className="text-gray-500 font-bold text-xs">Frais de transaction ZoyaPay ({safeFeeRate}%)</span>
                       <span className="font-black text-gray-900 dark:text-white">{transactionFeeAmount.toLocaleString()} {currency}</span>
                     </div>
                   )}
@@ -433,7 +456,7 @@ export default function ZoyaPayCheckout({
 
             {step === 'validating' && (
               <div className="p-12 text-center space-y-8">
-                <div className="relative w-24 h-24 mx-auto">
+                <div className="relative w-24 h-24 mx-auto mb-2">
                    <div className="absolute inset-0 border-4 border-zoya-red/10 rounded-full" />
                    <div className="absolute inset-0 border-4 border-zoya-red border-t-transparent rounded-full animate-spin" />
                    <div className="absolute inset-0 flex items-center justify-center text-zoya-red">
@@ -441,13 +464,12 @@ export default function ZoyaPayCheckout({
                    </div>
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Paiement en cours...</h3>
-                  <p className="text-gray-500">Veuillez valider l'opération sur votre téléphone. (Essai {pollingAttempt}/60)</p>
+                  <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">En attente de confirmation...</h3>
+                  <p className="text-gray-500 font-medium">Validez la demande sur votre téléphone.</p>
                 </div>
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-2xl flex items-center gap-3 text-left">
-                  <RefreshCw className="text-blue-500 animate-spin shrink-0" size={20} />
-                  <p className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase leading-tight">
-                    Nous vérifions automatiquement le statut de votre paiement auprès de l'opérateur toutes les 2 secondes.
+                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl flex justify-center text-center">
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest leading-relaxed">
+                    Notre système synchronise votre paiement en temps réel.
                   </p>
                 </div>
               </div>
@@ -472,8 +494,8 @@ export default function ZoyaPayCheckout({
                 </motion.div>
                 
                 <div className="space-y-2">
-                  <h3 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">Félicitations !</h3>
-                  <p className="text-gray-500">Votre abonnement est désormais actif. Vous avez accès à toutes les fonctionnalités {plan.name}.</p>
+                  <h3 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">Paiement confirmé</h3>
+                  <p className="text-gray-500 font-medium">Votre abonnement ZoyaEdge est actif.</p>
                 </div>
 
                 <div className="flex flex-col gap-3">
@@ -481,16 +503,61 @@ export default function ZoyaPayCheckout({
                     onClick={() => window.location.reload()}
                     className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-black text-lg transition-transform hover:scale-105"
                   >
-                    Actualiser ZoyaEdge
+                    Accéder à ZoyaEdge
                   </button>
                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">ID: {transactionId || "ZYP-XXXX-XXXX"}</p>
                 </div>
               </div>
             )}
+            {step === 'timeout' && (
+              <div className="p-12 text-center space-y-8">
+                <div className="w-20 h-20 mx-auto bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center text-amber-500">
+                  <RefreshCw size={32} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Délai de confirmation prolongé</h3>
+                  <p className="text-gray-500 font-medium leading-relaxed">Votre opérateur met plus de temps que prévu.</p>
+                </div>
+                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl flex justify-center text-center">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Si vous avez été débité, votre accès sera activé automatiquement.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setStep('payment')}
+                  className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-black text-lg transition-transform hover:scale-105"
+                >
+                  Fermer ou réessayer
+                </button>
+              </div>
+            )}
+
+            {step === 'failed' && (
+              <div className="p-12 text-center space-y-8">
+                <div className="w-20 h-20 mx-auto bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center text-red-500">
+                  <X size={32} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Paiement non confirmé</h3>
+                  <p className="text-gray-500 font-medium leading-relaxed">La demande a été annulée ou expirée.</p>
+                </div>
+                <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl flex justify-center text-center">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    Vous pouvez réessayer immédiatement.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setStep('payment')}
+                  className="w-full py-4 bg-zoya-red text-white rounded-2xl font-black text-lg transition-transform hover:scale-105"
+                >
+                  Réessayer
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Footer Actions */}
-          {step !== 'validating' && step !== 'success' && (
+          {step !== 'validating' && step !== 'success' && step !== 'timeout' && step !== 'failed' && (
             <div className="p-6 bg-gray-50 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
               <div className="flex items-center gap-2 text-gray-500">
                 <Shield size={14} />

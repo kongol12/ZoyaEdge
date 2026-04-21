@@ -108,6 +108,23 @@ function AppRoutes() {
     return () => unsubscribe();
   }, []);
 
+  // Keep-alive mechanism: Pings server every 5 minutes for 4 hours to prevent sleep during testing
+  React.useEffect(() => {
+    const startTime = Date.now();
+    const FOUR_HOURS = 4 * 60 * 60 * 1000;
+    
+    const interval = setInterval(() => {
+      if (Date.now() - startTime > FOUR_HOURS) {
+        clearInterval(interval);
+        return; // Stops pinging after 4 hours, letting the container sleep
+      }
+      // Simple health ping
+      fetch('/api/health').catch((err) => console.log('Keep-alive ping failed', err));
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => clearInterval(interval);
+  }, []);
+
   const isAdmin = profile?.role === 'admin';
   const isBypassedAgent = profile?.role === 'agent' && profile?.bypassMaintenance;
   const canBypassMaintenance = isSuper || isAdmin || isBypassedAgent;
