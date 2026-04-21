@@ -1,112 +1,87 @@
-# ZoyaEdge — L'Intelligence Comportementale au Service du Trading
+# ZoyaEdge V5 — L'Intelligence Comportementale au Service du Trading
 
-ZoyaEdge est une plateforme d'analyse de performance et de coaching psychologique pour les traders (Forex, Indices, Crypto). Contrairement aux journaux de trading classiques, ZoyaEdge utilise l'Intelligence Artificielle pour détecter les biais cognitifs (FOMO, Revenge Trading, fatigue) et transformer les données brutes en décisions profitables.
-
----
-
-## 🚀 Stack Technologique
-
-### Frontend
-- **React 19** : Interface utilisateur réactive et performante.
-- **Vite 6** : Build tool ultra-rapide.
-- **Tailwind CSS 4** : Design system moderne et utilitaire.
-- **Motion (Framer Motion)** : Animations fluides et transitions premium.
-- **Lucide React** : Bibliothèque d'icônes vectorielles.
-
-### Backend & Infrastructure
-- **Node.js / Express** : Serveur proxy sécurisé pour l'IA et les Webhooks.
-- **Firebase (Firestore, Auth, Storage)** : Base de données temps réel, authentification sécurisée et stockage d'images.
-- **Google Gemini 3.1 Flash** : Moteur d'IA pour le coaching et l'analyse comportementale.
-- **TypeScript** : Typage statique pour une maintenance robuste.
+ZoyaEdge est une plateforme SaaS ultra-performante conçue pour les traders de compte propre et les fonds spéculatifs. Elle combine un journal de trading institutionnel avec un moteur d'Intelligence Artificielle (Gemini V2) pour auditer les performances, détecter les biais psychologiques et imposer une discipline de fer.
 
 ---
 
-## 🛠 Fonctionnalités Déployées
+## 🚀 Évolutions Récentes (Advancements)
 
-- **Journal de Trading Visuel** : Interface de calendrier harmonisée avec coloration automatique des cellules (Profit/Perte) et formatage compact des montants (ex: 1.2k$).
-- **AI Coach (Zoya AI) — VERSION BETA** : Analyse en temps réel des séries de pertes et détection des biais psychologiques via un moteur Gemini 3.1 Flash.
-- **Synchronisation MT4/MT5** : Webhook dédié pour l'importation automatique des trades via Expert Advisor (EA).
-- **Dashboard Institutionnel** : Métriques avancées (Expectancy, Profit Factor, Winrate par session/paire).
-- **Strategy Builder** : Définition et test de règles de trading pour renforcer la discipline.
-- **Notebook & Screenshots** : Documentation visuelle de la psychologie de marché.
-- **Console Admin** : Gestion des utilisateurs, des abonnements et monitoring système.
+ZoyaEdge V5 a franchi des étapes critiques de maturité technologique :
 
----
+### 1. Architecture de Paiement Multiservices & Sécurisée
+*   **Validation Serveur (Anti-Fraude)** : Toutes les transactions passent par une couche de validation en `server.ts`. Le serveur recalcule les prix (Base + TVA + Frais) en temps réel avant de soumettre la requête à la passerelle, empêchant toute manipulation du montant par le client.
+*   **Abstraction des Passerelles** : Intégration de la passerelle **ARAKA** (RDC) avec un système de **Polling Sécurisé**. Le serveur interroge directement l'API de reporting pour confirmer le succès du paiement, sans faire confiance aux données envoyées par le front-end.
+*   **Système d'Essai Gratuit Sécurisé** : L'activation des 7 jours d'essai est désormais verrouillée côté serveur. Un utilisateur ne peut l'activer qu'une seule fois, avec vérification immédiate des métadonnées Firestore.
 
-## 🏗 Architecture Réelle
+### 2. Moteur IA & Credit Scoring
+*   **Routing des Modèles par Plan** : Les analyses **STANDARD** utilisent Gemini Flash (rapide/efficace), tandis que le mode **DETAILED** (Advanced Analytics) est réservé aux membres **Premium**.
+*   **Gestion des Crédits** : Déduction automatique des crédits IA lors de chaque analyse, avec bypass illimité pour les plans Premium. Cache intelligent pour éviter de consommer des crédits sur les mêmes données.
 
-L'application suit une architecture **Full-Stack Hybride** :
-
-1. **Client-Side SPA** : Gère l'UI, la visualisation de données et les écouteurs Firestore temps réel.
-2. **Server-Side Proxy (Express)** : 
-   - Sécurise les clés API (Gemini, Firebase Admin).
-   - Gère les Webhooks entrants des plateformes de trading.
-   - Effectue les appels IA complexes pour éviter d'exposer la logique métier.
-3. **Firebase Security Rules** : Couche de sécurité granulaire (RBAC) garantissant que chaque utilisateur n'accède qu'à ses propres données.
+### 3. Contrôle Global & Maintenance
+*   **Mode Maintenance Dynamique** : Activé via `app_settings` dans Firestore. Il bloque l'accès à l'application avec un écran d'attente stylisé, tout en permettant aux **Super Admins** de continuer à travailler et tester la plateforme.
+*   **Super Admin Access** : Accès privilégié défini par email au niveau des règles de sécurité Firebase, permettant de modifier les paramètres globaux (Taux de change, Frais, Maintenance) sans redéployer le code.
 
 ---
 
-## 📂 Structure des Fichiers
+## 🔒 Sécurité : L'Approche "Fortress"
 
-```text
-├── src/
-│   ├── components/       # Composants UI (Atoms, Molecules, Organisms)
-│   ├── hooks/            # Hooks React personnalisés
-│   ├── lib/              # Logique métier, config Firebase, moteurs de calcul
-│   ├── pages/            # Pages de l'application (Client, Admin, Auth)
-│   ├── types.ts          # Définitions TypeScript globales
-│   └── index.css         # Styles globaux et configuration Tailwind
-├── server.ts             # Point d'entrée du serveur Express (Backend)
-├── firestore.rules       # Règles de sécurité de la base de données
-├── firebase-blueprint.json # Schéma de données IR (Référence)
-├── metadata.json         # Métadonnées de l'application
-└── vite.config.ts        # Configuration du build frontend
-```
+ZoyaEdge utilise une architecture de sécurité à plusieurs niveaux :
+
+1.  **Firebase Rules (Périmètre Externe)** :
+    *   **RBAC (Role-Based Access Control)** : Séparation stricte entre les rôles `user`, `agent`, et `admin`.
+    *   **Immuabilité** : Les champs sensibles comme `userId` ou `plan` lors du paiement ne peuvent plus être modifiés une fois créés.
+    *   **Isolation des PII** : Accès restreint aux données personnelles.
+2.  **Server Proxy (Périmètre Interne)** :
+    *   Le client ne communique **jamais** directement avec les APIs tierces (Gemini, Araka). Le serveur Express agit comme une barrière de confiance, cachant les secrets et validant chaque requête via `idTokens` Firebase.
+3.  **Validation d'Identité (Ownership Check)** : Chaque vérification de paiement vérifie que l'UID de l'utilisateur correspond au propriétaire de la transaction en base de données.
 
 ---
 
-## ⚠️ Fichiers Sensibles
+## 💸 Extension : Gérer d'autres Passerelles (Multipayment)
 
-- `.env` : Contient `GEMINI_API_KEY` et les secrets de production.
-- `firebase-applet-config.json` : Configuration de connexion au projet Firebase.
-- `FIREBASE_SERVICE_ACCOUNT_KEY` (Variable d'env) : Clé d'accès administrateur pour le serveur.
+L'architecture est prête pour le scaling international :
 
----
+### Comment ajouter un nouveau pays / une nouvelle devise ?
 
-## 📈 Recommandations pour la Mise en Production
-
-1. **Domaine Personnalisé** : Configurer un CNAME pour `app.zoyaedge.com` vers l'instance Cloud Run.
-2. **Secrets Management** : Utiliser un gestionnaire de secrets (Google Secret Manager) pour les clés API en production.
-3. **Monitoring** : Activer Firebase Analytics et Sentry pour le suivi des erreurs en temps réel.
-4. **Rate Limiting** : Le serveur Express inclut déjà un `express-rate-limit`, ajustez les seuils selon la charge réelle.
+1.  **Configuration dans Firestore** : Ajoutez les IDs de page de paiement dans `app_settings/global` pour la nouvelle devise/pays (ex: `STRIPE_PAGE_ID` pour l'international).
+2.  **Mise à jour du Serveur (`server.ts`)** :
+    *   Créez un nouvel endpoint `/api/payments/votre-passerelle/pay`.
+    *   Utilisez le middleware `finalizePayment` existant pour l'activation automatique de l'abonnement en cas de succès.
+3.  **Middleware de Prix** : Le système de calcul de prix prend déjà en compte la `currency` (USD, CDF, etc.) et le `exchangeRate` stocké en base de données. Il suffit d'injecter la nouvelle logique de redirection vers votre passerelle.
 
 ---
 
-## 🔧 Maintenance Évolutive
+## 🛠 Stack Technique
 
-- **Ajout de Métriques** : Modifier `src/lib/statsEngine.ts` pour intégrer de nouveaux calculs mathématiques.
-- **Nouveaux Modèles IA** : Mettre à jour les appels dans `server.ts` vers les nouveaux modèles Gemini via `@google/genai`.
-- **UI/UX** : Suivre la charte graphique définie dans `src/index.css` (Variables `@theme`).
-
----
-
-## 🔄 Guide de Migration
-
-### Vers Supabase (Scaling SQL)
-1. Créer un projet Supabase.
-2. Migrer les données de `trades` vers une table PostgreSQL.
-3. Remplacer les appels Firestore dans `src/lib/db.ts` par le client `@supabase/supabase-js`.
-4. Utiliser les **Edge Functions** pour remplacer les endpoints IA du `server.ts`.
-
-### Vers VPS / Docker
-1. Utiliser le `Dockerfile` (à générer) pour encapsuler l'application.
-2. Exposer le port `3000`.
-3. Configurer un reverse proxy (Nginx) pour gérer le SSL via Let's Encrypt.
-
-### Vers Serverless (Vercel/Netlify)
-1. Déplacer la logique de `server.ts` vers des **API Routes** (Next.js ou fonctions serverless).
-2. Configurer les variables d'environnement dans le dashboard de l'hébergeur.
+*   **Frontend**: React 19, Vite, Tailwind CSS 4, Framer Motion (Animations Premium).
+*   **Backend**: Node.js/Express (Point de vérité unique).
+*   **Database**: Firestore (NoSQL temps réel).
+*   **Auth**: Firebase Auth (Google & Email/Password).
+*   **IA**: Google Gemini 1.5/2.0 SDK.
 
 ---
 
-© 2026 ZoyaEdge. Tous droits réservés.
+## 📦 Installation & Déploiement
+
+1.  **Clonage & Dépendances** :
+    ```bash
+    npm install
+    ```
+2.  **Configuration Environnement** : Créez un `.env` basé sur `.env.example`.
+3.  **Déploiement Rules** : Déployez `firestore.rules` via la Firebase CLI.
+4.  **Lancement** :
+    ```bash
+    npm run dev
+    ```
+
+---
+
+## 🤝 Maintenance Évolutive
+
+Pour maintenir l'application :
+*   **Paramètres Financiers** : Directement modifiables via l'onglet **Finance** du portail Admin (ou via Firestore pour les Super Admins).
+*   **Logs & Audit** : Le serveur logue toutes les tentatives de fraude de prix ou d'accès non autorisé.
+
+---
+
+© 2026 ZoyaEdge. Construit pour les Traders, propulsé par l'IA.

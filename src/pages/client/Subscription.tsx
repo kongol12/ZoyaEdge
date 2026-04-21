@@ -12,7 +12,7 @@ import ZoyaPayCheckout from '../../components/organisms/client/ZoyaPayCheckout';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export default function Subscription() {
-  const { user, profile, updateProfile } = useAuth();
+  const { user, profile, updateProfile, refreshProfile } = useAuth();
   const { t } = useTranslation();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -192,26 +192,21 @@ export default function Subscription() {
 
   const handleStartTrial = async () => {
     setIsProcessing(true);
-    setTimeout(async () => {
-      try {
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + 7); // 7 days trial
-
-        await updateProfile({ 
-          subscription: 'pro',
-          subscriptionCycle: 'monthly',
-          subscriptionStatus: 'trialing',
-          subscriptionEndDate: endDate,
-          hasUsedTrial: true
-        });
-        alert(`Félicitations ! Votre essai gratuit de 7 jours a commencé.`);
-      } catch (error) {
-        console.error("Erreur lors de l'activation de l'essai:", error);
-        alert("Une erreur est survenue.");
-      } finally {
-        setIsProcessing(false);
-      }
-    }, 1500);
+    try {
+      const idToken = await user?.getIdToken();
+      const response = await fetch('/api/auth/start-trial', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${idToken}` }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Erreur activation essai");
+      await refreshProfile();
+      alert(`Félicitations ! Votre essai gratuit de 7 jours est activé.`);
+    } catch (error: any) {
+      alert(error.message || "Une erreur est survenue.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const canUseTrial = !profile?.hasUsedTrial && (!profile?.subscription || profile?.subscription === 'discovery' || profile?.subscription === 'free');

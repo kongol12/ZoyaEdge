@@ -93,7 +93,7 @@ service cloud.firestore {
       
       allow create: if isOwner(userId) && isValidUser(incoming()) && 
                     incoming().role == 'user' && 
-                    (incoming().subscription == 'free' || incoming().subscription == 'pro' || incoming().subscription == 'discovery'); 
+                    (incoming().subscription == 'free' || incoming().subscription == 'discovery'); 
       
       allow update: if (isOwner(userId) && 
                 isValidUser(incoming()) && 
@@ -176,7 +176,7 @@ service cloud.firestore {
     // --- Admin & Global Config ---
     match /app_settings/{settingId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isSuperAdmin();
     }
 
     match /bug_reports/{reportId} {

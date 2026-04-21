@@ -300,26 +300,6 @@ async function finalizePayment(txId: string, resultData: any) {
   return { success: false, pending: true };
 }
 
-// Araka Webhook Endpoint
-app.post('/api/payments/araka-callback', webhookLimiter, async (req, res) => {
-  const result = req.body;
-  const txId = result.transactionId || result.transactionReference || (result.data && result.data.transactionId);
-  
-  console.log(`[Araka Webhook] Received callback for Tx: ${txId}`, JSON.stringify(result));
-
-  if (!txId) return res.status(400).send("Missing transaction ID");
-
-  try {
-    const finalResult = await finalizePayment(txId, result);
-    // If not successful/failed (maybe pending), we don't acknowledge so Araka retries if needed
-    // but usually Araka webhook is sent only once or at set intervals
-    res.status(200).send("OK");
-  } catch (err) {
-    console.error("[Araka Webhook] Processing error:", err);
-    res.status(500).send("Internal Error");
-  }
-});
-
 // Initialize Firebase Admin lazily or safely
 let db: admin.firestore.Firestore | null = null;
 
@@ -767,7 +747,11 @@ function getTradeLimit(mode: string): number {
   return 100; // DETAILED
 }
 
-async function checkAndDeductAICredit(userId: string, db: admin.firestore.Firestore): Promise<{ allowed: boolean; reason?: string }> {
+async function checkAndDeductAICredit(
+  userId: string,
+  db: admin.firestore.Firestore,
+  mode: string = 'STANDARD'
+): Promise<{ allowed: boolean; reason?: string }> {
   const userRef = db.collection('users').doc(userId);
   return db.runTransaction(async (transaction) => {
     const userDoc = await transaction.get(userRef);
@@ -775,13 +759,21 @@ async function checkAndDeductAICredit(userId: string, db: admin.firestore.Firest
     const userData = userDoc.data()!;
     const subscription = userData.subscription || 'free';
 
+    // DETAILED réservé Premium uniquement
+    if (mode === 'DETAILED' && subscription !== 'premium') {
+      return {
+        allowed: false,
+        reason: "L'analyse DETAILED est réservée au plan Premium. Passez à Premium pour y accéder."
+      };
+    }
+
     if (subscription === 'premium') return { allowed: true };
 
     const credits = userData.aiCredits ?? 0;
     if (credits <= 0) {
       const planLabel = subscription === 'pro' ? 'Premium' : 'Pro';
-      return { 
-        allowed: false, 
+      return {
+        allowed: false,
         reason: `Vous avez atteint votre limite d'analyses IA ce mois-ci. Passez à ${planLabel} pour continuer.`
       };
     }
@@ -819,6 +811,41 @@ app.post('/api/connections/:connectionId/generate-secret', verifyUser, async (re
   }
 });
 
+app.post('/api/auth/start-trial', verifyUser, async (req: any, res: any) => {
+  if (!db) return res.status(503).json({ error: "Database unavailable" });
+  try {
+    const userRef = db.collection('users').doc(req.user.uid);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) return res.status(404).json({ error: "User not found" });
+
+    const userData = userDoc.data()!;
+    if (userData.hasUsedTrial) {
+      return res.status(403).json({ error: "Essai déjà utilisé. Un seul essai par compte." });
+    }
+    if (userData.subscription !== 'free' && userData.subscription !== 'discovery') {
+      return res.status(403).json({ error: "Vous avez déjà un abonnement actif." });
+    }
+
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialEndDate.getDate() + 7);
+
+    await userRef.update({
+      subscription: 'pro',
+      subscriptionStatus: 'trialing',
+      subscriptionEndDate: admin.firestore.Timestamp.fromDate(trialEndDate),
+      subscriptionCycle: 'monthly',
+      hasUsedTrial: true,
+      aiCredits: 10,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({ success: true, trialEndDate: trialEndDate.toISOString() });
+  } catch (error) {
+    console.error("Trial activation error:", error);
+    res.status(500).json({ error: "Erreur lors de l'activation de l'essai." });
+  }
+});
+
 // AI Coach Proxy Endpoint
 app.post('/api/ai/coach', verifyUser, async (req: any, res: any) => {
   const { input } = req.body;
@@ -833,7 +860,7 @@ app.post('/api/ai/coach', verifyUser, async (req: any, res: any) => {
     const userDoc = await db.collection('users').doc(req.user.uid).get();
     const subscription = userDoc.data()?.subscription || 'free';
 
-    const creditCheck = await checkAndDeductAICredit(req.user.uid, db!);
+    const creditCheck = await checkAndDeductAICredit(req.user.uid, db!, input.mode || 'STANDARD');
     if (!creditCheck.allowed) {
       return res.status(402).json({ 
         error: creditCheck.reason || "Crédits IA épuisés. Passez à Pro pour un accès illimité." 
@@ -907,7 +934,6 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
 app.post('/api/ai/ask', verifyUser, async (req: any, res: any) => {
   const { trades, language, strategies, instruction, mode = 'STANDARD' } = req.body;
 
-  console.log(`[AI Coach] Checking API Key. Length: ${process.env.GEMINI_API_KEY?.length}, Starts with: ${process.env.GEMINI_API_KEY?.substring(0, 4)}`);
   if (!process.env.GEMINI_API_KEY) {
     return res.status(500).json({ error: "GEMINI_API_KEY non configurée." });
   }
@@ -927,7 +953,7 @@ app.post('/api/ai/ask', verifyUser, async (req: any, res: any) => {
   }
 
   // Vérifier crédits
-  const creditCheck = await checkAndDeductAICredit(req.user.uid, db);
+  const creditCheck = await checkAndDeductAICredit(req.user.uid, db, mode);
   if (!creditCheck.allowed) {
     return res.status(402).json({ error: creditCheck.reason });
   }
@@ -1096,6 +1122,36 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
 
     if (!pageId) throw new Error('ARAKA_PAYMENT_PAGE_ID non configuré pour cette devise');
 
+    // Server-side price validation
+    const settingsDoc = await db!.collection('app_settings').doc('global').get();
+    const settings = settingsDoc.data() || {};
+    const exchangeRate = settings.exchangeRate || 2800;
+    const transactionFee = settings.transactionFee || 2;
+    const vatRate = settings.vatRate || 16;
+
+    // Map planId to base USD price from Firestore
+    const priceMap: Record<string, Record<string, number>> = {
+      discovery: { monthly: settings.discoveryMonthlyUSD ?? 0, yearly: settings.discoveryYearlyUSD ?? 0 },
+      pro: { monthly: settings.proMonthlyUSD ?? 20, yearly: settings.proYearlyUSD ?? 200 },
+      premium: { monthly: settings.premiumMonthlyUSD ?? 50, yearly: settings.premiumYearlyUSD ?? 500 },
+    };
+    const basePriceUSD = priceMap[planId]?.[billingCycle];
+    if (basePriceUSD === undefined) {
+      return res.status(400).json({ error: "Plan ou cycle de facturation invalide." });
+    }
+    const basePriceInCurrency = currency === 'USD' ? basePriceUSD : basePriceUSD * exchangeRate;
+    const vatAmount = (basePriceInCurrency * vatRate) / 100;
+    const subtotalWithVat = basePriceInCurrency + vatAmount;
+    const feeAmount = (subtotalWithVat * transactionFee) / 100;
+    const expectedTotal = Math.round((subtotalWithVat + feeAmount) * 100) / 100;
+    const clientAmount = Math.round(parseFloat(amount) * 100) / 100;
+
+    // Tolérance de 2% pour les arrondis de devise
+    if (Math.abs(clientAmount - expectedTotal) / expectedTotal > 0.02) {
+      console.warn(`[Payment] Amount mismatch: client=${clientAmount}, expected=${expectedTotal}`);
+      return res.status(400).json({ error: "Montant invalide. Veuillez recharger la page et réessayer." });
+    }
+
     const transactionReference = `ZOYA_${req.user.uid.slice(0, 5)}_${Date.now()}`;
     
     const payload = {
@@ -1105,7 +1161,7 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
         customerPhoneNumber: normalizedPhone,
         customerEmailAddress: req.user.email,
         transactionReference: transactionReference,
-        amount: parseFloat(amount),
+        amount: expectedTotal,
         currency: currency || "USD",
         redirectURL: `${process.env.APP_URL}/subscription/callback`
       },
@@ -1148,7 +1204,7 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
         userId: req.user.uid,
         userName: userName || req.user.name || req.user.email?.split('@')[0] || "Client ZoyaEdge",
         userEmail: req.user.email,
-        amount: parseFloat(amount),
+        amount: expectedTotal,
         currency: currency || "USD",
         status: 'pending',
         plan: planId,
@@ -1186,11 +1242,38 @@ app.post('/api/payments/mobile-money/pay', verifyUser, async (req: any, res: any
 
 app.get('/api/payments/mobile-money/status/:txId', verifyUser, async (req: any, res: any) => {
   const { txId } = req.params;
+  const userId = req.user.uid;
+
+  if (!db) return res.status(503).json({ error: "Database unavailable" });
+
   try {
+    // 1. Verifier que la transaction appartient bien à l'utilisateur (Sécurité)
+    const paymentSnap = await db.collection('payments')
+      .where('transactionId', '==', txId)
+      .limit(1)
+      .get();
+
+    if (paymentSnap.empty) {
+      return res.status(404).json({ error: "Transaction non trouvée." });
+    }
+
+    const paymentDoc = paymentSnap.docs[0];
+    const paymentData = paymentDoc.data();
+
+    if (paymentData.userId !== userId) {
+      console.warn(`[Security] User ${userId} tried to poll status for transaction ${txId} owned by ${paymentData.userId}`);
+      return res.status(403).json({ error: "Accès non autorisé à cette transaction." });
+    }
+
+    // Si déjà complété en DB, on retourne direct sans appeler Araka (optimisation)
+    if (paymentData.status === 'completed') {
+      return res.json({ status: "SUCCESSFUL", _statusText: "SUCCESS" });
+    }
+
+    // 2. Interroger Araka pour le statut réel
     const token = await getArakaToken();
     const url = await getArakaUrl();
     
-    // We use transactionstatus/{transactionid} as per Araka standard
     const response = await fetch(`${url}/api/Reporting/transactionstatus/${txId}`, {
       method: 'GET',
       headers: { 
@@ -1201,26 +1284,26 @@ app.get('/api/payments/mobile-money/status/:txId', verifyUser, async (req: any, 
 
     if (!response.ok) {
       const errorText = await response.text();
-      // Si on a un 404, on renvoie une attente au lieu d'une erreur fatale car la transaction peut ne pas être encore indexée.
       if (response.status === 404) {
          return res.json({ status: "PENDING", _statusText: "PENDING", details: "Transaction not found yet" });
       }
       return res.status(response.status).json({ error: "Vérification échouée", details: errorText });
     }
+
     const result = await response.json();
-    console.log(`[Araka Polling] Status pour transId ${txId}:`, JSON.stringify(result));
     
-    // Use shared finalization logic
+    // 3. Finaliser (Mise à jour DB + Abonnement) si succès détecté par le serveur
     const finalizationResult = await finalizePayment(txId, result);
     
     const rawStatus = result.status || result.statusCode || result.transactionStatus || result.Status || (result.data && result.data.status);
     const status = (typeof rawStatus === 'string' ? rawStatus : '').toUpperCase();
 
-    // Force normalized output to guarantee frontend catch
+    // 4. Réponse normalisée au frontend
     const finalStatusText = finalizationResult?.success ? 'SUCCESS' : (finalizationResult?.failed ? 'FAILED' : status);
     res.json({ ...result, _statusText: finalStatusText });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error(`[Payment Status Error] txId: ${txId}`, error);
+    res.status(500).json({ error: "Erreur lors de la vérification du statut." });
   }
 });
 

@@ -78,7 +78,7 @@ export default function BillingSettings() {
     const subtotal = amountAfterFees - vatAmount;
 
     generateInvoicePDF({
-      invoiceNumber: tx.id.slice(0, 8).toUpperCase(),
+      invoiceNumber: `ZE-${new Date().getFullYear()}-${tx.id.slice(0, 8).toUpperCase()}`,
       date: format(tx.createdAt.toDate(), 'dd/MM/yyyy'),
       clientName: profile?.displayName || user?.email?.split('@')[0] || 'Client ZoyaEdge',
       clientEmail: user?.email || '',
