@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, limit } from 'firebase/firestore';
-import { Bell, Check, Trash2, Info, AlertTriangle, XCircle, CheckCircle2, Send, Megaphone } from 'lucide-react';
+import { Bell, Check, Trash2, Info, AlertTriangle, XCircle, CheckCircle2, Send, Megaphone, RefreshCw } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../lib/auth';
 import { motion, AnimatePresence } from 'motion/react';
@@ -232,27 +232,5 @@ export default function AdminNotifications() {
         )}
       </div>
     </div>
-  );
-}
-
-function RefreshCw({ size, className }: { size: number, className?: string }) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
-      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-      <path d="M3 21v-5h5" />
-    </svg>
   );
 }

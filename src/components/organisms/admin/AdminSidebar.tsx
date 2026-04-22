@@ -1,23 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { 
-  LayoutDashboard, 
-  Users, 
-  Settings, 
-  LogOut, 
-  ChevronLeft, 
-  ExternalLink, 
-  Activity, 
-  Menu, 
-  Bug, 
-  Bell, 
-  Shield, 
-  DollarSign,
-  CreditCard,
-  PieChart, 
-  BarChart3,
-  Terminal
-} from 'lucide-react';
+import * as Icons from 'lucide-react';
+
 import { motion } from 'motion/react';
 import { useAuth } from '../../../lib/auth';
 import { cn } from '../../../lib/utils';
@@ -35,19 +19,21 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
   const [unreadCount, setUnreadCount] = useState(0);
 
   const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/admin', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
-    { icon: DollarSign, label: 'Finances', path: '/admin/finance', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
-    { icon: CreditCard, label: 'Tarification', path: '/admin/pricing', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
-    { icon: CreditCard, label: 'Transactions', path: '/admin/transactions', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
-    { icon: Terminal, label: 'Activités Système', path: '/admin/activities', color: 'text-zinc-500 bg-zinc-50 dark:bg-zinc-900/20' },
-    { icon: BarChart3, label: 'Rapports Trades', path: '/admin/trade-reports', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
-    { icon: PieChart, label: 'Abonnements', path: '/admin/subscription-reports', color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
-    { icon: Users, label: 'Clients', path: '/admin/clients', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
-    { icon: Shield, label: 'Équipe', path: '/admin/users', color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20' },
-    { icon: Activity, label: 'Connexions EA', path: '/admin/connections', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
-    { icon: Bug, label: 'Bugs & Rapports', path: '/admin/reports', color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
-    { icon: Bell, label: 'Notifications', path: '/admin/notifications', color: 'text-red-500 bg-red-50 dark:bg-red-900/20', badge: unreadCount },
-    { icon: Settings, label: 'Paramètres Système', path: '/admin/settings', color: 'text-gray-500 bg-gray-50 dark:bg-gray-900/40' },
+    { icon: Icons.LayoutDashboard, label: 'Dashboard', path: '/admin/dashboard', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
+    { icon: Icons.DollarSign, label: 'Finances', path: '/admin/finance', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+    { icon: Icons.CreditCard, label: 'Tarification', path: '/admin/pricing', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
+    { icon: Icons.CreditCard, label: 'Transactions', path: '/admin/transactions', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
+    { icon: Icons.Terminal, label: 'Activités Système', path: '/admin/activities', color: 'text-zinc-500 bg-zinc-50 dark:bg-zinc-900/20' },
+    { icon: Icons.BarChart3, label: 'Rapports Trades', path: '/admin/trade-reports', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
+    { icon: Icons.PieChart, label: 'Abonnements', path: '/admin/subscription-reports', color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+    { icon: Icons.Users, label: 'Clients', path: '/admin/clients', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+    { icon: Icons.Users, label: 'Utilisateurs (Équipe)', path: '/admin/users', color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20' },
+    { icon: Icons.Activity, label: 'Connexions EA', path: '/admin/connections', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
+    { icon: Icons.Bug, label: 'Bugs & Rapports', path: '/admin/reports', color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
+    { icon: Icons.Bell, label: 'Notifications', path: '/admin/notifications', color: 'text-red-500 bg-red-50 dark:bg-red-900/20', badge: unreadCount },
+    { icon: Icons.BrainCircuit, label: 'Monitoring IA', path: '/admin/ai', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
+    { icon: Icons.Terminal, label: 'Logs Système', path: '/admin/logs', color: 'text-zinc-500 bg-zinc-50 dark:bg-zinc-900/20' },
+    { icon: Icons.Settings, label: 'Paramètres', path: '/admin/settings', color: 'text-gray-500 bg-gray-50 dark:bg-gray-900/40' },
   ];
 
   return (
@@ -131,7 +117,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
             isCollapsed ? "justify-center" : ""
           )}
         >
-          <LogOut size={20} className="shrink-0" />
+          <Icons.LogOut size={20} className="shrink-0" />
           {!isCollapsed && <span>Déconnexion</span>}
         </button>
       </div>

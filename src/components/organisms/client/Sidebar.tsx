@@ -36,11 +36,28 @@ interface SidebarProps {
   className?: string;
 }
 
+import { db } from '../../../lib/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { calculateZoyaScores, Trade as ZTrade } from '../../../lib/scoring';
+
 export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, className }) => {
   const { user, profile, logout } = useAuth();
   const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const location = useLocation();
+  const [trades, setTrades] = React.useState<ZTrade[]>([]);
+
+  React.useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'trades'), where('userId', '==', user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as ZTrade[];
+      setTrades(data);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const scores = React.useMemo(() => calculateZoyaScores(trades), [trades]);
 
   const menuGroups = [
     {
@@ -116,6 +133,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, classNa
           {isCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
         </button>
       </div>
+
+      {!isCollapsed && trades.length > 0 && (
+        <div className="px-6 py-6 border-t border-gray-100 dark:border-gray-700 bg-gray-50/30 dark:bg-gray-900/10">
+           <div className="flex items-center justify-between mb-4">
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Score Performance</span>
+              <div className={cn(
+                "w-2 h-2 rounded-full",
+                scores.status === 'red' ? "bg-rose-500" : scores.status === 'orange' ? "bg-amber-500" : "bg-emerald-500"
+              )} />
+           </div>
+           <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Risk', val: scores.risk_score, color: 'text-rose-500' },
+                { label: 'Disc', val: scores.discipline_score, color: 'text-amber-500' },
+                { label: 'Cons', val: scores.consistency_score, color: 'text-emerald-500' }
+              ].map((s, i) => (
+                <div key={i} className="text-center">
+                   <div className="text-[8px] font-black text-gray-500 uppercase mb-1">{s.label}</div>
+                   <div className={cn("text-sm font-poppins font-black transition-all", s.color)}>{s.val}</div>
+                </div>
+              ))}
+           </div>
+        </div>
+      )}
       
       <nav className="flex-1 px-4 space-y-6 overflow-y-auto pb-8 scrollbar-hide">
         {menuGroups.map((group) => (

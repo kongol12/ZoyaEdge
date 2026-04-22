@@ -43,6 +43,8 @@ export interface UserProfile {
   email: string;
   displayName: string;
   tradingStyle?: string;
+  experienceLevel?: 'beginner' | 'intermediate' | 'advanced';
+  capitalSize?: string;
   defaultRisk?: number;
   defaultLotSize?: number;
   currency?: string;

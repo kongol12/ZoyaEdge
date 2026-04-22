@@ -46,6 +46,7 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import UserManagement from './pages/admin/UserManagement';
 import ClientManagement from './pages/admin/ClientManagement';
 import SystemReports from './pages/admin/SystemReports';
+import AdminLogs from './pages/admin/AdminLogs';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminSettings from './pages/admin/AdminSettings';
 import PricingManagement from './pages/admin/PricingManagement';
@@ -193,7 +194,8 @@ function AppRoutes() {
       {/* Admin Routes */}
       <Route element={<AdminRoute requiredRole="agent" />}>
         <Route element={<AdminLayout />}>
-          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="/admin/dashboard" element={<AdminDashboard />} />
           <Route path="/admin/finance" element={<FinanceManagement />} />
           <Route path="/admin/pricing" element={<PricingManagement />} />
           <Route path="/admin/transactions" element={<Transactions />} />
@@ -205,6 +207,8 @@ function AppRoutes() {
           <Route path="/admin/connections" element={<div className="p-8">Gestion des Connexions EA (Global)</div>} />
           <Route path="/admin/reports" element={<SystemReports />} />
           <Route path="/admin/notifications" element={<AdminNotifications />} />
+          <Route path="/admin/ai" element={<div className="p-8 text-white">Monitoring IA (Connection en cours...)</div>} />
+          <Route path="/admin/logs" element={<AdminLogs />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
         </Route>
       </Route>

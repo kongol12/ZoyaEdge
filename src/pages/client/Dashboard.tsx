@@ -25,6 +25,9 @@ import { WinRateArc } from '../../components/charts/WinRateArc';
 import { PnlVolumeChart } from '../../components/charts/PnlVolumeChart';
 import { AvgWinLossBar } from '../../components/charts/AvgWinLossBar';
 
+import { calculateZoyaScores } from '../../lib/scoring';
+import { logActivity } from '../../lib/activity';
+
 export default function Dashboard() {
   const { user, profile } = useAuth();
   const { t, language } = useTranslation();
@@ -35,9 +38,13 @@ export default function Dashboard() {
   
   const { filters, setFilters, filteredTrades, uniqueMonths, uniqueStrategies, uniquePairs, uniquePlatforms } = useFilteredTrades(trades);
 
+  const zoyaScores = useMemo(() => calculateZoyaScores(trades), [trades]);
+
   useEffect(() => {
     if (!user) return;
     
+    logActivity(user.uid, 'settings_updated', { view: 'dashboard' });
+
     const unsubscribeTrades = subscribeToTrades(user.uid, (data) => {
       setTrades(data);
       setLoading(false);
@@ -267,6 +274,77 @@ export default function Dashboard() {
             </select>
           </div>
         </div>
+      </div>
+
+      {/* Zoya Behavior Score Overlay */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-gray-900 rounded-[2.5rem] p-8 border border-gray-800 shadow-2xl overflow-hidden relative group">
+              <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                  <BrainCircuit size={120} />
+              </div>
+              <div className="relative z-10 space-y-6">
+                  <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-3 h-3 rounded-full animate-pulse",
+                        zoyaScores.status === 'red' ? "bg-rose-500" : zoyaScores.status === 'orange' ? "bg-amber-500" : "bg-emerald-500"
+                      )} />
+                      <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Zoya Core Score</span>
+                  </div>
+                  <div className="flex flex-col md:flex-row md:items-end gap-12">
+                      <div>
+                          <div className={cn(
+                            "text-7xl font-poppins font-black transition-colors",
+                            zoyaScores.status === 'red' ? "text-rose-500" : zoyaScores.status === 'orange' ? "text-amber-500" : "text-emerald-500"
+                          )}>
+                            {zoyaScores.total_score}<span className="text-2xl text-gray-700">/100</span>
+                          </div>
+                          <div className="text-gray-400 font-bold uppercase tracking-widest text-xs mt-2">
+                             Status: <span className={cn(
+                               zoyaScores.status === 'red' ? "text-rose-500" : zoyaScores.status === 'orange' ? "text-amber-500" : "text-emerald-500"
+                             )}>
+                               {zoyaScores.status === 'red' ? "Dangerous Trader" : zoyaScores.status === 'orange' ? "Unstable" : "Controlled"}
+                             </span>
+                          </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-8 flex-1">
+                          {[
+                            { label: 'Risk', val: zoyaScores.risk_score, color: 'text-rose-500' },
+                            { label: 'Discipline', val: zoyaScores.discipline_score, color: 'text-amber-500' },
+                            { label: 'Consistency', val: zoyaScores.consistency_score, color: 'text-emerald-500' }
+                          ].map((s, i) => (
+                            <div key={i} className="space-y-1">
+                               <div className="text-[10px] font-black text-gray-600 uppercase tracking-widest">{s.label}</div>
+                               <div className={cn("text-2xl font-poppins font-black", s.color)}>{s.val}</div>
+                               <div className="h-1 w-full bg-gray-800 rounded-full overflow-hidden">
+                                  <div className={cn("h-full", s.color.replace('text', 'bg'))} style={{ width: `${s.val}%` }} />
+                               </div>
+                            </div>
+                          ))}
+                      </div>
+                  </div>
+              </div>
+          </div>
+          
+          <div className="bg-rose-500/10 border border-rose-500/20 rounded-[2.5rem] p-8 flex flex-col justify-between">
+              <div className="space-y-4">
+                  <div className="flex items-center gap-3 text-rose-500">
+                      <AlertTriangle size={24} />
+                      <span className="font-poppins font-black uppercase tracking-tight">System Pressure</span>
+                  </div>
+                  <h3 className="text-xl font-poppins font-black dark:text-white leading-tight">
+                    {trades.length < 10 ? "YOUR DATA IS INCOMPLETE." : zoyaScores.status === 'red' ? "YOUR DISCIPLINE IS COLLAPSING." : "KEEP EXPOSING THE EDGE."}
+                  </h3>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
+                    {trades.length < 10 
+                      ? "Your performance is unreliable with current data volume. Add 10 trades to unlock deeper analysis." 
+                      : "The AI Coach has detected significant behavioral vulnerabilities in your latest trades."}
+                  </p>
+              </div>
+              <Link to="/ai-coach" className="mt-6 flex items-center justify-between p-4 bg-gray-900 rounded-2xl group hover:bg-rose-500 transition-all text-white">
+                  <span className="font-bold text-xs uppercase tracking-widest">Get AI FEEDBACK</span>
+                  <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+              </Link>
+          </div>
       </div>
 
       {/* Balance Setup Notification */}

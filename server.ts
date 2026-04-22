@@ -224,10 +224,64 @@ async function verifyUser(req: any, res: any, next: any) {
   }
 }
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// --- ADMIN ROUTES ---
+
+// Admin Stats
+app.get('/api/admin/stats', verifyAdmin, async (req: any, res: any) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    // Example: Aggregation query (simple)
+    const payments = await db.collection('payments').where('createdAt', '>=', startOfMonth).get();
+    
+    let totalRevenue = 0;
+    payments.forEach(doc => {
+      if (doc.data().status === 'completed') totalRevenue += doc.data().amount || 0;
+    });
+
+    res.json({
+      totalRevenue,
+      totalTransactions: payments.size,
+      successRate: 0.95, // mock for now
+    });
+  } catch (error) {
+    console.error("Admin stats error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
+
+app.get('/api/admin/transactions', verifyAdmin, async (req: any, res: any) => {
+    res.json({ transactions: [] });
+});
+
+app.get('/api/admin/users', verifyAdmin, async (req: any, res: any) => {
+    res.json({ users: [] });
+});
+
+app.get('/api/admin/ai/logs', verifyAdmin, async (req: any, res: any) => {
+    res.json({ logs: [] });
+});
+
+// Global System Logger
+async function logSystemEvent(level: 'info' | 'warn' | 'error', source: string, message: string, metadata: any = {}) {
+  if (!db) {
+    console.error(`[SystemLogger][${level.toUpperCase()}] ${source}: ${message}`);
+    return;
+  }
+  
+  try {
+    await db.collection('system_logs').add({
+      level,
+      source,
+      message,
+      metadata,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (error) {
+    console.error("Failed to write to system_logs:", error);
+  }
+}
 
 // Helper to finalize payment and upgrade user account
 async function finalizePayment(txId: string, resultData: any) {
@@ -239,6 +293,7 @@ async function finalizePayment(txId: string, resultData: any) {
     .get();
 
   if (q.empty) {
+    await logSystemEvent('warn', 'payment', `Finalization failed: Transaction ${txId} not found.`);
     console.warn(`[Payment] Finalization failed: Transaction ${txId} not found in DB.`);
     return;
   }
@@ -456,6 +511,7 @@ app.post('/api/webhook/mt5', webhookLimiter, async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
+    await logSystemEvent('error', 'webhook_mt5', 'Internal server error', { error: String(error) });
     console.error("Webhook error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -911,7 +967,21 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
     const cleanedText = text.replace(/```json\n?|```/g, '').trim();
     const aiAnalysis = JSON.parse(cleanedText);
 
-    // Save to Firestore from server-side (bypasses rules)
+    // -- CRITICAL BEHAVIORAL LOGGING --
+    if (aiAnalysis.decision === 'RED') {
+      await logSystemEvent('error', 'behavioral_analysis', `Critical behavioral risk detected for user ${req.user.uid}. Condition: ${aiAnalysis.summary}`, {
+        userId: req.user.uid,
+        scores: aiAnalysis.score,
+        risk_level: aiAnalysis.risk_level
+      });
+    } else if (aiAnalysis.decision === 'ORANGE') {
+      await logSystemEvent('warn', 'behavioral_analysis', `Behavioral instability for user ${req.user.uid}`, {
+        userId: req.user.uid,
+        scores: aiAnalysis.score
+      });
+    }
+
+    // Save report
     try {
       await db.collection('users').doc(req.user.uid).collection('ai_reports').add({
         date: admin.firestore.Timestamp.now(),
@@ -919,9 +989,8 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
         metrics: input.metrics,
         response: aiAnalysis
       });
-      console.log(`[AI Coach] Report saved successfully for user: ${req.user.uid}`);
     } catch (saveError) {
-      console.error("[AI Coach] Failed to save report to Firestore:", saveError);
+      console.error("[AI Coach] Failed to save report:", saveError);
     }
 
     res.json(aiAnalysis);
@@ -1080,6 +1149,7 @@ async function getArakaToken() {
 }
 
 app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
+  console.log("[ZoyaPay] Initiating payment request from user:", req.user?.email);
   const { amount, currency, phoneNumber, provider, planId, billingCycle, fee, vat, vatRate, feeRate, userName } = req.body;
   if (!amount || !phoneNumber || !provider || !planId || !billingCycle) {
     return res.status(400).json({ error: "Paramètres manquants (amount, phoneNumber, provider, planId, billingCycle requis)" });

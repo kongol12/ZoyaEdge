@@ -8,7 +8,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2 } from 'lucide-react';
 import { useTranslation } from '../../../lib/i18n';
 
-export default function TradeForm() {
+import { logActivity } from '../../../lib/activity';
+
+export default function TradeForm({ onSuccess }: { onSuccess?: () => void }) {
   const { user } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -102,8 +104,18 @@ export default function TradeForm() {
         reward: stats.reward || 0,
       });
 
+      logActivity(user.uid, 'trade_logged', { 
+        pnl: finalPnl, 
+        emotion: formData.emotion,
+        pair: formData.pair
+      });
+
       setShowSuccess(true);
-      setTimeout(() => navigate('/'), 1200);
+      if (onSuccess) {
+        setTimeout(onSuccess, 1200);
+      } else {
+        setTimeout(() => navigate('/'), 1200);
+      }
     } catch (error) {
       console.error("Error adding trade", error);
       alert("Failed to add trade");
