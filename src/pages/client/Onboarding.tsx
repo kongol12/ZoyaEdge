@@ -6,7 +6,7 @@ import {
   Target, TrendingUp, ShieldCheck, ArrowRight, ArrowLeft, 
   Loader2, BadgeInfo, AlertTriangle, BrainCircuit, Activity,
   LineChart, Sparkles, Plus, Upload, Coins, Zap, BarChart3, Gem, Clock, Bitcoin,
-  LogOut, Home
+  LogOut, Home, Sun, Moon
 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import toast from 'react-hot-toast';
@@ -17,10 +17,24 @@ import { logActivity } from '../../lib/activity';
 import { cn } from '../../lib/utils';
 import { useUserTrades } from '../../hooks/useUserTrades';
 
+import { useTheme } from '../../lib/theme';
+
 export default function Onboarding() {
-  const { user, updateProfile, profile, logout } = useAuth();
+  const { user, updateProfile, profile, logout, refreshProfile } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
+
+  const ThemeToggle = () => (
+    <button
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      className="flex items-center gap-1.5 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-gray-900 dark:hover:text-white transition-all bg-gray-50 dark:bg-gray-900 px-3 py-1.5 rounded-full md:bg-transparent md:px-0 md:py-0"
+      aria-label="Toggle theme"
+    >
+      {theme === 'dark' ? <Sun size={12} /> : <Moon size={12} />}
+      <span>Theme</span>
+    </button>
+  );
   
   // Real-time trades sync
   const { trades, tradesCount, loading: tradesLoading } = useUserTrades(user?.uid);
@@ -141,23 +155,24 @@ export default function Onboarding() {
     try {
       console.log("Finalizing onboarding for user:", user?.uid);
       
-      // Explicitly set the fields we want to persist
-      const profileData = {
-        tradingStyle: formData.tradingStyle,
-        experienceLevel: formData.experienceLevel,
-        capitalSize: formData.capitalSize,
-        currency: formData.currency,
-        defaultRisk: formData.defaultRisk,
-        defaultLotSize: formData.defaultLotSize,
-        assetTypes: formData.assetTypes,
-        onboarded: true,
-        onboardingState: {
-          ...onboardingState,
-          completed: true
-        }
-      };
-
-      await updateProfile(profileData);
+      const idToken = await user?.getIdToken();
+      const resp = await fetch('/api/auth/complete-onboarding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+        body: JSON.stringify({
+          tradingStyle: formData.tradingStyle,
+          experienceLevel: formData.experienceLevel,
+          capitalSize: formData.capitalSize,
+          currency: formData.currency,
+          defaultRisk: formData.defaultRisk,
+          defaultLotSize: formData.defaultLotSize,
+          assetTypes: formData.assetTypes,
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'Erreur de finalisation');
+      
+      await refreshProfile();
       
       logActivity(user?.uid || '', 'onboarding_complete');
       toast.success("Configuration terminée ! Bienvenue sur ZoyaEdge.");
@@ -205,13 +220,16 @@ export default function Onboarding() {
     <div className="min-h-screen bg-white dark:bg-gray-950 flex flex-col items-center justify-start md:justify-center p-4 md:p-8 overflow-x-hidden">
       {/* Top Navigation for Exit */}
       <div className="flex justify-between items-center w-full max-w-xl mb-6 md:absolute md:top-6 md:left-6 md:right-6 md:max-w-7xl">
-         <button 
-           onClick={() => navigate('/home')}
-           className="flex items-center gap-1.5 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-gray-900 dark:hover:text-white transition-all bg-gray-50 dark:bg-gray-900 px-3 py-1.5 rounded-full md:bg-transparent md:px-0 md:py-0"
-         >
-           <Home size={12} />
-           <span>Landing</span>
-         </button>
+         <div className="flex gap-2">
+           <button 
+             onClick={() => navigate('/home')}
+             className="flex items-center gap-1.5 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-gray-900 dark:hover:text-white transition-all bg-gray-50 dark:bg-gray-900 px-3 py-1.5 rounded-full md:bg-transparent md:px-0 md:py-0"
+           >
+             <Home size={12} />
+             <span>Landing</span>
+           </button>
+           <ThemeToggle />
+         </div>
          <button 
            onClick={handleLogout}
            className="flex items-center gap-1.5 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-rose-500 transition-all bg-gray-50 dark:bg-gray-900 px-3 py-1.5 rounded-full md:bg-transparent md:px-0 md:py-0"

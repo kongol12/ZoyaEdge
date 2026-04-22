@@ -267,6 +267,59 @@ app.get('/api/admin/ai/logs', verifyAdmin, async (req: any, res: any) => {
     res.json({ logs: [] });
 });
 
+app.post('/api/admin/transactions/override', verifyAdmin, async (req: any, res: any) => {
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+  const { transactionId, action } = req.body; // action: 'complete' | 'fail'
+  if (!transactionId || !['complete', 'fail'].includes(action)) {
+    return res.status(400).json({ error: 'transactionId and action (complete|fail) required' });
+  }
+  try {
+    let q = await db.collection('payments')
+      .where('transactionId', '==', transactionId)
+      .limit(1).get();
+      
+    if (q.empty) {
+      // Fallback: try by document ID just in case
+      try {
+         const docRef = await db.collection('payments').doc(transactionId).get();
+         if (docRef.exists) {
+            const data = docRef.data();
+            // Just simulate a QuerySnapshot structure for the rest of the code
+            q = { empty: false, docs: [docRef] } as any;
+         }
+      } catch (e) {
+          // ignore
+      }
+    }
+
+    if (q.empty) return res.status(404).json({ error: 'Transaction not found using ID ' + transactionId });
+
+    const paymentDoc = q.docs[0];
+    const paymentData = paymentDoc.data();
+
+    if (action === 'complete') {
+      // Simulate success
+      await finalizePayment(transactionId, {
+        status: 'SUCCESSFUL',
+        statusDescription: 'Manual override by admin',
+      });
+      await logSystemEvent('warn', 'admin_override', `Transaction ${transactionId} forcée à COMPLETED par admin ${req.user.email}`);
+      return res.json({ success: true, message: 'Transaction marquée comme complétée. Abonnement activé.' });
+    } else {
+      await paymentDoc.ref.update({
+        status: 'failed',
+        failureReason: 'Rejetée manuellement par un administrateur.',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      await logSystemEvent('warn', 'admin_override', `Transaction ${transactionId} forcée à FAILED par admin ${req.user.email}`);
+      return res.json({ success: true, message: 'Transaction marquée comme échouée.' });
+    }
+  } catch (error: any) {
+    console.error('[Admin Override Error]:', error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // Global System Logger
 async function logSystemEvent(level: 'info' | 'warn' | 'error', source: string, message: string, metadata: any = {}) {
   if (!db) {
@@ -291,10 +344,21 @@ async function logSystemEvent(level: 'info' | 'warn' | 'error', source: string, 
 async function finalizePayment(txId: string, resultData: any) {
   if (!db) return;
 
-  const q = await db.collection('payments')
+  let q = await db.collection('payments')
     .where('transactionId', '==', txId)
     .limit(1)
     .get();
+
+  if (q.empty) {
+    try {
+      const docRef = await db.collection('payments').doc(txId).get();
+      if (docRef.exists) {
+        q = { empty: false, docs: [docRef] } as any;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
 
   if (q.empty) {
     console.warn(`[Payment] Finalization failed: Transaction ${txId} not found in DB.`);
@@ -357,7 +421,7 @@ async function finalizePayment(txId: string, resultData: any) {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    await db.collection('activities').add({
+    await db.collection('user_activity').add({
       message: `Abonnement ${paymentData.plan} activé avec succès.`,
       type: 'payment',
       severity: 'info',
@@ -926,6 +990,30 @@ app.post('/api/auth/start-trial', verifyUser, async (req: any, res: any) => {
   }
 });
 
+app.post('/api/auth/complete-onboarding', verifyUser, async (req: any, res: any) => {
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
+  const { tradingStyle, experienceLevel, capitalSize, currency, defaultRisk, defaultLotSize, assetTypes } = req.body;
+  try {
+    const userRef = db.collection('users').doc(req.user.uid);
+    await userRef.set({
+      tradingStyle: tradingStyle || 'day_trading',
+      experienceLevel: experienceLevel || 'beginner',
+      capitalSize: capitalSize || '0',
+      currency: currency || 'USD',
+      defaultRisk: defaultRisk || 1,
+      defaultLotSize: defaultLotSize || 0.01,
+      assetTypes: assetTypes || [],
+      onboarded: true,
+      onboardingState: { step: 'COMPLETED', completed: true },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Onboarding completion error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // AI Coach Proxy Endpoint
 app.post('/api/ai/coach', verifyUser, async (req: any, res: any) => {
   const { input } = req.body;
@@ -1289,12 +1377,15 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
     
     // As per Araka documentation, amount should typically be an integer string or number
     const payload = {
+      reference: transactionReference,
+      transactionReference: transactionReference,
       order: {
         paymentPageId: pageId,
         customerFullName: userName || req.user.name || req.user.email?.split('@')[0] || "Zoya User",
         customerPhoneNumber: normalizedPhone,
         customerEmailAddress: req.user.email,
         transactionReference: transactionReference,
+        reference: transactionReference,
         amount: expectedTotal, // It is already either integer (CDF) or 2 max decimals (USD)
         currency: currency || "USD",
         redirectURL: `${process.env.APP_URL}/subscription/callback`
@@ -1328,7 +1419,7 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
       
       let finalDetails = errorData?.message || errorText;
       if (typeof finalDetails === 'string' && finalDetails.includes('Load failed')) {
-         finalDetails = "Araka (API Sandbox) a renvoyé une erreur interne ('Load failed'), bien que la transaction ait pu être initiée sur votre téléphone. Veuillez consulter les logs Araka ou réessayer.";
+         finalDetails = "Araka a renvoyé une erreur interne ('Load failed'), bien que la transaction ait pu être initiée sur votre téléphone. Veuillez consulter les logs Araka ou réessayer.";
       }
       
       return res.status(response.status).json({ 
@@ -1338,6 +1429,7 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
     }
 
     const result = await response.json();
+    const actualTransactionId = result.transactionId || result.id || result.reference || result.data?.id || result.data?.transactionId || transactionReference;
     
     if (db) {
       await db.collection('payments').add({
@@ -1355,12 +1447,12 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
         feeRate: transactionFee || 0,
         method: 'mobile_money',
         provider,
-        transactionReference,
-        transactionId: result.transactionId,
+        transactionReference: transactionReference,
+        transactionId: actualTransactionId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      await db.collection('activities').add({
+      await db.collection('user_activity').add({
         message: `Client ${userName || req.user.email} a initié un paiement ${currency} pour le plan ${planId}.`,
         type: 'payment',
         severity: 'info',
@@ -1371,7 +1463,7 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
 
     res.json({ 
       ...result, 
-      transactionId: result.transactionId,
+      transactionId: actualTransactionId,
       transactionReference 
     });
   } catch (error: any) {

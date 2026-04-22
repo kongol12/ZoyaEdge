@@ -168,9 +168,9 @@ export default function LandingPage() {
             <span className="px-3 py-1 md:px-4 md:py-1.5 bg-zoya-red/10 text-zoya-red rounded-full text-[10px] md:text-sm font-bold uppercase tracking-widest border border-zoya-red/20 shadow-sm animate-pulse">
               {t.landing.dataIsEdge}
             </span>
-            <h1 className="text-3xl md:text-6xl lg:text-7xl font-poppins font-black text-gray-900 dark:text-white tracking-tighter leading-relaxed md:leading-tight">
+            <h1 className="text-3xl md:text-6xl lg:text-7xl font-poppins font-black text-gray-900 dark:text-white tracking-tighter leading-normal md:leading-snug">
               <span className="block">{t.landing.heroTitle}</span>
-              <span className="block mt-3 md:mt-4 text-zoya-red">{t.landing.heroTitleSub}</span>
+              <span className="block md:mt-2 text-zoya-red">{t.landing.heroTitleSub}</span>
             </h1>
           </div>
           

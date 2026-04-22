@@ -63,16 +63,28 @@ export default function AdminDashboard() {
     // 1. Fetch Total Users
     const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       setStats(prev => ({ ...prev, totalUsers: snapshot.size }));
-      
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
+    });
+
+    // Fetch Revenue from Payments
+    const unsubscribePayments = onSnapshot(collection(db, 'payments'), (snapshot) => {
       let rev = 0;
       snapshot.docs.forEach(doc => {
         const data = doc.data();
-        if (data.subscription === 'pro') rev += 15.99;
-        if (data.subscription === 'premium') rev += 22.99;
+        if (data.status === 'completed') {
+          // Assuming we roughly normalize CDF to USD if using automatic exchange rate
+          const amount = data.amount || 0;
+          if (data.currency === 'CDF') {
+            rev += amount / 2800; // rough exchange rate
+          } else {
+            rev += amount;
+          }
+        }
       });
       setStats(prev => ({ ...prev, revenue: rev }));
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'users');
+      handleFirestoreError(error, OperationType.LIST, 'payments');
     });
 
     // 2. Fetch Active Connections
@@ -154,6 +166,7 @@ export default function AdminDashboard() {
 
     return () => {
       unsubscribeUsers();
+      unsubscribePayments();
       unsubscribeConns();
       unsubscribeTrades();
       unsubscribeRecentUsers();

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { db } from '../../lib/firebase';
+import { db, auth } from '../../lib/firebase';
 import { collection, onSnapshot, query, orderBy, Timestamp, where, getDocs } from 'firebase/firestore';
 import { Search, Filter, Download, Calendar, ArrowUpRight, CreditCard, Users, Wallet, CheckCircle2, Clock, XCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -18,7 +18,8 @@ interface Transaction {
   plan: 'free' | 'pro' | 'premium';
   method: string;
   createdAt: Timestamp;
-  transactionRef?: string;
+  transactionReference?: string;
+  transactionId?: string;
   cycle?: 'monthly' | 'yearly';
 }
 
@@ -72,7 +73,7 @@ export default function Transactions() {
       tx.userId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (tx.userName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (tx.userEmail || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (tx.transactionRef || '').toLowerCase().includes(searchTerm.toLowerCase());
+      (tx.transactionReference || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || tx.status === statusFilter;
     const matchesCurrency = currencyFilter === 'all' || tx.currency === currencyFilter;
@@ -335,7 +336,7 @@ export default function Transactions() {
                   </div>
                   <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-2xl col-span-2">
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Référence Transaction</p>
-                    <p className="text-xs font-bold text-gray-900 dark:text-white">{selectedTransaction.transactionRef || "N/A"}</p>
+                    <p className="text-xs font-bold text-gray-900 dark:text-white">{selectedTransaction.transactionReference || "N/A"}</p>
                   </div>
                   <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-2xl col-span-2">
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Date & Heure</p>
@@ -345,6 +346,52 @@ export default function Transactions() {
                   </div>
                 </div>
 
+                {selectedTransaction.status === 'pending' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <button 
+                      onClick={async () => {
+                        try {
+                          const token = await auth.currentUser?.getIdToken();
+                          const resp = await fetch('/api/admin/transactions/override', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ transactionId: selectedTransaction.transactionId || selectedTransaction.id, action: 'complete' })
+                          });
+                          const data = await resp.json();
+                          if (!resp.ok) throw new Error(data.error || 'Erreur');
+                          import('react-hot-toast').then(m => m.default.success("Transaction forcée à succès"));
+                          setSelectedTransaction(null);
+                        } catch (err: any) {
+                          import('react-hot-toast').then(m => m.default.error(err.message));
+                        }
+                      }}
+                      className="py-4 bg-emerald-500 text-white font-bold rounded-2xl shadow-lg transition-transform active:scale-95"
+                    >
+                      Forcer Succès
+                    </button>
+                    <button 
+                      onClick={async () => {
+                         try {
+                          const token = await auth.currentUser?.getIdToken();
+                          const resp = await fetch('/api/admin/transactions/override', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ transactionId: selectedTransaction.transactionId || selectedTransaction.id, action: 'fail' })
+                          });
+                          const data = await resp.json();
+                          if (!resp.ok) throw new Error(data.error || 'Erreur');
+                          import('react-hot-toast').then(m => m.default.success("Transaction forcée à échec"));
+                          setSelectedTransaction(null);
+                        } catch (err: any) {
+                          import('react-hot-toast').then(m => m.default.error(err.message));
+                        }
+                      }}
+                      className="py-4 bg-rose-500 text-white font-bold rounded-2xl shadow-lg transition-transform active:scale-95"
+                    >
+                      Forcer Échec
+                    </button>
+                  </div>
+                )}
                 <div className="flex gap-4">
                   <button className="flex-1 py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-2xl shadow-lg transition-transform active:scale-95">
                     Télécharger Reçu

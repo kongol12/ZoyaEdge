@@ -104,7 +104,7 @@ service cloud.firestore {
                     incoming().keys().hasAll(['email', 'createdAt']) &&
                     isValidUser(incoming()) && 
                     incoming().role == 'user' && 
-                    (incoming().subscription in ['free', 'discovery', 'pro']); 
+                    (incoming().subscription in ['free', 'discovery']); 
       
       allow update: if (isOwner(userId) && 
                     isValidUser(incoming()) &&
