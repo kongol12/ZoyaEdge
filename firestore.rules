@@ -39,13 +39,20 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string)) &&
+             (!('tradingStyle' in data) || data.tradingStyle is string) &&
+             (!('experienceLevel' in data) || data.experienceLevel is string) &&
+             (!('capitalSize' in data) || (data.capitalSize is string || data.capitalSize is number)) &&
+             (!('assetTypes' in data) || data.assetTypes is list) &&
+             (!('onboardingState' in data) || data.onboardingState is map) &&
+             (!('onboarded' in data) || data.onboarded is bool) &&
              (!('createdAt' in data) || data.createdAt is timestamp) &&
              (!('updatedAt' in data) || data.updatedAt is timestamp) &&
              (!('role' in data) || data.role in ['user', 'agent', 'admin']) &&
-             (!('subscription' in data) || data.subscription in ['free', 'pro', 'premium', 'discovery', 'elite']) &&
+             (!('subscription' in data) || data.subscription is string) &&
              (!('subscriptionStatus' in data) || data.subscriptionStatus is string) &&
-             (!('aiCredits' in data) || (data.aiCredits is int && data.aiCredits >= 0)) &&
-             (!('onboarded' in data) || data.onboarded is bool);
+             (!('aiCredits' in data) || (data.aiCredits is int && data.aiCredits >= 0));
     }
 
     function isValidTrade(data, userId) {
@@ -100,9 +107,10 @@ service cloud.firestore {
                     (incoming().subscription in ['free', 'discovery', 'pro']); 
       
       allow update: if (isOwner(userId) && 
-                !incoming().diff(existing()).affectedKeys().hasAny([
-                  'role', 'subscription', 'createdAt', 'email', 'subscriptionEndDate', 'subscriptionStatus', 'aiCredits'
-                ])) ||
+                    isValidUser(incoming()) &&
+                    !incoming().diff(existing()).affectedKeys().hasAny([
+                      'role', 'subscription', 'createdAt', 'email', 'subscriptionEndDate', 'subscriptionStatus', 'aiCredits'
+                    ])) ||
               isAdmin();
       match /trades/{tradeId} {
         allow read: if isOwner(userId) || isAdmin();

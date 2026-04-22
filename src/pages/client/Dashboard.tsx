@@ -252,7 +252,7 @@ export default function Dashboard() {
                 {t.common.import}
               </Button>
             </Link>
-            <Link to="/add" className="flex-1 sm:flex-none">
+            <Link to="/add" className="hidden md:flex flex-1 sm:flex-none">
               <Button
                 icon={<Plus size={18} />}
                 className="w-full text-xs font-bold h-10 px-4 rounded-xl shadow-lg shadow-zoya-red/20"
@@ -277,8 +277,8 @@ export default function Dashboard() {
       </div>
 
       {/* Zoya Behavior Score Overlay */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-gray-900 rounded-[2.5rem] p-8 border border-gray-800 shadow-2xl overflow-hidden relative group">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+          <div className="lg:col-span-2 bg-gray-900 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 border border-gray-800 shadow-2xl overflow-hidden relative group">
               <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
                   <BrainCircuit size={120} />
               </div>
@@ -325,7 +325,7 @@ export default function Dashboard() {
               </div>
           </div>
           
-          <div className="bg-rose-500/10 border border-rose-500/20 rounded-[2.5rem] p-8 flex flex-col justify-between">
+          <div className="bg-rose-500/10 border border-rose-500/20 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 flex flex-col justify-between pt-8 md:pt-8 min-h-[300px] md:min-h-0">
               <div className="space-y-4">
                   <div className="flex items-center gap-3 text-rose-500">
                       <AlertTriangle size={24} />
@@ -378,8 +378,8 @@ export default function Dashboard() {
       )}
 
       {/* Primary Analytics Section (Trade View Models for Harmony) */}
-      <section className="mb-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <section className="mb-8 md:mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           <PnlVolumeChart 
             data={cumulativePnlData} 
             totalPnl={totalPnL} 
@@ -405,7 +405,7 @@ export default function Dashboard() {
       </section>
 
       {/* Secondary Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8 md:mb-12">
         <StatCard
           title={t.dashboard.balance}
           value={formatCurrency(currentBalance)}

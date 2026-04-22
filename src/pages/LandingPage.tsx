@@ -1,50 +1,72 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { TrendingUp, ArrowRight, Shield, Zap, Target, AlertCircle, ShieldAlert, Activity, Globe } from 'lucide-react';
-import { motion } from 'motion/react';
+import { TrendingUp, ArrowRight, Shield, Zap, Target, AlertCircle, ShieldAlert, Activity, Globe, Menu, X, Sun, Moon } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../lib/auth';
 import { useTranslation } from '../lib/i18n';
+import { useTheme } from '../lib/theme';
 import { cn } from '../lib/utils';
 
 export default function LandingPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { t, language, setLanguage } = useTranslation();
+  const { theme, setTheme } = useTheme();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const LanguageSelector = ({ mobile = false }: { mobile?: boolean }) => (
+    <div className={cn(
+      "flex items-center bg-gray-100 dark:bg-gray-900 rounded-full p-1",
+      mobile ? "w-fit" : ""
+    )}>
+      <button
+        onClick={() => setLanguage('fr')}
+        className={cn(
+          "px-3 py-1 text-[10px] font-black rounded-full transition-all",
+          language === 'fr' ? "bg-white dark:bg-gray-800 text-zoya-red shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+        )}
+      >
+        FR
+      </button>
+      <button
+        onClick={() => setLanguage('en')}
+        className={cn(
+          "px-3 py-1 text-[10px] font-black rounded-full transition-all",
+          language === 'en' ? "bg-white dark:bg-gray-800 text-zoya-red shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+        )}
+      >
+        EN
+      </button>
+    </div>
+  );
+
+  const ThemeToggle = () => (
+    <button
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      className="p-2 rounded-full bg-gray-100 dark:bg-gray-900 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
+      aria-label="Toggle theme"
+    >
+      {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+    </button>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col overflow-x-hidden">
       {/* Basic Nav */}
-      <nav className="p-6 flex items-center justify-between max-w-7xl mx-auto w-full">
+      <nav className="p-4 md:p-6 flex items-center justify-between max-w-7xl mx-auto w-full relative z-50">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-zoya-red rounded-xl flex items-center justify-center">
-            <TrendingUp size={24} className="text-white" />
+          <div className="w-8 h-8 md:w-10 md:h-10 bg-zoya-red rounded-xl flex items-center justify-center">
+            <TrendingUp size={20} className="text-white md:w-6 md:h-6" />
           </div>
-          <span className="text-xl font-poppins font-black text-gray-900 dark:text-white uppercase tracking-tight">
+          <span className="text-lg md:text-xl font-poppins font-black text-gray-900 dark:text-white uppercase tracking-tight">
             Zoya<span className="text-zoya-red">Edge</span>
           </span>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="flex items-center bg-gray-100 dark:bg-gray-900 rounded-full p-1 mr-2">
-            <button
-              onClick={() => setLanguage('fr')}
-              className={cn(
-                "px-3 py-1 text-[10px] font-black rounded-full transition-all",
-                language === 'fr' ? "bg-white dark:bg-gray-800 text-zoya-red shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              )}
-            >
-              FR
-            </button>
-            <button
-              onClick={() => setLanguage('en')}
-              className={cn(
-                "px-3 py-1 text-[10px] font-black rounded-full transition-all",
-                language === 'en' ? "bg-white dark:bg-gray-800 text-zoya-red shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              )}
-            >
-              EN
-            </button>
-          </div>
+        {/* Desktop Nav */}
+        <div className="hidden md:flex items-center gap-4">
+          <ThemeToggle />
+          <LanguageSelector />
           
           {user ? (
             <Link to="/" className="zoya-button-primary py-2 px-6 text-sm">
@@ -56,7 +78,84 @@ export default function LandingPage() {
             </Link>
           )}
         </div>
+
+        {/* Mobile Menu Toggle */}
+        <button 
+          onClick={() => setIsSidebarOpen(true)}
+          className="md:hidden p-2 text-gray-900 dark:text-white"
+        >
+          <Menu size={24} />
+        </button>
       </nav>
+
+      {/* Mobile Sidebar */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSidebarOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] md:hidden"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              className="fixed top-0 right-0 h-full w-[280px] bg-white dark:bg-gray-950 z-[70] shadow-2xl p-6 md:hidden flex flex-col"
+            >
+              <div className="flex justify-between items-center mb-10">
+                <span className="font-poppins font-black text-lg uppercase dark:text-white">Menu</span>
+                <button 
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="p-2 text-gray-500"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-6 flex-1">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Langue</label>
+                    <LanguageSelector mobile />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest">Thème</label>
+                    <div><ThemeToggle /></div>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-gray-100 dark:border-gray-900">
+                  {user ? (
+                    <Link 
+                      to="/" 
+                      className="zoya-button-primary w-full py-4 flex items-center justify-center gap-2"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      Dashboard
+                      <ArrowRight size={18} />
+                    </Link>
+                  ) : (
+                    <Link 
+                      to="/auth" 
+                      className="w-full py-4 text-center font-black uppercase tracking-widest text-zoya-red border-2 border-zoya-red rounded-2xl"
+                      onClick={() => setIsSidebarOpen(false)}
+                    >
+                      {t.landing.login}
+                    </Link>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] text-center mb-4">
+                ZoyaEdge Control
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Hero */}
       <main className="flex-1 flex flex-col items-center justify-center p-6 text-center">
@@ -69,9 +168,9 @@ export default function LandingPage() {
             <span className="px-3 py-1 md:px-4 md:py-1.5 bg-zoya-red/10 text-zoya-red rounded-full text-[10px] md:text-sm font-bold uppercase tracking-widest border border-zoya-red/20 shadow-sm animate-pulse">
               {t.landing.dataIsEdge}
             </span>
-            <h1 className="text-2xl md:text-6xl lg:text-7xl font-poppins font-black text-gray-900 dark:text-white tracking-tighter leading-tight md:leading-none">
-              {t.landing.heroTitle} <br className="hidden md:block" />
-              <span className="text-zoya-red">{t.landing.heroTitleSub}</span>
+            <h1 className="text-3xl md:text-6xl lg:text-7xl font-poppins font-black text-gray-900 dark:text-white tracking-tighter leading-relaxed md:leading-tight">
+              <span className="block">{t.landing.heroTitle}</span>
+              <span className="block mt-3 md:mt-4 text-zoya-red">{t.landing.heroTitleSub}</span>
             </h1>
           </div>
           

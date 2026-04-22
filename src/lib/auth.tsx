@@ -17,7 +17,7 @@ import {
 } from 'firebase/auth';
 import { auth, db } from './firebase';
 export { auth };
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 
 // Set persistence to local storage
 setPersistence(auth, browserLocalPersistence).catch(err => {
@@ -39,6 +39,15 @@ interface AuthContextType {
   isSuperAdmin: (email: string | null | undefined) => Promise<boolean>;
 }
 
+export type OnboardingStep = "PROFILE" | "ADD_TRADES" | "AI_ANALYSIS" | "COMPLETED";
+
+export interface OnboardingState {
+  step: OnboardingStep;
+  tradesCount: number;
+  skipped: boolean;
+  completed: boolean;
+}
+
 export interface UserProfile {
   email: string;
   displayName: string;
@@ -49,7 +58,8 @@ export interface UserProfile {
   defaultLotSize?: number;
   currency?: string;
   onboarded?: boolean;
-  subscription?: 'free' | 'pro' | 'premium';
+  onboardingState?: OnboardingState;
+  subscription?: 'free' | 'pro' | 'premium' | 'discovery' | 'elite';
   subscriptionCycle?: 'monthly' | 'yearly';
   subscriptionStatus?: 'active' | 'expired' | 'canceled' | 'trialing' | 'suspended';
   subscriptionEndDate?: any;
@@ -61,10 +71,8 @@ export interface UserProfile {
   calendarShowPnL?: boolean;
   calendarShowTrades?: boolean;
   assetTypes?: string[];
-  capitalSize?: string;
-  tradingStyle?: string;
-  experienceLevel?: 'beginner' | 'intermediate' | 'advanced';
   createdAt: any;
+  updatedAt?: any;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -101,47 +109,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeProfile: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       try {
         if (currentUser) {
-          let p = await fetchProfile(currentUser.uid);
-          if (!p) {
-            try {
-              const trialEndDate = new Date();
-              trialEndDate.setDate(trialEndDate.getDate() + 7);
+          // Set user immediately
+          setUser(currentUser);
 
-              const newProfile = {
-                email: currentUser.email || '',
-                displayName: currentUser.displayName || '',
-                createdAt: serverTimestamp(),
-                onboarded: false,
-                subscription: 'pro',
-                subscriptionStatus: 'trialing',
-                subscriptionEndDate: trialEndDate,
-                hasUsedTrial: true,
-                aiCredits: 10,
-                initialBalance: 0,
-                role: 'user',
-              };
-              await setDoc(doc(db, 'users', currentUser.uid), newProfile);
-              setProfile(newProfile as UserProfile);
-            } catch (createError) {
-              console.error("Error creating profile:", createError);
-              // Set a fallback profile so the app doesn't break completely
-              setProfile({
-                email: currentUser.email || '',
-                displayName: currentUser.displayName || '',
-                createdAt: new Date(),
-                onboarded: false,
-                subscription: 'free',
-                role: 'user',
-              } as UserProfile);
+          // Listen to profile changes in real-time
+          const userRef = doc(db, 'users', currentUser.uid);
+          unsubscribeProfile = onSnapshot(userRef, async (userSnap) => {
+            if (userSnap.exists()) {
+              setProfile(userSnap.data() as UserProfile);
+            } else {
+              // Only create if it definitely doesn't exist
+              try {
+                const trialEndDate = new Date();
+                trialEndDate.setDate(trialEndDate.getDate() + 7);
+
+                const newProfile = {
+                  email: currentUser.email || '',
+                  displayName: currentUser.displayName || '',
+                  createdAt: serverTimestamp(),
+                  onboarded: false,
+                  subscription: 'pro',
+                  subscriptionStatus: 'trialing',
+                  subscriptionEndDate: trialEndDate,
+                  hasUsedTrial: true,
+                  aiCredits: 10,
+                  initialBalance: 0,
+                  role: 'user',
+                };
+                await setDoc(doc(db, 'users', currentUser.uid), newProfile);
+                // The snapshot listener above will pick this up
+              } catch (createError) {
+                console.error("Error creating profile:", createError);
+              }
             }
-          }
+          });
         } else {
+          setUser(null);
           setProfile(null);
+          if (unsubscribeProfile) unsubscribeProfile();
         }
-        setUser(currentUser);
       } catch (err) {
         console.error("Auth state change error:", err);
       } finally {
@@ -149,7 +160,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) unsubscribeProfile();
+    };
   }, []);
 
   const signInWithGoogle = async () => {
@@ -192,13 +206,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateProfile = async (data: Partial<UserProfile>) => {
     if (!user) return;
     // Filter out restricted fields that should not be updated by the user directly
-    const { createdAt, role, email, ...updatableData } = data;
+    const { 
+      createdAt, 
+      role, 
+      email, 
+      subscription, 
+      subscriptionStatus, 
+      subscriptionEndDate, 
+      aiCredits, 
+      hasUsedTrial,
+      bypassMaintenance,
+      isAdmin,
+      ...updatableData 
+    } = data as any;
+    
     const userRef = doc(db, 'users', user.uid);
     await setDoc(userRef, { 
       ...updatableData, 
       updatedAt: serverTimestamp() 
     }, { merge: true });
-    await fetchProfile(user.uid);
   };
 
   const refreshProfile = async () => {

@@ -70,7 +70,12 @@ const LoadingScreen = () => (
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   
-  if (loading) return <LoadingScreen />;
+  if (loading) {
+    if (window.location.pathname === '/' || window.location.pathname === '/home') {
+      return null;
+    }
+    return <LoadingScreen />;
+  }
   if (!user) return <Navigate to="/home" replace />;
   
   // Redirect to onboarding if not completed
