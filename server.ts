@@ -228,6 +228,7 @@ async function verifyUser(req: any, res: any, next: any) {
 
 // Admin Stats
 app.get('/api/admin/stats', verifyAdmin, async (req: any, res: any) => {
+  if (!db) return res.status(503).json({ error: 'Database unavailable' });
   try {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -240,10 +241,13 @@ app.get('/api/admin/stats', verifyAdmin, async (req: any, res: any) => {
       if (doc.data().status === 'completed') totalRevenue += doc.data().amount || 0;
     });
 
+    const completed = payments.docs.filter(d => d.data().status === 'completed').length;
+    const successRate = payments.size > 0 ? Math.round((completed / payments.size) * 100) / 100 : 0;
+
     res.json({
       totalRevenue,
       totalTransactions: payments.size,
-      successRate: 0.95, // mock for now
+      successRate,
     });
   } catch (error) {
     console.error("Admin stats error:", error);
@@ -293,7 +297,6 @@ async function finalizePayment(txId: string, resultData: any) {
     .get();
 
   if (q.empty) {
-    await logSystemEvent('warn', 'payment', `Finalization failed: Transaction ${txId} not found.`);
     console.warn(`[Payment] Finalization failed: Transaction ${txId} not found in DB.`);
     return;
   }
@@ -301,22 +304,42 @@ async function finalizePayment(txId: string, resultData: any) {
   const paymentDoc = q.docs[0];
   const paymentData = paymentDoc.data();
 
-  // IDEMPOTENCY: Stop if already processed
   if (paymentData.status === 'completed') {
     return { success: true, alreadyProcessed: true };
   }
 
-  // Double check status with Araka if resultData isn't already verified
-  const rawStatus = resultData.status || resultData.statusCode || resultData.transactionStatus || resultData.Status || (resultData.data && resultData.data.status);
-  const status = (typeof rawStatus === 'string' ? rawStatus : '').toUpperCase();
-  const desc = (typeof (resultData.statusDescription || resultData.message || "") === 'string' ? (resultData.statusDescription || resultData.message || "") : '').toUpperCase();
+  // Robust Status Extraction
+  const getDeepStatus = (obj: any): string => {
+    if (!obj) return "";
+    const keys = ["status", "statusCode", "transactionStatus", "Status", "statusText", "code"];
+    for (const k of keys) {
+      if (typeof obj[k] === "string" || typeof obj[k] === "number") return String(obj[k]);
+    }
+    if (obj.data) return getDeepStatus(obj.data);
+    if (obj.order) return getDeepStatus(obj.order);
+    if (obj.result) return getDeepStatus(obj.result);
+    if (Array.isArray(obj.data) && obj.data.length > 0) return getDeepStatus(obj.data[0]);
+    return "";
+  };
+
+  const rawStatus = getDeepStatus(resultData);
+  const status = rawStatus.toUpperCase();
+  const rawDesc = resultData.statusDescription || resultData.message || resultData.statusMessage || "";
+  const desc = String(rawDesc).toUpperCase();
   
-  const isSuccess = status === 'SUCCESSFUL' || status === 'COMPLETED' || status === 'SUCCESS' || status === '200' || status === 'APPROVED' || desc === 'APPROVED';
-  const isFailed = status === 'FAILED' || status === 'CANCELLED' || status === 'REJECTED' || status === 'ERROR' || status === '400' || status === 'FAIL' || status.includes('FAIL') || status.includes('REJECT') || status.includes('CANCEL');
+  const isSuccess = 
+    status.includes('SUCCESS') || status.includes('COMPLET') || status.includes('APPROV') || 
+    status === '200' || status === 'PAID' || desc.includes('APPROV') || desc.includes('SUCCESS');
+  
+  const isFailed = 
+    status.includes('FAIL') || status.includes('REJECT') || status.includes('CANCEL') || 
+    status.includes('ERR') || status.includes('400') || status.includes('DECLIN') || 
+    status.includes('EXPIRE') || desc.includes('REJECT') || desc.includes('FAIL');
 
   if (isSuccess) {
     await paymentDoc.ref.update({ 
       status: 'completed',
+      rawArakaResponse: resultData,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
     
@@ -347,12 +370,13 @@ async function finalizePayment(txId: string, resultData: any) {
     await paymentDoc.ref.update({ 
       status: 'failed',
       failureReason: resultData.message || resultData.statusDescription || "Transaction échouée",
+      rawArakaResponse: resultData,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
     return { success: false, failed: true };
   }
   
-  return { success: false, pending: true };
+  return { success: false, pending: true, status };
 }
 
 // Initialize Firebase Admin lazily or safely
@@ -1155,7 +1179,6 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
     return res.status(400).json({ error: "Paramètres manquants (amount, phoneNumber, provider, planId, billingCycle requis)" });
   }
 
-  // Server-side Phone Normalization for Araka (DRC Format: +243XXXXXXXXX)
   let normalizedPhone = phoneNumber.replace(/\D/g, '');
   if (normalizedPhone.startsWith('243') && normalizedPhone.length === 12) {
     normalizedPhone = '+' + normalizedPhone;
@@ -1164,8 +1187,15 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
   } else if (normalizedPhone.length === 9) {
     normalizedPhone = '+243' + normalizedPhone;
   } else {
-    // If user provided +243 inside the \D strip it was removed, let's just make sure it has +
-    normalizedPhone = '+' + normalizedPhone;
+    return res.status(400).json({
+      error: "Format de téléphone non reconnu. Utilisez le format: 0812345678 ou 243812345678"
+    });
+  }
+
+  if (!normalizedPhone.startsWith('+243') || normalizedPhone.length !== 13) {
+    return res.status(400).json({
+      error: "Numéro invalide pour DRC. Format attendu: +243XXXXXXXXX (13 chars)"
+    });
   }
 
   try {
@@ -1201,22 +1231,40 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
     const vatRate = settings.vatRate || 16;
     const globalDiscount = settings.globalDiscount || 0;
 
-    // Map planId to base USD price from Firestore
-    const priceMap: Record<string, Record<string, number>> = {
+    // Maps and logic based on admin settings
+    const useAutomaticConversion = settings.useAutomaticConversion ?? true;
+
+    // Define price maps for both currencies
+    const priceMapUSD: Record<string, Record<string, number>> = {
       discovery: { monthly: settings.discoveryMonthlyUSD ?? 0, yearly: settings.discoveryYearlyUSD ?? 0 },
       pro: { monthly: settings.proMonthlyUSD ?? 20, yearly: settings.proYearlyUSD ?? 200 },
       premium: { monthly: settings.premiumMonthlyUSD ?? 50, yearly: settings.premiumYearlyUSD ?? 500 },
     };
-    let basePriceUSD = priceMap[planId]?.[billingCycle];
-    if (basePriceUSD === undefined) {
-      return res.status(400).json({ error: "Plan ou cycle de facturation invalide." });
-    }
-    
-    // Apply discount
-    const discountMultiplier = 1 - (globalDiscount / 100);
-    basePriceUSD = basePriceUSD * discountMultiplier;
 
-    const basePriceInCurrency = currency === 'USD' ? basePriceUSD : basePriceUSD * exchangeRate;
+    const priceMapCDF: Record<string, Record<string, number>> = {
+      discovery: { monthly: settings.discoveryMonthlyCDF ?? 0, yearly: settings.discoveryYearlyCDF ?? 0 },
+      pro: { monthly: settings.proMonthlyCDF ?? 56000, yearly: settings.proYearlyCDF ?? 560000 },
+      premium: { monthly: settings.premiumMonthlyCDF ?? 140000, yearly: settings.premiumYearlyCDF ?? 1400000 },
+    };
+
+    let basePriceInCurrency: number;
+    const discountMultiplier = 1 - (globalDiscount / 100);
+
+    if (currency === 'CDF') {
+      if (useAutomaticConversion) {
+        const baseUSD = priceMapUSD[planId]?.[billingCycle];
+        if (baseUSD === undefined) return res.status(400).json({ error: "Plan ou cycle invalide." });
+        basePriceInCurrency = (baseUSD * discountMultiplier) * exchangeRate;
+      } else {
+        const baseCDF = priceMapCDF[planId]?.[billingCycle];
+        if (baseCDF === undefined) return res.status(400).json({ error: "Plan ou cycle invalide." });
+        basePriceInCurrency = baseCDF * discountMultiplier;
+      }
+    } else {
+      const baseUSD = priceMapUSD[planId]?.[billingCycle];
+      if (baseUSD === undefined) return res.status(400).json({ error: "Plan ou cycle invalide." });
+      basePriceInCurrency = baseUSD * discountMultiplier;
+    }
     
     // We preserve up to 2 decimal places properly for USD
     const roundAmount = (val: number) => {
@@ -1301,10 +1349,10 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
         status: 'pending',
         plan: planId,
         cycle: billingCycle,
-        fee: fee || 0,
-        vat: vat || 0,
+        fee: feeAmount || 0,
+        vat: vatAmount || 0,
         vatRate: vatRate || 0,
-        feeRate: feeRate || 0,
+        feeRate: transactionFee || 0,
         method: 'mobile_money',
         provider,
         transactionReference,
@@ -1392,12 +1440,14 @@ app.get('/api/user/sync-status/:txId', verifyUser, async (req: any, res: any) =>
     }
 
     const result = await arakaResponse.json();
+    console.log(`[Araka Polling] Result for ${txId}:`, JSON.stringify(result));
     
     // 3. Finaliser (Mise à jour DB + Abonnement) si succès détecté par le serveur
     const finalizationResult = await finalizePayment(txId, result);
     
-    const rawStatus = result.status || result.statusCode || result.transactionStatus || result.Status || (result.data && result.data.status);
-    const status = (typeof rawStatus === 'string' ? rawStatus : '').toUpperCase();
+    // Use the optimized status extraction logic from finalizePayment if available
+    const rawStatus = finalizationResult?.status || result.status || result.statusCode || result.transactionStatus || result.Status || (result.data && result.data.status);
+    const status = (String(rawStatus || '')).toUpperCase();
 
     // 4. Réponse normalisée au frontend
     const finalStatusText = finalizationResult?.success ? 'SUCCESS' : (finalizationResult?.failed ? 'FAILED' : status);
@@ -1411,6 +1461,16 @@ app.get('/api/user/sync-status/:txId', verifyUser, async (req: any, res: any) =>
 // ARAKA WEBHOOK / CALLBACK ENDPOINT
 // This endpoint is meant to be called by Araka servers asynchronously
 app.post('/api/webhook/araka', async (req, res) => {
+  const arakaSecret = process.env.ARAKA_CALLBACK_SECRET;
+  if (arakaSecret) {
+    const receivedSig = req.headers['x-araka-signature'] ||
+                        req.headers['authorization'];
+    if (!receivedSig || receivedSig !== arakaSecret) {
+      console.warn('[Araka Webhook] Rejected: invalid signature');
+      return res.status(401).send('Unauthorized');
+    }
+  }
+
   try {
     const payload = req.body;
     

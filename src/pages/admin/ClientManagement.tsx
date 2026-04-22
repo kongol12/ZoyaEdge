@@ -11,6 +11,7 @@ import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { FileDown, FileSpreadsheet, FileText } from 'lucide-react';
 import { OperationType, handleFirestoreError } from '../../lib/db';
+import toast from 'react-hot-toast';
 
 export default function ClientManagement() {
   const [users, setUsers] = useState<(UserProfile & { id: string })[]>([]);
@@ -90,9 +91,9 @@ export default function ClientManagement() {
         const { sendPasswordResetEmail } = await import('firebase/auth');
         const { auth } = await import('../../lib/firebase');
         await sendPasswordResetEmail(auth, email);
-        alert('Email de réinitialisation envoyé avec succès.');
+        toast.success('Email de réinitialisation envoyé avec succès.');
       } catch (error: any) {
-        alert('Erreur: ' + error.message);
+        toast.error('Erreur: ' + error.message);
       }
     }
   };
@@ -148,9 +149,9 @@ export default function ClientManagement() {
         createdAt: new Date(),
         onboarded: true
       });
-      alert('Client de test créé !');
+      toast.success('Client de test créé !');
     } catch (error: any) {
-      alert('Erreur: ' + error.message);
+      toast.error('Erreur: ' + error.message);
     }
   };
 

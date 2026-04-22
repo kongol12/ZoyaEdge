@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { seedMockTrades, clearDemoTrades } from '../../lib/seed';
 import { motion, AnimatePresence } from 'motion/react';
+import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -118,10 +119,10 @@ export default function ClientTradeReports() {
     setIsSeeding(true);
     try {
       await seedMockTrades(50);
-      alert("Trades générés avec succès !");
+      toast.success("Trades générés avec succès !");
     } catch (error) {
       console.error(error);
-      alert("Erreur lors du seeding.");
+      toast.error("Erreur lors du seeding.");
     } finally {
       setIsSeeding(false);
     }
@@ -132,10 +133,10 @@ export default function ClientTradeReports() {
     setIsSeeding(true);
     try {
       await clearDemoTrades();
-      alert("Trades démo supprimés !");
+      toast.success("Trades démo supprimés !");
     } catch (error) {
       console.error(error);
-      alert("Erreur lors de la suppression.");
+      toast.error("Erreur lors de la suppression.");
     } finally {
       setIsSeeding(false);
     }

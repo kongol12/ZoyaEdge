@@ -12,6 +12,7 @@ import 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { FileDown, FileSpreadsheet, FileText } from 'lucide-react';
 import { OperationType, handleFirestoreError } from '../../lib/db';
+import toast from 'react-hot-toast';
 
 export default function UserManagement() {
   const [users, setUsers] = useState<(UserProfile & { id: string })[]>([]);
@@ -61,16 +62,20 @@ export default function UserManagement() {
   const handleUpdateUser = async (userId: string, updates: Partial<UserProfile>) => {
     try {
       await updateDoc(doc(db, 'users', userId), updates);
+      toast.success("Utilisateur mis à jour");
     } catch (error) {
       console.error("Error updating user:", error);
+      toast.error("Erreur lors de la mise à jour");
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
     try {
       await deleteDoc(doc(db, 'users', userId));
+      toast.success("Utilisateur supprimé");
     } catch (error) {
       console.error("Error deleting user:", error);
+      toast.error("Erreur lors de la suppression");
     }
   };
 

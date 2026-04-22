@@ -3,7 +3,7 @@ import { useAuth } from '../../lib/auth';
 import { useTranslation } from '../../lib/i18n';
 import { subscribeToTrades, subscribeToNotebook, Trade, NotebookEntry } from '../../lib/db';
 import { formatCurrency, formatPercentage, cn, exportToCSV } from '../../lib/utils';
-import { TrendingUp, Target, Activity, Plus, Upload, BarChart3, Flame, Download, Filter, FileText, History, Wallet, Zap } from 'lucide-react';
+import { TrendingUp, Target, Activity, Plus, Upload, BarChart3, Flame, Download, Filter, FileText, History, Wallet, Zap, BrainCircuit, AlertTriangle, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import TradeExplorer from '../../components/organisms/client/TradeExplorer';

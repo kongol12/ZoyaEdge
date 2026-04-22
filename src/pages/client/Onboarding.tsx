@@ -5,9 +5,10 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Target, TrendingUp, ShieldCheck, ArrowRight, ArrowLeft, 
   Loader2, BadgeInfo, AlertTriangle, BrainCircuit, Activity,
-  LineChart, Sparkles, Plus, Upload
+  LineChart, Sparkles, Plus, Upload, Coins, Zap, BarChart3, Gem, Clock, Bitcoin
 } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import toast from 'react-hot-toast';
 import TradeForm from '../../components/organisms/client/TradeForm';
 import CSVUploader from '../../components/organisms/client/CSVUploader';
 import { db } from '../../lib/firebase';
@@ -30,7 +31,8 @@ export default function Onboarding() {
     capitalSize: '1000',
     currency: 'USD',
     defaultRisk: 1,
-    defaultLotSize: 0.1
+    defaultLotSize: 0.1,
+    assetTypes: [] as string[]
   });
 
   // Track trades in real-time during onboarding
@@ -58,9 +60,13 @@ export default function Onboarding() {
         onboarded: true
       });
       logActivity(user?.uid || '', 'onboarding_complete');
-      navigate('/', { replace: true });
-    } catch (error) {
+      setTimeout(() => {
+        navigate('/', { replace: true });
+      }, 500);
+    } catch (error: any) {
       console.error("Onboarding error:", error);
+      const detail = error.code ? ` (${error.code})` : "";
+      toast.error(`Contrôle impossible : ${error.message || "Erreur de synchronisation"}${detail}`);
     } finally {
       setLoading(false);
     }
@@ -78,7 +84,7 @@ export default function Onboarding() {
               <span className="font-poppins font-black text-xl tracking-tighter uppercase dark:text-white">Setup Control</span>
            </div>
            <div className="flex gap-2 w-full max-w-xs">
-              {[1, 2, 3, 4].map((s) => (
+              {[1, 2, 3, 4, 5].map((s) => (
                 <div
                   key={s}
                   className={`h-1 flex-1 rounded-full transition-all duration-700 ${
@@ -155,8 +161,51 @@ export default function Onboarding() {
                 </div>
               )}
 
-              {/* STEP 2: TRADE INGESTION (FORCE) */}
+              {/* STEP 2: ASSET SELECTION */}
               {step === 2 && (
+                <div className="space-y-8">
+                  <div className="space-y-2 text-center">
+                    <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white uppercase">VOS ACTIFS.</h1>
+                    <p className="text-gray-500 dark:text-gray-400">Quels marchés tradez-vous ? (Sélection multiple possible)</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {[
+                      { id: 'forex', label: 'Forex', icon: Coins },
+                      { id: 'synthetic', label: 'Synthetics', icon: Zap },
+                      { id: 'indices', label: 'Indices Boursiers', icon: BarChart3 },
+                      { id: 'commodities', label: 'Commodities', icon: Gem },
+                      { id: 'futures', label: 'Futures', icon: Clock },
+                      { id: 'crypto', label: 'Crypto', icon: Bitcoin }
+                    ].map(asset => {
+                      const isActive = formData.assetTypes.includes(asset.id);
+                      return (
+                        <button
+                          key={asset.id}
+                          onClick={() => {
+                            const newTypes = isActive 
+                              ? formData.assetTypes.filter(t => t !== asset.id)
+                              : [...formData.assetTypes, asset.id];
+                            setFormData({ ...formData, assetTypes: newTypes });
+                          }}
+                          className={cn(
+                            "p-6 rounded-3xl border-2 transition-all flex flex-col items-center gap-3",
+                            isActive 
+                              ? "bg-zoya-red/10 border-zoya-red text-zoya-red shadow-lg shadow-zoya-red/10" 
+                              : "bg-gray-50 dark:bg-gray-800 border-gray-100 dark:border-gray-700 text-gray-400 md:hover:border-gray-200"
+                          )}
+                        >
+                          <asset.icon size={32} />
+                          <span className="text-[10px] font-black uppercase tracking-widest text-center">{asset.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: TRADE INGESTION (FORCE) */}
+              {step === 3 && (
                 <div className="space-y-8">
                   <div className="space-y-2">
                     <div className="flex items-center gap-3 mb-2">
@@ -193,36 +242,51 @@ export default function Onboarding() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      <button 
                        onClick={() => setShowManualForm(!showManualForm)}
-                       className="flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 font-bold hover:border-zoya-red transition-all"
+                       className="flex items-center justify-center gap-3 px-8 py-4 rounded-2xl bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 font-bold md:hover:border-zoya-red transition-all"
                      >
                        <Plus size={20} className="text-zoya-red"/>
                        Ajouter Manuellement
                      </button>
-                     <div className="relative group">
-                       <CSVUploader />
+                     <div className="relative group overflow-hidden rounded-2xl">
+                       <CSVUploader onSuccess={() => {
+                         logActivity(user?.uid || '', 'onboarding_trades_imported');
+                       }} />
                      </div>
                   </div>
 
                   {showManualForm && (
                     <motion.div 
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      className="p-6 bg-gray-50 dark:bg-gray-800 rounded-3xl"
+                      key="manual-form"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="p-6 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-3xl shadow-xl"
                     >
-                      <TradeForm onSuccess={() => setShowManualForm(false)} />
+                      <TradeForm onSuccess={() => {
+                        setShowManualForm(false);
+                        logActivity(user?.uid || '', 'onboarding_trade_added');
+                      }} />
                     </motion.div>
                   )}
+
+                  <div className="text-center pt-4">
+                     <button 
+                       onClick={nextStep}
+                       className="text-xs font-black text-gray-400 uppercase tracking-widest hover:text-zoya-red transition-all"
+                     >
+                       Passer cette étape (Skip)
+                     </button>
+                  </div>
                 </div>
               )}
 
-              {/* STEP 3: FIRST AI ANALYSIS */}
-              {step === 3 && (
+              {/* STEP 4: FIRST AI ANALYSIS */}
+              {step === 4 && (
                 <div className="space-y-8">
                   <div className="text-center space-y-4">
                     <div className="inline-flex p-4 bg-indigo-50 dark:bg-indigo-900/30 rounded-full text-indigo-600 mb-2">
                        <BrainCircuit size={32} />
                     </div>
-                    <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white uppercase tracking-tight">PREMIÈRE ANALYSE COMPORTEMENTALE.</h1>
+                    <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white uppercase tracking-tight">ANALYSE COMPORTEMENTALE.</h1>
                     <p className="text-gray-500 dark:text-gray-400">L'IA a détecté vos premiers patterns à travers vos {trades.length} trades.</p>
                   </div>
 
@@ -255,8 +319,8 @@ export default function Onboarding() {
                 </div>
               )}
 
-              {/* STEP 4: IMPACT SCREEN */}
-              {step === 4 && (
+              {/* STEP 5: IMPACT SCREEN */}
+              {step === 5 && (
                 <div className="space-y-8 text-center">
                   <div className="inline-flex p-6 bg-rose-50 dark:bg-rose-900/20 rounded-full text-rose-500 animate-bounce">
                      <AlertTriangle size={48} />
@@ -295,26 +359,26 @@ export default function Onboarding() {
                   </button>
                 )}
                 <button
-                  onClick={step === 4 ? handleFinish : nextStep}
-                  disabled={loading || (step === 2 && trades.length < 3) || (step === 1 && (!formData.tradingStyle || !formData.capitalSize))}
+                  onClick={step === 5 ? handleFinish : nextStep}
+                  disabled={loading || (step === 3 && trades.length < 3 && !showManualForm) || (step === 1 && (!formData.tradingStyle || !formData.capitalSize)) || (step === 2 && formData.assetTypes.length === 0)}
                   className={cn(
                     "flex-[2] px-8 py-5 rounded-2xl font-poppins font-black uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-3 disabled:opacity-30 shadow-2xl",
-                    step === 4 ? "bg-emerald-600 text-white shadow-emerald-500/30" : "bg-zoya-red text-white shadow-zoya-red/30"
+                    step === 5 ? "bg-emerald-600 text-white shadow-emerald-500/30" : "bg-zoya-red text-white shadow-zoya-red/30"
                   )}
                 >
                   {loading ? <Loader2 className="animate-spin" size={20} /> : (
                     <>
-                      {step === 4 ? "Prendre le contrôle" : "Continuer l'exposition"}
+                      {step === 5 ? "Prendre le contrôle" : "Continuer l'exposition"}
                       <ArrowRight size={16} />
                     </>
                   )}
                 </button>
               </div>
 
-              {step === 2 && trades.length < 3 && (
+              {step === 3 && trades.length < 3 && (
                 <div className="text-center">
                   <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest animate-pulse">
-                    Accès bloqué : Ajoutez encore {3 - trades.length} trades
+                    Accès recommandé : Ajoutez encore {3 - trades.length} trades ou ignorez l'étape ci-dessus.
                   </p>
                 </div>
               )}

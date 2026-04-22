@@ -38,12 +38,14 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return data.keys().hasAll(['email', 'createdAt']) &&
-             data.email is string && data.email.size() <= 100 &&
-             data.createdAt is timestamp &&
+      return (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp) &&
              (!('role' in data) || data.role in ['user', 'agent', 'admin']) &&
-             (!('subscription' in data) || data.subscription in ['free', 'pro', 'premium', 'discovery']) &&
-             (!('aiCredits' in data) || (data.aiCredits is int && data.aiCredits >= 0));
+             (!('subscription' in data) || data.subscription in ['free', 'pro', 'premium', 'discovery', 'elite']) &&
+             (!('subscriptionStatus' in data) || data.subscriptionStatus is string) &&
+             (!('aiCredits' in data) || (data.aiCredits is int && data.aiCredits >= 0)) &&
+             (!('onboarded' in data) || data.onboarded is bool);
     }
 
     function isValidTrade(data, userId) {
@@ -91,21 +93,17 @@ service cloud.firestore {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       
-      allow create: if isOwner(userId) && isValidUser(incoming()) && 
+      allow create: if isOwner(userId) && 
+                    incoming().keys().hasAll(['email', 'createdAt']) &&
+                    isValidUser(incoming()) && 
                     incoming().role == 'user' && 
-                    (incoming().subscription == 'free' || incoming().subscription == 'discovery'); 
+                    (incoming().subscription in ['free', 'discovery', 'pro']); 
       
       allow update: if (isOwner(userId) && 
-                isValidUser(incoming()) && 
-                incoming().diff(existing()).affectedKeys().hasOnly([
-                  'displayName', 'tradingStyle', 'defaultRisk', 
-                  'defaultLotSize', 'currency', 'onboarded',
-                  'calendarShowPnL', 'calendarShowTrades', 
-                  'initialBalance', 'updatedAt', 'hasUsedTrial'
+                !incoming().diff(existing()).affectedKeys().hasAny([
+                  'role', 'subscription', 'createdAt', 'email', 'subscriptionEndDate', 'subscriptionStatus', 'aiCredits'
                 ])) ||
               isAdmin();
-
-      // --- Sub-collections ---
       match /trades/{tradeId} {
         allow read: if isOwner(userId) || isAdmin();
         allow create: if isOwner(userId) && isValidTrade(incoming(), userId) && isValidId(tradeId);
@@ -194,13 +192,13 @@ service cloud.firestore {
       allow create: if isSignedIn();
     }
 
-    match /activities/{actId} {
+    match /user_activity/{actId} {
       allow read: if isAdmin();
       allow create: if isSignedIn() &&
-        incoming().keys().hasAll(['message', 'type', 'createdAt']) &&
-        incoming().message is string && 
-        incoming().message.size() <= 500 &&
-        incoming().type in ['system', 'auth', 'payment', 'admin', 'error'];
+        incoming().keys().hasAll(['userId', 'type', 'createdAt']) &&
+        incoming().userId == request.auth.uid &&
+        incoming().type is string &&
+        (!('metadata' in incoming()) || incoming().metadata is map);
     }
   }
 }

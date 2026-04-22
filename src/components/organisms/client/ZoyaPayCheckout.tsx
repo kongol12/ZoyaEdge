@@ -23,7 +23,6 @@ interface ZoyaPayCheckoutProps {
 
 type PaymentState =
   | 'IDLE'
-  | 'INITIATED'
   | 'PENDING'
   | 'AWAITING_USER'
   | 'PROCESSING'
@@ -38,42 +37,50 @@ function normalizeStatus(raw: string): string {
 }
 
 function mapBackendStatus(status: string): PaymentState {
-  switch (status) {
-    case 'SUCCESS':
-    case 'COMPLETED':
-    case 'PAID':
-      return 'SUCCESS';
-    case 'FAILED':
-    case 'ERROR':
-      return 'FAILED';
-    case 'REJECT':
-    case 'REJECTED':
-      return 'FAILED';
-    case 'CANCEL':
-    case 'CANCELLED':
-      return 'CANCELLED';
-    case 'EXPIRED':
-      return 'EXPIRED';
-    case 'PENDING':
-      return 'AWAITING_USER';
-    case 'PROCESSING':
-      return 'PROCESSING';
-    default:
-      return 'PENDING';
+  if (!status) return 'PENDING';
+  const s = status.toUpperCase();
+  
+  if (s.includes('SUCCESS') || s.includes('COMPLET') || s.includes('PAID') || s.includes('APPROV') || s === '200' || s === 'OK') {
+    return 'SUCCESS';
   }
+  
+  if (s.includes('FAIL') || s.includes('ERR') || s.includes('REJECT') || s.includes('DECLIN') || s.includes('STOP') || s.includes('DENY')) {
+    return 'FAILED';
+  }
+  
+  if (s.includes('CANCEL') || s.includes('VOID') || s.includes('ABORT')) {
+    return 'CANCELLED';
+  }
+  
+  if (s.includes('EXPIRE') || s.includes('TIMEOUT')) {
+    return 'EXPIRED';
+  }
+  
+  if (s.includes('PROGRESS') || s.includes('PROCESS') || s.includes('SENDING')) {
+    return 'PROCESSING';
+  }
+  
+  if (s.includes('WAIT') || s.includes('AWAIT') || s.includes('USER') || s.includes('PIN') || s.includes('PENDING')) {
+    return 'AWAITING_USER';
+  }
+  
+  return 'PENDING';
 }
 
 function paymentReducer(state: PaymentState, event: any): PaymentState {
   switch (state) {
     case 'IDLE':
-      if (event.type === 'START') return 'INITIATED';
+      if (event.type === 'START') return 'PENDING';
       return state;
-    case 'INITIATED':
-      return 'PENDING';
     case 'PENDING':
     case 'AWAITING_USER':
     case 'PROCESSING':
       if (event.type === 'STATUS') return event.payload;
+      return state;
+    case 'FAILED':
+    case 'CANCELLED':
+    case 'TIMEOUT':
+      if (event.type === 'RESET') return 'IDLE';
       return state;
     default:
       return state;
@@ -161,8 +168,8 @@ export default function ZoyaPayCheckout({
 
   // Polling Effect
   useEffect(() => {
-    if (paymentState !== 'PENDING' && paymentState !== 'AWAITING_USER' && paymentState !== 'PROCESSING') return;
     if (!transactionId) return;
+    if (paymentState !== 'PENDING' && paymentState !== 'AWAITING_USER' && paymentState !== 'PROCESSING') return;
 
     let attempts = 0;
     const interval = setInterval(async () => {
@@ -172,29 +179,27 @@ export default function ZoyaPayCheckout({
         const response = await fetch(`/api/user/sync-status/${transactionId}`, {
           headers: { 'Authorization': `Bearer ${idToken}` }
         });
-        
         if (!response.ok) return;
-        
         const data = await response.json();
-        const rawStatus = data.status || data._statusText;
+        const rawStatus = data._statusText || data.status;
         const normalized = normalizeStatus(rawStatus);
         const mapped = mapBackendStatus(normalized);
-
-        dispatch({ type: 'STATUS', payload: mapped });
-        console.log("ZoyaPay Status:", normalized);
-
+        if (mapped !== paymentState) {
+          dispatch({ type: 'STATUS', payload: mapped });
+        }
       } catch (err) {
-        console.error("Polling error:", err);
+        console.error('Polling error:', err);
       }
-
       if (attempts >= 40) {
         clearInterval(interval);
         dispatch({ type: 'STATUS', payload: 'TIMEOUT' });
       }
     }, 3000);
 
-    return () => clearInterval(interval);
-  }, [paymentState, transactionId]);
+    return () => {
+      clearInterval(interval);
+    };
+  }, [transactionId, paymentState]);
 
   const validatePhone = (phone: string) => {
     // Remove all non-digits
@@ -620,7 +625,7 @@ export default function ZoyaPayCheckout({
                   </p>
                 </div>
                 <button 
-                  onClick={() => dispatch({ type: 'STATUS', payload: 'PENDING' })}
+                  onClick={() => { setTransactionId(null); setSubStep('payment'); dispatch({ type: 'RESET', payload: null }); }}
                   className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-black text-lg transition-transform hover:scale-105"
                 >
                   Fermer ou réessayer
@@ -628,14 +633,20 @@ export default function ZoyaPayCheckout({
               </div>
             )}
 
-            {paymentState === 'FAILED' && (
+            {(paymentState === 'FAILED' || paymentState === 'CANCELLED') && (
               <div className="p-12 text-center space-y-8">
                 <div className="w-20 h-20 mx-auto bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center text-red-500">
                   <X size={32} />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Paiement non confirmé</h3>
-                  <p className="text-gray-500 font-medium leading-relaxed">La demande a été annulée ou expirée.</p>
+                  <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">
+                    {paymentState === 'CANCELLED' ? 'Paiement annulé' : 'Échec du paiement'}
+                  </h3>
+                  <p className="text-gray-500 font-medium leading-relaxed">
+                    {paymentState === 'CANCELLED' 
+                      ? 'Vous avez annulé la transaction.' 
+                      : 'La transaction a été rejetée ou une erreur est survenue.'}
+                  </p>
                 </div>
                 <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl flex justify-center text-center">
                   <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
@@ -643,17 +654,37 @@ export default function ZoyaPayCheckout({
                   </p>
                 </div>
                 <button 
-                  onClick={() => { setSubStep('payment'); dispatch({ type: 'STATUS', payload: 'PENDING' }); }}
+                  onClick={() => { setTransactionId(null); setSubStep('payment'); dispatch({ type: 'RESET', payload: null }); }}
                   className="w-full py-4 bg-zoya-red text-white rounded-2xl font-black text-lg transition-transform hover:scale-105"
                 >
                   Réessayer
                 </button>
               </div>
             )}
+
+            {paymentState === 'EXPIRED' && (
+              <div className="p-12 text-center space-y-8">
+                <div className="w-20 h-20 mx-auto bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center text-gray-500">
+                  <RefreshCw size={32} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Session expirée</h3>
+                  <p className="text-gray-500 font-medium leading-relaxed">
+                    Cette session de paiement a expiré. Veuillez recommencer.
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setTransactionId(null); setSubStep('info'); dispatch({ type: 'RESET', payload: null }); }}
+                  className="w-full py-4 bg-zoya-red text-white rounded-2xl font-black text-lg"
+                >
+                  Recommencer
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Footer Actions */}
-          {!['SUCCESS', 'FAILED', 'TIMEOUT', 'CANCELLED', 'EXPIRED'].includes(paymentState) && (
+          {paymentState === 'IDLE' && (
             <div className="p-6 bg-gray-50 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
               <div className="flex items-center gap-2 text-gray-500">
                 <Shield size={14} />

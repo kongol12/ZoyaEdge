@@ -60,6 +60,10 @@ export interface UserProfile {
   bypassMaintenance?: boolean;
   calendarShowPnL?: boolean;
   calendarShowTrades?: boolean;
+  assetTypes?: string[];
+  capitalSize?: string;
+  tradingStyle?: string;
+  experienceLevel?: 'beginner' | 'intermediate' | 'advanced';
   createdAt: any;
 }
 

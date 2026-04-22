@@ -7,6 +7,7 @@ import { calculateTradeStats } from '../../../lib/tradeCalculations';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2 } from 'lucide-react';
 import { useTranslation } from '../../../lib/i18n';
+import toast from 'react-hot-toast';
 
 import { logActivity } from '../../../lib/activity';
 
@@ -118,7 +119,7 @@ export default function TradeForm({ onSuccess }: { onSuccess?: () => void }) {
       }
     } catch (error) {
       console.error("Error adding trade", error);
-      alert("Failed to add trade");
+      toast.error("Failed to add trade");
     } finally {
       setLoading(false);
     }

@@ -217,6 +217,8 @@ function AppRoutes() {
   );
 }
 
+import { Toaster } from 'react-hot-toast';
+
 export default function App() {
   return (
     <ThemeProvider defaultTheme="system" storageKey="zoya-theme">
@@ -224,6 +226,7 @@ export default function App() {
         <LanguageProvider>
           <BrowserRouter>
             <AppRoutes />
+            <Toaster position="top-right" />
           </BrowserRouter>
         </LanguageProvider>
       </AuthProvider>

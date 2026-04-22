@@ -3,6 +3,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export type ActivityType = 
   | 'trade_added' 
+  | 'trade_logged'
   | 'trade_deleted'
   | 'ai_coach_trigger' 
   | 'ai_coach_complete'
@@ -10,6 +11,8 @@ export type ActivityType =
   | 'subscription_upgrade'
   | 'onboarding_step' 
   | 'onboarding_complete'
+  | 'onboarding_trades_imported'
+  | 'onboarding_trade_added'
   | 'settings_updated';
 
 export async function logActivity(userId: string, type: ActivityType, metadata: any = {}) {

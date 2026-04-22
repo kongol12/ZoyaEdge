@@ -8,10 +8,15 @@
         "email": { "type": "string" },
         "displayName": { "type": "string" },
         "role": { "type": "string", "enum": ["user", "agent", "admin"] },
-        "subscription": { "type": "string", "enum": ["free", "pro", "premium"] },
-        "subscriptionStatus": { "type": "string", "enum": ["active", "trialing", "expired", "suspended"] },
+        "subscription": { "type": "string", "enum": ["discovery", "pro", "premium"] },
+        "subscriptionStatus": { "type": "string", "enum": ["active", "trialing", "expired", "suspended", "canceled"] },
         "subscriptionCycle": { "type": "string", "enum": ["monthly", "yearly"] },
         "subscriptionEndDate": { "type": "string", "format": "date-time" },
+        "hasUsedTrial": { "type": "boolean" },
+        "tradingStyle": { "type": "string" },
+        "experienceLevel": { "type": "string" },
+        "capitalSize": { "type": "string" },
+        "assetTypes": { "type": "array", "items": { "type": "string" } },
         "aiCredits": { "type": "integer" },
         "createdAt": { "type": "string", "format": "date-time" },
         "onboarded": { "type": "boolean" }
@@ -125,16 +130,24 @@
         "type": "object",
         "properties": {
           "exchangeRate": { "type": "number" },
+          "useAutomaticConversion": { "type": "boolean" },
           "arakaUsdPageId": { "type": "string" },
           "arakaCdfPageId": { "type": "string" },
           "discoveryMonthlyUSD": { "type": "number" },
           "discoveryYearlyUSD": { "type": "number" },
+          "discoveryMonthlyCDF": { "type": "number" },
+          "discoveryYearlyCDF": { "type": "number" },
           "proMonthlyUSD": { "type": "number" },
           "proYearlyUSD": { "type": "number" },
+          "proMonthlyCDF": { "type": "number" },
+          "proYearlyCDF": { "type": "number" },
           "premiumMonthlyUSD": { "type": "number" },
           "premiumYearlyUSD": { "type": "number" },
+          "premiumMonthlyCDF": { "type": "number" },
+          "premiumYearlyCDF": { "type": "number" },
           "globalDiscount": { "type": "number" },
-          "transactionFee": { "type": "number" }
+          "transactionFee": { "type": "number" },
+          "vatRate": { "type": "number" }
         }
       },
       "description": "Global application settings."

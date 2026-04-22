@@ -11,6 +11,7 @@ import { OperationType, handleFirestoreError } from '../../lib/db';
 
 import { Terminal, Database, Trash2, RefreshCw } from 'lucide-react';
 import { seedMockTransactions, clearDemoPayments } from '../../lib/seed';
+import toast from 'react-hot-toast';
 
 export default function AdminDashboard() {
   const { t } = useTranslation();
@@ -32,9 +33,9 @@ export default function AdminDashboard() {
     setIsSeeding(true);
     try {
       await seedMockTransactions(20);
-      alert("Données générées !");
+      toast.success("Données générées !");
     } catch (error) {
-      alert("Erreur lors du seeding.");
+      toast.error("Erreur lors du seeding.");
     } finally {
       setIsSeeding(false);
     }
@@ -46,9 +47,9 @@ export default function AdminDashboard() {
     try {
       await clearDemoPayments();
       // Also clear demo trades if applicable (already handled by clearDemoPayments in some implementations)
-      alert("Nettoyage terminé !");
+      toast.success("Nettoyage terminé !");
     } catch (error) {
-      alert("Erreur lors du nettoyage.");
+      toast.error("Erreur lors du nettoyage.");
     } finally {
       setIsSeeding(false);
     }

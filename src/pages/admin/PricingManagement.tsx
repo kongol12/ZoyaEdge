@@ -5,20 +5,28 @@ import { CreditCard, Save, AlertTriangle, RefreshCw, Eye, EyeOff } from 'lucide-
 import { cn } from '../../lib/utils';
 import { useAuth } from '../../lib/auth';
 import { OperationType, handleFirestoreError } from '../../lib/db';
+import toast from 'react-hot-toast';
 
 interface AppSettings {
   exchangeRate: number;
+  useAutomaticConversion: boolean; // True = Taux coché (Conversion), False = Taux décoché (Prix Fixe CDF)
   arakaUsdPageId: string;
   arakaCdfPageId: string;
   discoveryMonthlyUSD: number;
   discoveryYearlyUSD: number;
+  discoveryMonthlyCDF: number;
+  discoveryYearlyCDF: number;
   proMonthlyUSD: number;
   proYearlyUSD: number;
+  proMonthlyCDF: number;
+  proYearlyCDF: number;
   premiumMonthlyUSD: number;
   premiumYearlyUSD: number;
+  premiumMonthlyCDF: number;
+  premiumYearlyCDF: number;
   globalDiscount: number;
-  transactionFee: number; // Now as percentage
-  vatRate: number; // Added VAT Rate
+  transactionFee: number; 
+  vatRate: number; 
   updatedAt: any;
 }
 
@@ -37,17 +45,24 @@ export default function PricingManagement() {
         const data = snapshot.data();
         setSettings({
           exchangeRate: data.exchangeRate || 2800,
+          useAutomaticConversion: data.useAutomaticConversion ?? true,
           arakaUsdPageId: data.arakaUsdPageId || '',
           arakaCdfPageId: data.arakaCdfPageId || '',
           discoveryMonthlyUSD: data.discoveryMonthlyUSD ?? 0,
           discoveryYearlyUSD: data.discoveryYearlyUSD ?? 0,
+          discoveryMonthlyCDF: data.discoveryMonthlyCDF ?? 0,
+          discoveryYearlyCDF: data.discoveryYearlyCDF ?? 0,
           proMonthlyUSD: data.proMonthlyUSD ?? 20,
           proYearlyUSD: data.proYearlyUSD ?? 200,
+          proMonthlyCDF: data.proMonthlyCDF ?? 56000,
+          proYearlyCDF: data.proYearlyCDF ?? 560000,
           premiumMonthlyUSD: data.premiumMonthlyUSD ?? 50,
           premiumYearlyUSD: data.premiumYearlyUSD ?? 500,
+          premiumMonthlyCDF: data.premiumMonthlyCDF ?? 140000,
+          premiumYearlyCDF: data.premiumYearlyCDF ?? 1400000,
           globalDiscount: data.globalDiscount ?? 0,
           transactionFee: data.transactionFee ?? 2,
-          vatRate: data.vatRate ?? 16, // Default TVA 16%
+          vatRate: data.vatRate ?? 16,
           updatedAt: data.updatedAt
         } as AppSettings);
       }
@@ -67,10 +82,10 @@ export default function PricingManagement() {
         ...settings,
         updatedAt: serverTimestamp()
       });
-      alert("Configurations de tarification enregistrées avec succès !");
+      toast.success("Configurations de tarification enregistrées avec succès !");
     } catch (error) {
       console.error("Error updating pricing settings:", error);
-      alert("Erreur lors de l'enregistrement.");
+      toast.error("Erreur lors de l'enregistrement.");
     } finally {
       setSaving(false);
     }
@@ -105,6 +120,32 @@ export default function PricingManagement() {
                 className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
               />
             </div>
+
+            <div className="p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800">
+              <label className="flex items-center justify-between cursor-pointer group">
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight">
+                  Appliquer le Taux (Conversion)
+                </span>
+                <div 
+                  onClick={() => setSettings({ ...settings, useAutomaticConversion: !settings?.useAutomaticConversion } as AppSettings)}
+                  className={cn(
+                    "relative w-10 h-5 rounded-full transition-colors duration-200",
+                    settings?.useAutomaticConversion ? "bg-emerald-500" : "bg-gray-300 dark:bg-gray-700"
+                  )}
+                >
+                  <div className={cn(
+                    "absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200",
+                    settings?.useAutomaticConversion ? "translate-x-5" : "translate-x-0"
+                  )} />
+                </div>
+              </label>
+              <p className="text-[9px] text-gray-500 mt-2 leading-relaxed">
+                {settings?.useAutomaticConversion 
+                  ? "Taux Coché : Le prix CDF est calculé dynamiquement (USD × Taux)." 
+                  : "Taux Décoché : Le prix CDF défini manuellement est appliqué."}
+              </p>
+            </div>
+
             <div>
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Réduction Globale (%)</label>
               <div className="relative">
@@ -150,34 +191,72 @@ export default function PricingManagement() {
             { id: 'pro', label: 'Plan PRO', color: 'bg-blue-500' },
             { id: 'premium', label: 'PREMIUM', color: 'bg-amber-500' }
           ].map((plan) => (
-            <div key={plan.id} className="p-6 bg-gray-50 dark:bg-gray-900 rounded-3xl space-y-4 border border-gray-100 dark:border-gray-800">
+            <div key={plan.id} className="p-6 bg-gray-50 dark:bg-gray-900 rounded-3xl space-y-6 border border-gray-100 dark:border-gray-800">
               <h3 className="font-poppins font-black text-gray-900 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
                 <div className={cn("w-2 h-2 rounded-full", plan.color)} /> {plan.label}
               </h3>
               {plan.id === 'discovery' && <p className="text-[10px] text-gray-500">Mettez 0 pour "Gratuit".</p>}
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Mensuel (USD)</label>
-                <input
-                  type="number"
-                  value={settings?.[`${plan.id}MonthlyUSD` as keyof AppSettings] as number}
-                  onChange={(e) => setSettings({ ...settings, [`${plan.id}MonthlyUSD`]: parseFloat(e.target.value) } as any)}
-                  className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
-                />
-                {plan.id !== 'discovery' && (
-                   <p className="text-[10px] text-gray-500 mt-1">≈ {((settings?.[`${plan.id}MonthlyUSD` as keyof AppSettings] as number || 0) * (settings?.exchangeRate || 1)).toLocaleString()} CDF</p>
-                )}
-              </div>
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Annuel (USD)</label>
-                <input
-                  type="number"
-                  value={settings?.[`${plan.id}YearlyUSD` as keyof AppSettings] as number}
-                  onChange={(e) => setSettings({ ...settings, [`${plan.id}YearlyUSD`]: parseFloat(e.target.value) } as any)}
-                  className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
-                />
-                {plan.id !== 'discovery' && (
-                  <p className="text-[10px] text-gray-500 mt-1">≈ {((settings?.[`${plan.id}YearlyUSD` as keyof AppSettings] as number || 0) * (settings?.exchangeRate || 1)).toLocaleString()} CDF</p>
-                )}
+              
+              <div className="space-y-4">
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-50 dark:border-gray-700/50">
+                  <p className="text-[9px] font-black text-zoya-red mb-3 tracking-widest">TARIFS MENSUELS</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">USD</label>
+                      <input
+                        type="number"
+                        value={settings?.[`${plan.id}MonthlyUSD` as keyof AppSettings] as number}
+                        onChange={(e) => setSettings({ ...settings, [`${plan.id}MonthlyUSD`]: parseFloat(e.target.value) } as any)}
+                        className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl px-4 py-2 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">CDF {!settings?.useAutomaticConversion ? "(Fixe)" : "(Auto)"}</label>
+                      {!settings?.useAutomaticConversion ? (
+                        <input
+                          type="number"
+                          value={settings?.[`${plan.id}MonthlyCDF` as keyof AppSettings] as number}
+                          onChange={(e) => setSettings({ ...settings, [`${plan.id}MonthlyCDF`]: parseFloat(e.target.value) } as any)}
+                          className="w-full bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30 border rounded-xl px-4 py-2 font-bold text-emerald-700 dark:text-emerald-400 outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                        />
+                      ) : (
+                        <p className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl text-gray-500 font-bold text-sm">
+                          ≈ {((settings?.[`${plan.id}MonthlyUSD` as keyof AppSettings] as number || 0) * (settings?.exchangeRate || 1)).toLocaleString()} FC
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-50 dark:border-gray-700/50">
+                  <p className="text-[9px] font-black text-emerald-500 mb-3 tracking-widest">TARIFS ANNUELS</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">USD</label>
+                      <input
+                        type="number"
+                        value={settings?.[`${plan.id}YearlyUSD` as keyof AppSettings] as number}
+                        onChange={(e) => setSettings({ ...settings, [`${plan.id}YearlyUSD`]: parseFloat(e.target.value) } as any)}
+                        className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl px-4 py-2 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">CDF {!settings?.useAutomaticConversion ? "(Fixe)" : "(Auto)"}</label>
+                      {!settings?.useAutomaticConversion ? (
+                        <input
+                          type="number"
+                          value={settings?.[`${plan.id}YearlyCDF` as keyof AppSettings] as number}
+                          onChange={(e) => setSettings({ ...settings, [`${plan.id}YearlyCDF`]: parseFloat(e.target.value) } as any)}
+                          className="w-full bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30 border rounded-xl px-4 py-2 font-bold text-emerald-700 dark:text-emerald-400 outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                        />
+                      ) : (
+                        <p className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl text-gray-500 font-bold text-sm">
+                          ≈ {((settings?.[`${plan.id}YearlyUSD` as keyof AppSettings] as number || 0) * (settings?.exchangeRate || 1)).toLocaleString()} FC
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           ))}

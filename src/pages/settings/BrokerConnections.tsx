@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 import PaywallModal from '../../components/molecules/PaywallModal';
 import { OperationType, handleFirestoreError } from '../../lib/db';
+import toast from 'react-hot-toast';
 
 interface BrokerConnection {
   id: string;
@@ -78,7 +79,7 @@ export default function BrokerConnections() {
       return;
     }
     if (profile?.subscription === 'pro' && connections.length >= 1) {
-      alert("Le plan Pro est limité à 1 connexion. Passez au plan Premium pour des connexions illimitées.");
+      toast.error("Le plan Pro est limité à 1 connexion. Passez au plan Premium pour des connexions illimitées.");
       return;
     }
     setIsAdding(true);
@@ -164,15 +165,15 @@ export default function BrokerConnections() {
       const data = await response.json();
       
       if (!response.ok) {
-        alert(data.error || "Erreur lors de la synchronisation");
+        toast.error(data.error || "Erreur lors de la synchronisation");
         // Revert on error
         setConnections(prev => prev.map(c => c.id === connId ? { ...c, status: 'error' } : c));
       } else {
-        // Success handled by onSnapshot (or we can force a success state if the backend simulates it)
+        toast.success("Synchronisation forcée lancée !");
       }
     } catch (error) {
       console.error("Sync error:", error);
-      alert("Erreur de connexion au serveur");
+      toast.error("Erreur de connexion au serveur");
       setConnections(prev => prev.map(c => c.id === connId ? { ...c, status: 'error' } : c));
     }
   };

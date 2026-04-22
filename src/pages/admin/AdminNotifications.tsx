@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/auth';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { OperationType, handleFirestoreError, sendGlobalNotification } from '../../lib/db';
+import toast from 'react-hot-toast';
 
 interface AdminNotification {
   id: string;
@@ -55,9 +56,10 @@ export default function AdminNotifications() {
       await sendGlobalNotification(broadcastData);
       setBroadcastData({ title: '', message: '', type: 'info' });
       setShowBroadcast(false);
-      alert("Message global envoyé à tous les utilisateurs !");
+      toast.success("Message global envoyé à tous les utilisateurs !");
     } catch (error) {
       console.error("Error sending broadcast:", error);
+      toast.error("Erreur lors de l'envoi du message.");
     } finally {
       setSending(false);
     }

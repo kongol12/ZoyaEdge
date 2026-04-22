@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { X, Shield, CreditCard, User as UserIcon, Mail, Crown, Save, Trash2, AlertTriangle, Send, Bell } from 'lucide-react';
+import { X, Shield, CreditCard, User as UserIcon, Mail, Crown, Save, Trash2, AlertTriangle, Send, Bell, Coins, Zap, BarChart3, Gem, Clock, Bitcoin, Activity, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../../lib/auth';
 import { cn } from '../../lib/utils';
 import { Trade, subscribeToTrades, sendNotificationToUser } from '../../lib/db';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import toast from 'react-hot-toast';
 
 interface UserDetailModalProps {
   user: UserProfile & { id: string };
@@ -62,9 +63,10 @@ export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDel
     try {
       await sendNotificationToUser(user.id, notifData);
       setNotifData({ title: '', message: '', type: 'info' });
-      alert("Notification envoyée avec succès !");
+      toast.success("Notification envoyée avec succès !");
     } catch (error) {
       console.error("Error sending notification:", error);
+      toast.error("Erreur lors de l'envoi.");
     } finally {
       setSendingNotif(false);
     }
@@ -196,6 +198,64 @@ export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDel
                           onChange={(e) => setFormData({ ...formData, aiCredits: parseInt(e.target.value) })}
                           className="w-32 bg-white dark:bg-gray-800 border-none rounded-2xl px-4 py-3 text-center font-black text-lg text-zoya-red outline-none focus:ring-2 focus:ring-zoya-red"
                         />
+                      </div>
+                    </div>
+
+                    {/* Preferences & Markets */}
+                    <div className="md:col-span-2 space-y-4">
+                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <Activity size={14} /> Préférences & Marchés
+                      </h3>
+                      <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-3xl space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                           <div className="p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Capital</p>
+                             <p className="text-lg font-black dark:text-white">{user.capitalSize || '0'} $</p>
+                           </div>
+                           <div className="p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Style</p>
+                             <p className="text-lg font-black dark:text-white">{user.tradingStyle || 'N/A'}</p>
+                           </div>
+                           <div className="p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
+                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Expérience</p>
+                             <p className="text-lg font-black dark:text-white capitalize">{user.experienceLevel || 'N/A'}</p>
+                           </div>
+                        </div>
+
+                        <div className="space-y-3">
+                           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Marchés Sélectionnés</p>
+                           <div className="flex flex-wrap gap-2">
+                              {user.assetTypes && user.assetTypes.length > 0 ? (
+                                user.assetTypes.map(asset => {
+                                  let Icon = Coins;
+                                  if (asset === 'synthetic') Icon = Zap;
+                                  if (asset === 'indices') Icon = BarChart3;
+                                  if (asset === 'commodities') Icon = Gem;
+                                  if (asset === 'futures') Icon = Clock;
+                                  if (asset === 'crypto') Icon = Bitcoin;
+                                  
+                                  return (
+                                    <div key={asset} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+                                      <Icon size={14} className="text-zoya-red" />
+                                      <span className="text-xs font-bold capitalize">{asset}</span>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <p className="text-xs text-gray-500 italic">Aucun marché sélectionné</p>
+                              )}
+                           </div>
+                        </div>
+
+                        {user.subscriptionStatus === 'trialing' && (
+                          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-2xl flex items-center gap-3">
+                             <AlertTriangle size={20} className="text-amber-500" />
+                             <div>
+                                <p className="text-xs font-black text-amber-700 dark:text-amber-500 uppercase tracking-widest">En Période d'Essai (7 Jours)</p>
+                                <p className="text-[10px] text-amber-600 dark:text-amber-400">Expire le {user.subscriptionEndDate ? format(user.subscriptionEndDate.toDate ? user.subscriptionEndDate.toDate() : new Date(user.subscriptionEndDate), 'dd MMMM yyyy', { locale: fr }) : 'N/A'}</p>
+                             </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -351,27 +411,5 @@ export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDel
         </div>
       )}
     </AnimatePresence>
-  );
-}
-
-function RefreshCw({ size, className }: { size: number, className?: string }) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
-      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-      <path d="M3 21v-5h5" />
-    </svg>
   );
 }

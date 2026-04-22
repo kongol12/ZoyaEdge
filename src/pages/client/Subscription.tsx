@@ -11,6 +11,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import ZoyaPayCheckout from '../../components/organisms/client/ZoyaPayCheckout';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
+import toast from 'react-hot-toast';
+
 export default function Subscription() {
   const { user, profile, updateProfile, refreshProfile } = useAuth();
   const { t } = useTranslation();
@@ -26,13 +28,20 @@ export default function Subscription() {
   const [dynamicPricing, setDynamicPricing] = useState({
     discoveryMonthlyUSD: 0,
     discoveryYearlyUSD: 0,
+    discoveryMonthlyCDF: 0,
+    discoveryYearlyCDF: 0,
     proMonthlyUSD: 20,
     proYearlyUSD: 200,
+    proMonthlyCDF: 56000,
+    proYearlyCDF: 560000,
     premiumMonthlyUSD: 50,
     premiumYearlyUSD: 500,
+    premiumMonthlyCDF: 140000,
+    premiumYearlyCDF: 1400000,
     globalDiscount: 0,
     transactionFee: 2,
-    vatRate: 16
+    vatRate: 16,
+    useAutomaticConversion: true
   });
 
   // Charger le taux de change et les prix
@@ -47,13 +56,20 @@ export default function Subscription() {
           setDynamicPricing({
             discoveryMonthlyUSD: data.discoveryMonthlyUSD ?? 0,
             discoveryYearlyUSD: data.discoveryYearlyUSD ?? 0,
+            discoveryMonthlyCDF: data.discoveryMonthlyCDF ?? 0,
+            discoveryYearlyCDF: data.discoveryYearlyCDF ?? 0,
             proMonthlyUSD: data.proMonthlyUSD ?? 20,
             proYearlyUSD: data.proYearlyUSD ?? 200,
+            proMonthlyCDF: data.proMonthlyCDF ?? (data.proMonthlyUSD * (data.exchangeRate || 2800)),
+            proYearlyCDF: data.proYearlyCDF ?? (data.proYearlyUSD * (data.exchangeRate || 2800)),
             premiumMonthlyUSD: data.premiumMonthlyUSD ?? 50,
             premiumYearlyUSD: data.premiumYearlyUSD ?? 500,
+            premiumMonthlyCDF: data.premiumMonthlyCDF ?? (data.premiumMonthlyUSD * (data.exchangeRate || 2800)),
+            premiumYearlyCDF: data.premiumYearlyCDF ?? (data.premiumYearlyUSD * (data.exchangeRate || 2800)),
             globalDiscount: data.globalDiscount ?? 0,
             transactionFee: data.transactionFee ?? 2,
-            vatRate: data.vatRate ?? 16
+            vatRate: data.vatRate ?? 16,
+            useAutomaticConversion: data.useAutomaticConversion ?? true
           });
         }
       } catch (err) {
@@ -70,6 +86,8 @@ export default function Subscription() {
       description: 'Découvrez ZoyaEdge et posez les bases de votre discipline.',
       monthlyPriceUSD: dynamicPricing.discoveryMonthlyUSD,
       yearlyPriceUSD: dynamicPricing.discoveryYearlyUSD,
+      monthlyPriceCDF: dynamicPricing.discoveryMonthlyCDF,
+      yearlyPriceCDF: dynamicPricing.discoveryYearlyCDF,
       features: [
         { label: '30 trades manuels / mois', included: true },
         { label: 'Dashboard & Statistiques de base', included: true },
@@ -90,6 +108,8 @@ export default function Subscription() {
       description: '7 jours d\'essai offerts. Pour les traders actifs qui veulent performer.',
       monthlyPriceUSD: dynamicPricing.proMonthlyUSD,
       yearlyPriceUSD: dynamicPricing.proYearlyUSD,
+      monthlyPriceCDF: dynamicPricing.proMonthlyCDF,
+      yearlyPriceCDF: dynamicPricing.proYearlyCDF,
       features: [
         { label: 'Trades manuels illimités', included: true },
         { label: 'Synchronisation MT5 (1 compte)', included: true },
@@ -112,6 +132,8 @@ export default function Subscription() {
       description: 'L\'arsenal complet pour les professionnels et prop-firms.',
       monthlyPriceUSD: dynamicPricing.premiumMonthlyUSD,
       yearlyPriceUSD: dynamicPricing.premiumYearlyUSD,
+      monthlyPriceCDF: dynamicPricing.premiumMonthlyCDF,
+      yearlyPriceCDF: dynamicPricing.premiumYearlyCDF,
       features: [
         { label: 'Trades manuels illimités', included: true },
         { label: 'Synchronisation MT5 (Comptes illimités)', included: true },
@@ -130,13 +152,28 @@ export default function Subscription() {
 
   const plans = basePlans.map(plan => {
     const discountMultiplier = 1 - (dynamicPricing.globalDiscount / 100);
-    const mPriceUSD = plan.monthlyPriceUSD * discountMultiplier;
-    const yPriceUSD = plan.yearlyPriceUSD * discountMultiplier;
+    
+    // Logic: If CDF + Automatic Conversion is disabled, use fixed CDF price. Otherwise convert from USD.
+    let mPrice: number;
+    let yPrice: number;
+
+    if (currency === 'CDF') {
+      if (!dynamicPricing.useAutomaticConversion) {
+        mPrice = plan.monthlyPriceCDF * discountMultiplier;
+        yPrice = plan.yearlyPriceCDF * discountMultiplier;
+      } else {
+        mPrice = (plan.monthlyPriceUSD * discountMultiplier) * exchangeRate;
+        yPrice = (plan.yearlyPriceUSD * discountMultiplier) * exchangeRate;
+      }
+    } else {
+      mPrice = plan.monthlyPriceUSD * discountMultiplier;
+      yPrice = plan.yearlyPriceUSD * discountMultiplier;
+    }
 
     return {
       ...plan,
-      monthlyPrice: currency === 'USD' ? mPriceUSD : mPriceUSD * exchangeRate,
-      yearlyPrice: currency === 'USD' ? yPriceUSD : yPriceUSD * exchangeRate,
+      monthlyPrice: mPrice,
+      yearlyPrice: yPrice,
     };
   });
 
@@ -169,7 +206,7 @@ export default function Subscription() {
           subscriptionStatus: 'active',
           subscriptionEndDate: null
        });
-       alert("Votre plan Discovery gratuit est maintenant actif !");
+       toast.success("Votre plan Discovery gratuit est maintenant actif !");
        return;
     }
 
@@ -201,9 +238,9 @@ export default function Subscription() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erreur activation essai");
       await refreshProfile();
-      alert(`Félicitations ! Votre essai gratuit de 7 jours est activé.`);
+      toast.success(`Félicitations ! Votre essai gratuit de 7 jours est activé.`);
     } catch (error: any) {
-      alert(error.message || "Une erreur est survenue.");
+      toast.error(error.message || "Une erreur est survenue.");
     } finally {
       setIsProcessing(false);
     }

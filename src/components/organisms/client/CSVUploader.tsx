@@ -21,7 +21,7 @@ const PLATFORMS: { id: Platform; name: string; formats: string; logo: string; fa
   { id: 'NinjaTrader', name: 'NinjaTrader', formats: '.csv', logo: 'https://ninjatrader.com/wp-content/uploads/2023/10/NinjaTrader-Logo.png', fallbackColor: 'bg-green-700' },
 ];
 
-export default function CSVUploader() {
+export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
   const { user } = useAuth();
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -263,7 +263,12 @@ export default function CSVUploader() {
 
       await importTrades(user.uid, trades);
       setSuccess(`${trades.length} trades importés avec succès !`);
-      setTimeout(() => navigate('/'), 1500);
+      
+      if (onSuccess) {
+        setTimeout(onSuccess, 1500);
+      } else {
+        setTimeout(() => navigate('/'), 1500);
+      }
     } catch (err: any) {
       setError(err.message || "Erreur lors de l'importation.");
     } finally {

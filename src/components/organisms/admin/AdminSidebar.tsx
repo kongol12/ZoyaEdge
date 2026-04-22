@@ -59,7 +59,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
           onClick={onToggle} 
           className="p-2 text-gray-500 hover:text-zoya-red dark:text-gray-400 dark:hover:text-zoya-red transition-colors rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800"
         >
-          {isCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
+          {isCollapsed ? <Icons.Menu size={20} /> : <Icons.ChevronLeft size={20} />}
         </button>
       </div>
 
@@ -106,7 +106,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
             isCollapsed ? "justify-center" : ""
           )}
         >
-          <ExternalLink size={20} className="shrink-0" />
+          <Icons.ExternalLink size={20} className="shrink-0" />
           {!isCollapsed && <span>Vue Client</span>}
         </button>
         <button
