@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot, Timestamp, writeBatch, doc, deleteDoc, updateDoc, getDoc, setDoc, limit, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage } from './firebase';
@@ -122,6 +123,7 @@ export const addTrade = async (userId: string, tradeData: Omit<Trade, 'id' | 'us
       date: Timestamp.fromDate(tradeData.date),
       createdAt: serverTimestamp(),
       isDemo: false, // Explicitly set false for real trades
+      type: 'trade', // Ensure uniform type for metrics
     });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
@@ -208,18 +210,25 @@ export const subscribeToTrades = (userId: string, callback: (trades: Trade[]) =>
   const q = query(tradesRef, orderBy('date', 'desc'));
 
   return onSnapshot(q, (snapshot) => {
-    if (process.env.NODE_ENV !== 'production') {
+    if (!import.meta.env.PROD) {
       console.log(`[Firestore] Received ${snapshot.docs.length} trades for user ${userId}`);
     }
     const trades = snapshot.docs.map(doc => {
       const data = doc.data();
+      const convertDate = (d: any) => {
+        if (!d) return new Date();
+        if (d.toDate) return d.toDate();
+        if (d._seconds) return new Date(d._seconds * 1000);
+        if (d instanceof Date) return d;
+        return new Date(d);
+      };
       return {
         id: doc.id,
         ...data,
-        date: data.date?.toDate() || new Date(),
-        createdAt: data.createdAt?.toDate() || new Date(),
+        date: convertDate(data.date),
+        createdAt: convertDate(data.createdAt),
       } as Trade;
-    }).filter(t => (includeHidden || !t.hiddenByClient) && !t.isDemo);
+    }).filter(t => (includeHidden || !t.hiddenByClient) && (t.isDemo === false || t.isDemo === undefined));
     
     callback(trades);
   }, (error) => {

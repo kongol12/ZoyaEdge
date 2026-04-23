@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../lib/auth';
-import { db } from '../../lib/firebase';
+import { db, auth } from '../../lib/firebase';
 import { collection, addDoc, query, where, onSnapshot, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { ShieldCheck, Server, User, Plus, Trash2, RefreshCw, CheckCircle2, AlertCircle, Download, Key, Copy, Check, Terminal, Eye, EyeOff, Hash } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -31,14 +31,60 @@ const PLATFORM_LOGOS: Record<string, string> = {
   NinjaTrader: 'https://ninjatrader.com/wp-content/uploads/2023/10/NinjaTrader-Logo.png'
 };
 
+import { useTranslation } from '../../lib/i18n';
+
 export default function BrokerConnections() {
   const { user, profile } = useAuth();
+  const { t, language } = useTranslation();
   const [connections, setConnections] = useState<BrokerConnection[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [loading, setLoading] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [showPaywall, setShowPaywall] = useState(false);
+  const [debugTrades, setDebugTrades] = useState<any[]>([]);
+  const [restoring, setRestoring] = useState(false);
+
+  const restoreTrades = async () => {
+    if (!user) return;
+    setRestoring(true);
+    try {
+      const idToken = await (auth as any).currentUser?.getIdToken();
+      await fetch('/api/debug/restore-trades', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
+      toast.success(language === 'fr' ? "Trades restaurés !" : "Trades restored!");
+      fetchDebugTrades();
+    } catch (err) {
+      toast.error("Échec de la restauration");
+    } finally {
+      setRestoring(false);
+    }
+  };
+  const [isDebugLoading, setIsDebugLoading] = useState(false);
+
+  const fetchDebugTrades = async () => {
+    if (!user) return;
+    setIsDebugLoading(true);
+    try {
+      const idToken = await (auth.currentUser as any).getIdToken();
+      const response = await fetch('/api/debug/my-trades', {
+        headers: { 'Authorization': `Bearer ${idToken}` }
+      });
+      const data = await response.json();
+      setDebugTrades(data.trades || []);
+      if (data.count === 0) toast.error("Aucun trade trouvé dans la base de données.");
+      else toast.success(`${data.count} trades récupérés.`);
+    } catch (err) {
+      toast.error("Erreur de debug");
+    } finally {
+      setIsDebugLoading(false);
+    }
+  };
 
   // Form State
   const [platform, setPlatform] = useState<'MT4' | 'MT5' | 'TradeLocker' | 'CTrader' | 'TradingView' | 'Tradovate' | 'NinjaTrader'>('MT5');
@@ -47,6 +93,12 @@ export default function BrokerConnections() {
   const [brokerServer, setBrokerServer] = useState('');
   const [brokerLogin, setBrokerLogin] = useState('');
   const [investorPassword, setInvestorPassword] = useState('');
+
+  const [appUrl, setAppUrl] = useState('');
+
+  useEffect(() => {
+    setAppUrl(window.location.origin);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -206,20 +258,40 @@ export default function BrokerConnections() {
             <p className="text-indigo-100 text-sm leading-relaxed">
               Ne donnez plus jamais vos mots de passe. Téléchargez notre Expert Advisor (EA) pour MT4/MT5. Il tourne sur votre graphique et envoie vos trades automatiquement vers votre journal. Inclus : notre indicateur exclusif d'aide à la décision.
             </p>
-            <div className="flex items-center gap-4 pt-2">
+            <div className="flex flex-wrap items-center gap-4 pt-2">
               <a 
-                href="/ZoyaEdgeSync.mq5" 
-                download="ZoyaEdgeSync.mq5"
+                href="/api/ea/download?platform=MT5" 
                 className="flex items-center gap-2 bg-white text-indigo-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
               >
                 <Download size={18} />
-                Télécharger l'EA (.mq5)
+                MT5 EA (.mq5)
+              </a>
+              <a 
+                href="/api/ea/download?platform=MT4" 
+                className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/30 hover:scale-[1.02] active:scale-[0.98] transition-all border border-white/30"
+              >
+                <Download size={18} />
+                MT4 EA (.mq4)
               </a>
               <a href="#" className="text-sm font-medium text-indigo-200 hover:text-white underline underline-offset-4 transition-colors">
-                Voir le tutoriel d'installation
+                Tutoriel d'installation
               </a>
             </div>
+            
+            <div className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl border border-white/20 mt-4">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200 mb-2">URL à autoriser dans MetaTrader (WebRequest) :</p>
+              <div className="flex items-center justify-between gap-2">
+                <code className="text-xs font-mono bg-black/20 px-3 py-2 rounded-lg break-all flex-1">{appUrl}</code>
+                <button 
+                  onClick={() => copyToClipboard(appUrl)}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all shrink-0"
+                >
+                  {copiedKey === appUrl ? <Check size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+            </div>
           </div>
+
           <div className="hidden md:flex items-center justify-center w-32 h-32 bg-white/10 backdrop-blur-md rounded-full border border-white/20 shrink-0">
             <Terminal size={48} className="text-white opacity-80" />
           </div>
@@ -355,6 +427,71 @@ export default function BrokerConnections() {
             </p>
           </div>
         )}
+
+        {/* Debug Panel Section */}
+        <div className="mt-12 bg-gray-50 dark:bg-gray-900/50 rounded-3xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                <Terminal size={20} />
+              </div>
+              <div>
+                <h4 className="font-poppins font-bold text-gray-900 dark:text-white uppercase tracking-wider text-xs">Diagnostic de Synchronisation</h4>
+                <p className="text-[10px] text-gray-500 uppercase font-black">Vérifiez si le serveur reçoit vos trades</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {debugTrades.length > 0 && (
+                <button 
+                  onClick={restoreTrades}
+                  disabled={restoring}
+                  className="flex items-center gap-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border border-emerald-200 dark:border-emerald-800 transition-all hover:bg-emerald-200 dark:hover:bg-emerald-800/50"
+                >
+                  {restoring ? '...' : (language === 'fr' ? 'Restaurer' : 'Restore')}
+                </button>
+              )}
+              <button 
+                onClick={fetchDebugTrades}
+                disabled={isDebugLoading}
+                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+              >
+                {isDebugLoading ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Charger
+              </button>
+            </div>
+          </div>
+          
+          <div className="p-6">
+            {debugTrades.length > 0 ? (
+              <div className="space-y-3">
+                {debugTrades.map((t, idx) => (
+                  <div key={idx} className="flex flex-col gap-2 p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 font-mono text-[10px]">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <span className="font-bold text-indigo-600">{t.pair}</span>
+                        <span className={cn("px-2 py-0.5 rounded uppercase", t.direction === 'buy' ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700 text-xs")}>
+                          {t.direction} {t.lotSize}
+                        </span>
+                        <span className="text-gray-400">PNL: <span className={t.pnl >= 0 ? "text-emerald-500" : "text-rose-500"}>{t.pnl}</span></span>
+                      </div>
+                      <div className="text-gray-400">
+                        Ticket: <span className="text-indigo-400 font-bold">{t.ticket || 'NULL'}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-gray-50 dark:border-gray-700/50 pt-2 text-[8px] text-gray-500 uppercase tracking-tighter">
+                      <span>Date Trade: {t.date ? (t.date._seconds ? new Date(t.date._seconds * 1000).toLocaleString() : 'N/A') : 'N/A'}</span>
+                      <span>Reçu le: {t.createdAt ? (t.createdAt._seconds ? new Date(t.createdAt._seconds * 1000).toLocaleString() : 'N/A') : 'N/A'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <p className="text-sm text-gray-500 italic">Appuyez sur "Charger" pour vérifier l'état du serveur.</p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Add Connection Modal */}

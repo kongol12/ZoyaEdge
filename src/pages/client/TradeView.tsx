@@ -10,6 +10,10 @@ import { WinRateArc } from '../../components/charts/WinRateArc';
 import { PnlVolumeChart } from '../../components/charts/PnlVolumeChart';
 import { AvgWinLossBar } from '../../components/charts/AvgWinLossBar';
 
+import { RefreshCw } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { auth } from '../../lib/firebase';
+
 export default function TradeView() {
   const { user } = useAuth();
   const { t, language } = useTranslation();
@@ -70,13 +74,39 @@ export default function TradeView() {
 
   return (
     <div className="w-full space-y-8 pb-12">
-      <header>
-        <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">
-          {language === 'fr' ? 'Vue des Trades' : 'Trade View'}
-        </h1>
-        <p className="text-gray-500 dark:text-gray-400">
-          {language === 'fr' ? 'Analyse visuelle et détaillée de vos performances.' : 'Visual and detailed analysis of your performance.'}
-        </p>
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">
+            {language === 'fr' ? 'Vue des Trades' : 'Trade View'}
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400">
+            {language === 'fr' ? 'Analyse visuelle et détaillée de vos performances.' : 'Visual and detailed analysis of your performance.'}
+          </p>
+        </div>
+        
+        <button 
+          onClick={async () => {
+            if (!user) return;
+            toast.loading(language === 'fr' ? "Synchro..." : "Syncing...", { id: 'ea-sync-view' });
+            try {
+              const idToken = await (auth as any).currentUser?.getIdToken();
+              await fetch('/api/connections/user-sync', {
+                method: 'POST',
+                headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${idToken}`
+                }
+              });
+              toast.success(language === 'fr' ? "Synchronisé" : "Synced", { id: 'ea-sync-view' });
+            } catch (e) {
+              toast.error("Erreur de synchro", { id: 'ea-sync-view' });
+            }
+          }}
+          className="flex items-center gap-2 bg-white dark:bg-gray-800 text-gray-500 hover:text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold border border-gray-200 dark:border-gray-700 shadow-sm transition-all"
+        >
+          <RefreshCw size={14} />
+          {language === 'fr' ? 'Rafraîchir EA' : 'Refresh EA'}
+        </button>
       </header>
 
       {/* Top Stats Grid */}

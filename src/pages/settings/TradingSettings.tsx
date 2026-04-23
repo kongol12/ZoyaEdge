@@ -15,8 +15,10 @@ export default function TradingSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [hardDeleting, setHardDeleting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [showConfirmReset, setShowConfirmReset] = useState(false);
+  const [showConfirmHardDelete, setShowConfirmHardDelete] = useState(false);
 
   useEffect(() => {
     async function fetchProfile() {
@@ -48,6 +50,33 @@ export default function TradingSettings() {
       setMessage({ type: 'error', text: 'Erreur lors de la réinitialisation du journal.' });
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleHardDeleteImports = async () => {
+    if (!user) return;
+    setHardDeleting(true);
+    try {
+      const idToken = await (user as any).getIdToken();
+      const res = await fetch('/api/debug/imported-trades', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        setMessage({ type: 'success', text: `Suppression définitive réussie (${data.count} trades).` });
+      } else {
+        throw new Error(data.error);
+      }
+      setShowConfirmHardDelete(false);
+    } catch (error) {
+      console.error("Error deleting imported trades:", error);
+      setMessage({ type: 'error', text: 'Erreur lors de la suppression des anciens imports.' });
+    } finally {
+      setHardDeleting(false);
     }
   };
 
@@ -270,6 +299,40 @@ export default function TradingSettings() {
                 >
                   {resetting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                   Confirmer
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-red-100 dark:bg-red-900/20 border border-red-200 dark:border-red-900/40">
+            <div>
+              <h3 className="font-bold text-red-900 dark:text-red-100">Suppression Définitive (Fichiers Importés)</h3>
+              <p className="text-xs text-red-700 dark:text-red-400 mt-1">
+                Supprime de manière <span className="font-bold underline">irréversible</span> de la base de données tous vos anciens imports (CSV, HTML, XLSX). Ne supprime pas les trades de l'EA.
+              </p>
+            </div>
+            {!showConfirmHardDelete ? (
+              <button
+                onClick={() => setShowConfirmHardDelete(true)}
+                className="px-6 py-2.5 bg-red-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-md shadow-red-600/20 whitespace-nowrap"
+              >
+                Supprimer Définitivement
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowConfirmHardDelete(false)}
+                  className="px-4 py-2.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-gray-300 transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleHardDeleteImports}
+                  disabled={hardDeleting}
+                  className="px-4 py-2.5 bg-red-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all shadow-md shadow-red-600/20 flex items-center gap-2"
+                >
+                  {hardDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  Je supprime à jamais
                 </button>
               </div>
             )}

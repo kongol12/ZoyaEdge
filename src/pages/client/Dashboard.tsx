@@ -3,7 +3,9 @@ import { useAuth } from '../../lib/auth';
 import { useTranslation } from '../../lib/i18n';
 import { subscribeToTrades, subscribeToNotebook, Trade, NotebookEntry } from '../../lib/db';
 import { formatCurrency, formatPercentage, cn, exportToCSV } from '../../lib/utils';
-import { TrendingUp, Target, Activity, Plus, Upload, BarChart3, Flame, Download, Filter, FileText, History, Wallet, Zap, BrainCircuit, AlertTriangle, ArrowRight } from 'lucide-react';
+import { TrendingUp, Target, Activity, Plus, Upload, BarChart3, Flame, Download, Filter, FileText, History, Wallet, Zap, BrainCircuit, AlertTriangle, ArrowRight, RefreshCw } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { auth } from '../../lib/firebase';
 import { Link } from 'react-router';
 import { motion } from 'motion/react';
 import TradeExplorer from '../../components/organisms/client/TradeExplorer';
@@ -35,8 +37,85 @@ export default function Dashboard() {
   const [notebookEntries, setNotebookEntries] = useState<NotebookEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [hasHiddenTrades, setHasHiddenTrades] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   
-  const { filters, setFilters, filteredTrades, uniqueMonths, uniqueStrategies, uniquePairs, uniquePlatforms } = useFilteredTrades(trades);
+  const { filters, setFilters, filteredTrades, realTrades, uniqueMonths, uniqueStrategies, uniquePairs, uniquePlatforms } = useFilteredTrades(trades);
+
+  const eaTradesCount = trades.filter(t => t.strategy === 'EA Sync').length;
+  const mt5ImportsCount = trades.filter(t => t.strategy === 'Import MT5').length;
+
+  const handleRestore = async () => {
+    if (!user || restoring) return;
+    setRestoring(true);
+    try {
+      const idToken = await (auth as any).currentUser?.getIdToken();
+      // 1. Restaurer ce qui est caché
+      const res = await fetch('/api/debug/restore-trades', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
+      // 2. Corriger les dates si besoin (bug MT5 timestamps)
+      await fetch('/api/debug/heal-dates', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
+      
+      if (res.ok) {
+        toast.success(language === 'fr' ? "Vos trades ont été restaurés et mis à jour !" : "Trades restored and updated!");
+        setHasHiddenTrades(false);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (!user) return;
+    setIsSyncing(true);
+    try {
+      const idToken = await (auth as any).currentUser?.getIdToken();
+      // Heal the dates implicitly
+      await fetch('/api/debug/heal-dates', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
+      // Start real sync
+      const response = await fetch('/api/connections/user-sync', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        }
+      });
+      if (response.ok) {
+        toast.success(language === 'fr' ? "Synchronisation EA lancée !" : "EA Sync started!");
+        // We wait a bit to simulate the refresh
+        setTimeout(() => {
+          setIsSyncing(false);
+          toast.success(language === 'fr' ? "Données mises à jour." : "Data updated.");
+        }, 2500);
+      } else {
+        toast.error("Erreur de synchronisation");
+        setIsSyncing(false);
+      }
+    } catch (err) {
+      toast.error("Connexion serveur impossible");
+      setIsSyncing(false);
+    }
+  };
 
   const zoyaScores = useMemo(() => calculateZoyaScores(trades), [trades]);
 
@@ -44,6 +123,14 @@ export default function Dashboard() {
     if (!user) return;
     
     logActivity(user.uid, 'settings_updated', { view: 'dashboard' });
+
+    // Check for hidden trades once
+    const unsubscribeCheck = subscribeToTrades(user.uid, (allTrades) => {
+      const hidden = allTrades.filter(t => t.hiddenByClient);
+      if (hidden.length > 0 && trades.length === 0) {
+        setHasHiddenTrades(true);
+      }
+    }, true);
 
     const unsubscribeTrades = subscribeToTrades(user.uid, (data) => {
       setTrades(data);
@@ -55,10 +142,11 @@ export default function Dashboard() {
     });
 
     return () => {
+      unsubscribeCheck();
       unsubscribeTrades();
       unsubscribeNotebook();
     };
-  }, [user]);
+  }, [user, trades.length]);
 
   const {
     totalPnL,
@@ -72,16 +160,24 @@ export default function Dashboard() {
     summary,
     cumulativePnlData
   } = useMemo(() => {
+    // Les statistiques de performance se concentrent sur les VRAIS TRADES uniquement
     const { summary } = computePerformanceMetrics(filteredTrades);
     
-    const totalBalanceChange = filteredTrades.reduce((sum, trade) => sum + Number(trade.pnl || 0), 0);
-    const balance = (profile?.initialBalance || 0) + totalBalanceChange;
+    // Le calcul de Balance prend en compte TOUT l'historique brut (trades + retraits + depôts) ordonnés
+    let globalsBalance = profile?.initialBalance || 0;
+    const sortedAllChronological = [...trades].sort((a, b) => a.date.getTime() - b.date.getTime());
+    sortedAllChronological.forEach(t => {
+      globalsBalance += Number(t.pnl || 0);
+    });
+
+    // Optionnel : on peut recalculer un delta restreint pour le filtre de date actuel (mais la UI demande currentBalance global généralement)
+    // On conserve globalsBalance ici.
     
     // Streak Logic (only trades)
     let s = 0;
-    const tradesOnly = filteredTrades.filter(t => !t.type || t.type === 'trade');
-    if (tradesOnly.length > 0) {
-      const days = Array.from(new Set(tradesOnly.map(t => t.date.toDateString()))) as string[];
+    // On utilise filteredTrades qui ne contient QUE des vrais trades maintenant grace a useFilteredTrades
+    if (filteredTrades.length > 0) {
+      const days = Array.from(new Set(filteredTrades.map(t => t.date.toDateString()))) as string[];
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -114,12 +210,12 @@ export default function Dashboard() {
       avgRR: summary.avgRR,
       maxDrawdown: summary.maxDrawdown,
       streak: s,
-      currentBalance: balance,
+      currentBalance: globalsBalance,
       consistency: summary.consistency,
       summary,
       cumulativePnlData: cumulative
     };
-  }, [filteredTrades, profile?.initialBalance]);
+  }, [filteredTrades, trades, profile?.initialBalance]);
 
   if (loading) {
     return <div className="animate-pulse space-y-4">
@@ -191,6 +287,36 @@ export default function Dashboard() {
       {/* Header & Quick Actions */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-2">
         <div className="space-y-1">
+          {hasHiddenTrades && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              className="mb-4 overflow-hidden"
+            >
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/50 p-4 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                    <History size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-poppins font-bold text-emerald-900 dark:text-white text-sm">
+                      {language === 'fr' ? 'Des trades masqués ont été détectés !' : 'Hidden trades detected!'}
+                    </h4>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                      {language === 'fr' ? 'Souhaitez-vous restaurer votre historique MetaTrader ?' : 'Would you like to restore your MetaTrader record?'}
+                    </p>
+                  </div>
+                </div>
+                <Button 
+                  onClick={handleRestore}
+                  disabled={restoring}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-lg shadow-emerald-500/20 text-xs h-9 px-6 font-black uppercase tracking-wider rounded-xl whitespace-nowrap"
+                >
+                  {restoring ? '...' : (language === 'fr' ? 'Restaurer maintenant' : 'Restore now')}
+                </Button>
+              </div>
+            </motion.div>
+          )}
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white tracking-tight">
               {t.common.welcome}, <span className="text-zoya-red">{profile?.displayName || user?.displayName || 'Trader'}</span>
@@ -205,18 +331,36 @@ export default function Dashboard() {
                 {streak} {streak > 1 ? (language === 'fr' ? 'JOURS' : 'DAYS') : (language === 'fr' ? 'JOUR' : 'DAY')}
               </motion.div>
             )}
+            <div className="hidden sm:flex text-[10px] font-mono text-gray-400 ml-4 border-l border-gray-200 dark:border-gray-700 pl-4 py-1">
+              EA MT5 Sync: {eaTradesCount} | MT5 Imports: {mt5ImportsCount} | Total UI: {trades.length}
+            </div>
           </div>
-          <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
-            {trades.length > 0 ? (
-              <>
-                {t.dashboard.lastUpdated}: <span className="font-bold text-gray-700 dark:text-gray-200">
-                  {new Date(Math.max(...trades.map(t => t.date.getTime()))).toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </span>
-              </>
-            ) : (
-              t.dashboard.noTrades
-            )}
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
+              {trades.length > 0 ? (
+                <>
+                  {t.dashboard.lastUpdated}: <span className="font-bold text-gray-700 dark:text-gray-200">
+                    {new Date(Math.max(...trades.map(t => t.date.getTime()))).toLocaleDateString(language === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </span>
+                </>
+              ) : (
+                t.dashboard.noTrades
+              )}
+            </p>
+            <button 
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all",
+                isSyncing 
+                  ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 border border-indigo-100" 
+                  : "bg-white dark:bg-gray-800 text-gray-400 hover:text-indigo-600 border border-gray-200 dark:border-gray-700 shadow-sm"
+              )}
+            >
+              <RefreshCw size={12} className={cn(isSyncing ? "animate-spin" : "")} />
+              {isSyncing ? (language === 'fr' ? 'Synchronisation...' : 'Syncing...') : (language === 'fr' ? 'Sync EA MetaTrader' : 'Sync EA MetaTrader')}
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

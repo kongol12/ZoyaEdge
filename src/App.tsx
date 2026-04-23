@@ -71,9 +71,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   
   if (loading) {
-    if (window.location.pathname === '/' || window.location.pathname === '/home') {
-      return null;
-    }
     return <LoadingScreen />;
   }
   if (!user) return <Navigate to="/home" replace />;

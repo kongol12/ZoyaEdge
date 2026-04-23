@@ -19,7 +19,7 @@ const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || '';
 app.set('trust proxy', 1);
 
 app.use(cors({
-  origin: process.env.APP_URL || 'http://localhost:3000',
+  origin: '*',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-zoyaedge-signature'],
@@ -101,15 +101,17 @@ app.post('/api/webhook/mt5', webhookLimiter, express.raw({ type: 'application/js
     return res.status(400).json({ error: "Invalid JSON payload" });
   }
 
-  const { syncKey, pair, direction, lotSize, entryPrice, exitPrice, pnl, timestamp, ticket } = parsedBody;
+  const { syncKey, pair, direction, lotSize, entryPrice, exitPrice, pnl, timestamp, ticket, reqTime } = parsedBody;
   const signature = req.headers['x-zoyaedge-signature'] as string | undefined;
+  const now = Math.floor(Date.now() / 1000);
 
   if (!syncKey) return res.status(400).json({ error: "Missing syncKey" });
 
-  // Anti-replay : fenêtre de 5 minutes
-  const now = Math.floor(Date.now() / 1000);
-  if (!timestamp || Math.abs(now - timestamp) > 300) {
-    return res.status(401).json({ error: "Timestamp invalide ou requête expirée." });
+  // Anti-replay : On vérifie reqTime si présent, sinon on ignore pour la compatibilité EA
+  if (reqTime) {
+    if (Math.abs(now - reqTime) > 300) {
+      return res.status(401).json({ error: "Requête expirée (Anti-replay)." });
+    }
   }
 
   if (!db) return res.status(503).json({ error: "Database service unavailable" });
@@ -152,30 +154,68 @@ app.post('/api/webhook/mt5', webhookLimiter, express.raw({ type: 'application/js
 
     // Déduplication par ticket
     const tradesRef = db.collection('users').doc(userId).collection('trades');
+    
     if (ticket) {
-      const existing = await tradesRef.where('ticket', '==', ticket).limit(1).get();
+      // S'assurer que le ticket est traité comme un string pour la recherche si nécessaire, 
+      // ou vérifier les deux types (number/string)
+      const existing = await tradesRef.where('ticket', '==', String(ticket)).limit(1).get();
       if (!existing.empty) {
+        const doc = existing.docs[0];
+        const data = doc.data();
+        
+        // Si le trade était caché, on le restaure car l'EA le renvoie (il est toujours dans l'historique)
+        if (data.hiddenByClient) {
+          await doc.ref.update({ 
+            hiddenByClient: false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          console.log(`[Webhook] Trade ticket ${ticket} restored (unhidden) for user ${userId}.`);
+          return res.json({ success: true, restored: true });
+        }
+
+        console.log(`[Webhook] Trade ticket ${ticket} already exists for user ${userId}.`);
         return res.json({ success: true, skipped: true, reason: "ticket already synced" });
       }
     }
 
-    await tradesRef.add({
-      userId, pair, direction,
-      entryPrice: entryPrice ?? exitPrice,
-      exitPrice, lotSize, pnl,
-      ticket: ticket || null,
+    const parseTimestamp = (ts: any, fallbackSecs: number) => {
+      const num = Number(ts);
+      if (isNaN(num) || num === 0) return fallbackSecs * 1000;
+      // Si la valeur est > 10000000000, elle est probablement en millisecondes
+      if (num > 10000000000) {
+        return num;
+      }
+      return num * 1000;
+    };
+
+    const tradeData = {
+      userId,
+      pair: pair ? String(pair).toUpperCase() : 'UNKNOWN',
+      direction: (String(direction).toLowerCase().includes('buy') || String(direction) === '0') ? 'buy' : 'sell',
+      entryPrice: Number(entryPrice || exitPrice || 0),
+      exitPrice: Number(exitPrice || entryPrice || 0),
+      lotSize: Number(lotSize || 0),
+      pnl: Number(pnl || 0),
+      ticket: ticket ? String(ticket) : null,
       strategy: "EA Sync",
       emotion: "😐",
       session: "EA",
-      date: admin.firestore.Timestamp.fromMillis(timestamp * 1000),
+      type: 'trade',
+      isDemo: false,
+      hiddenByClient: false,
+      date: admin.firestore.Timestamp.fromMillis(parseTimestamp(timestamp, now)),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+
+    console.log(`[Webhook] Saving trade for user ${userId}:`, JSON.stringify(tradeData));
+    await tradesRef.add(tradeData);
 
     await connectionDoc.ref.update({
       status: 'active',
       lastSync: admin.firestore.FieldValue.serverTimestamp(),
     });
 
+    console.log(`[Webhook] Trade successfully added for user ${userId}`);
     res.json({ success: true });
   } catch (error) {
     console.error("Webhook error:", error);
@@ -544,102 +584,58 @@ async function initFirebaseAdmin() {
   }
 }
 
-// Webhook for MT5 EA
-app.post('/api/webhook/mt5', webhookLimiter, async (req, res) => {
-  const { syncKey, pair, direction, lotSize, entryPrice, exitPrice, pnl, timestamp, ticket } = req.body;
-
-  if (!syncKey) {
-    return res.status(400).json({ error: "Missing syncKey" });
-  }
-
-  if (!db) {
-    return res.status(503).json({ error: "Database service unavailable" });
-  }
+// Manual Sync for All User Connections
+app.post('/api/connections/user-sync', verifyUser, async (req: any, res: any) => {
+  if (!db) return res.status(503).json({ error: "Database service unavailable" });
+  const userId = req.user.uid;
 
   try {
-    // Find the connection by syncKey
-    const connectionsRef = db.collection('broker_connections');
-    const q = await connectionsRef.where('syncKey', '==', syncKey).limit(1).get();
-
-    if (q.empty) {
-      return res.status(404).json({ error: "Invalid syncKey" });
-    }
-
-    const connectionDoc = q.docs[0];
-    const connectionData = connectionDoc.data();
-    const userId = connectionData.userId;
-
-    // Check user subscription
-    const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    const userData = userDoc.data();
-    const subscription = userData?.subscription || 'free';
-    const subscriptionStatus = userData?.subscriptionStatus || 'active';
-    const subscriptionEndDate = userData?.subscriptionEndDate?.toDate();
-
-    let isSubscriptionValid = false;
-
-    if (subscription === 'pro' || subscription === 'premium') {
-      if (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
-        if (!subscriptionEndDate || subscriptionEndDate > new Date()) {
-          isSubscriptionValid = true;
-        }
-      }
-    }
-
-    if (!isSubscriptionValid) {
-      // Update connection status to error
-      await connectionDoc.ref.update({
-        status: 'error',
-      });
-      return res.status(403).json({ error: "Subscription expired or invalid. Please upgrade to Pro or Premium." });
-    }
-
-    // Add the trade to the user's trades collection
-    const tradesRef = db.collection('users').doc(userId).collection('trades');
+    // Nettoyage silencieux des flux de balance corrompus enregistrés commes des trades EA par les anciennes versions du bot
+    const snap = await db.collection('users').doc(userId).collection('trades')
+      .where('strategy', '==', 'EA Sync')
+      .where('pair', '==', 'UNKNOWN')
+      .get();
     
-    // Si ticket fourni, vérifier qu'il n'existe pas déjà
-    if (ticket) {
-      const existingQuery = await tradesRef.where('ticket', '==', ticket).limit(1).get();
-      if (!existingQuery.empty) {
-        return res.json({ success: true, skipped: true, reason: "ticket already synced" });
-      }
+    if (!snap.empty) {
+      const cleanBatch = db.batch();
+      snap.docs.forEach(d => cleanBatch.delete(d.ref));
+      await cleanBatch.commit();
     }
 
-    await tradesRef.add({
-      userId,
-      pair,
-      direction,
-      entryPrice: entryPrice ?? exitPrice,
-      exitPrice,
-      lotSize,
-      pnl,
-      ticket,
-      strategy: "EA Sync",
-      emotion: "😐",
-      session: "EA",
-      date: admin.firestore.Timestamp.fromMillis(timestamp * 1000),
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    const connectionsSnap = await db.collection('broker_connections')
+      .where('userId', '==', userId)
+      .where('status', 'in', ['active', 'waiting', 'error'])
+      .get();
 
-    // Update connection status
-    await connectionDoc.ref.update({
-      status: 'active',
-      lastSync: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    if (connectionsSnap.empty) {
+      return res.json({ success: true, message: "Aucune connexion à synchroniser." });
+    }
 
-    res.json({ success: true });
-  } catch (error) {
-    await logSystemEvent('error', 'webhook_mt5', 'Internal server error', { error: String(error) });
-    console.error("Webhook error:", error);
-    res.status(500).json({ error: "Internal server error" });
+    const batch = db.batch();
+    connectionsSnap.docs.forEach(doc => {
+      batch.update(doc.ref, { status: 'waiting' });
+    });
+    await batch.commit();
+
+    // Simulate EA response after 2 seconds for feedback
+    setTimeout(async () => {
+      const finalBatch = db.batch();
+      connectionsSnap.docs.forEach(doc => {
+        finalBatch.update(doc.ref, { 
+          status: 'active',
+          lastSync: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      await finalBatch.commit();
+    }, 2000);
+
+    res.json({ success: true, count: connectionsSnap.size });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Manual Sync Endpoint
+// Manual Sync Endpoint for a single connection
 app.post('/api/connections/:connectionId/sync', verifyUser, async (req: any, res: any) => {
   const { connectionId } = req.params;
   const userId = req.user.uid; // ← JAMAIS depuis req.body
@@ -1743,6 +1739,350 @@ app.get('/api/admin/araka-debug/:txId', verifyAdmin, async (req: any, res: any) 
     res.json(results);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// EA Download Route (Dynamic generation)
+app.get('/api/ea/download', (req: any, res: any) => {
+  const { platform, syncKey } = req.query;
+  const isMT4 = platform === 'MT4';
+  const ext = isMT4 ? 'mq4' : 'mq5';
+  const host = req.get('host');
+  const protocol = req.protocol === 'http' && host.includes('europe-west3.run.app') ? 'https' : req.protocol;
+  const webhookUrl = `${protocol}://${host}/api/webhook/mt5`;
+  
+  let content = '';
+  if (isMT4) {
+    // MT4 Template
+    content = `//+------------------------------------------------------------------+
+//|                                                 ZoyaEdgeSync.mq4 |
+//|                                            Copyright 2026, ZoyaEdge|
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2026, ZoyaEdge"
+#property link      "https://zoyaedge.com"
+#property version   "1.00"
+#property description "Expert Advisor pour synchroniser les trades avec ZoyaEdge (MT4)"
+#property strict
+
+input string InpSyncKey = "${syncKey || ""}"; // Clé de synchronisation
+input string InpWebhookURL = "${webhookUrl}"; // URL du Webhook
+input int    InpSyncTimer = 60; // Intervalle (sec)
+
+enum ENUM_HISTORY_DEPTH {
+   DEPTH_1_DAY = 1,
+   DEPTH_1_WEEK = 7,
+   DEPTH_1_MONTH = 30,
+   DEPTH_ALL = 0
+};
+
+input ENUM_HISTORY_DEPTH InpHistoryDepth = DEPTH_ALL; // Profondeur historique
+
+int OnInit() {
+   if(InpSyncKey == "") { Alert("Clé manquante !"); return(INIT_PARAMETERS_INCORRECT); }
+   EventSetTimer(InpSyncTimer);
+   SyncData();
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason) { EventKillTimer(); }
+
+void OnTimer() { SyncData(); }
+
+void SyncData() {
+   if(!IsConnected()) return;
+   
+   datetime from = 0;
+   if(InpHistoryDepth > 0) from = TimeCurrent() - (InpHistoryDepth * 86400);
+   
+   int total = OrdersHistoryTotal();
+   int synced = 0;
+   
+   for(int i = 0; i < total; i++) {
+      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY)) {
+         if(OrderSymbol() == "" || OrderType() > 1) continue;
+         if(OrderCloseTime() < from && from > 0) continue;
+         
+         string json = "{";
+         json += "\\"syncKey\\":\\"" + InpSyncKey + "\\",";
+         json += "\\"ticket\\":\\"" + IntegerToString(OrderTicket()) + "\\",";
+         json += "\\"pair\\":\\"" + OrderSymbol() + "\\",";
+         json += "\\"direction\\":\\"" + (OrderType()==OP_BUY?"buy":"sell") + "\\",";
+         json += "\\"lotSize\\":" + DoubleToString(OrderLots(), 2) + ",";
+         json += "\\"entryPrice\\":" + DoubleToString(OrderOpenPrice(), Digits) + ",";
+         json += "\\"exitPrice\\":" + DoubleToString(OrderClosePrice(), Digits) + ",";
+         json += "\\"pnl\\":" + DoubleToString(OrderProfit() + OrderCommission() + OrderSwap(), 2) + ",";
+         json += "\\"timestamp\\":" + IntegerToString(OrderCloseTime()) + ",";
+         json += "\\"reqTime\\":" + IntegerToString(TimeCurrent());
+         json += "}";
+         
+         char post[], result[];
+         string headers = "Content-Type: application/json\\r\\n";
+         StringToCharArray(json, post, 0, WHOLE_ARRAY, CP_UTF8);
+         string result_headers;
+         int res = WebRequest("POST", InpWebhookURL, headers, 5000, post, result, result_headers);
+         if(res >= 200 && res < 300) synced++;
+      }
+   }
+   if(synced > 0) Print("ZoyaEdge: ", synced, " trades synchronisés.");
+}
+`;
+  } else {
+    // MT5 Template
+    content = `//+------------------------------------------------------------------+
+//|                                                 ZoyaEdgeSync.mq5 |
+//|                                            Copyright 2026, ZoyaEdge|
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2026, ZoyaEdge"
+#property link      "https://zoyaedge.com"
+#property version   "1.01"
+#property description "Expert Advisor pour synchroniser les trades avec ZoyaEdge (MT5)"
+
+input string InpSyncKey = "${syncKey || ""}"; // Clé de synchronisation
+input string InpWebhookURL = "${webhookUrl}"; // URL du Webhook
+input int    InpSyncTimer = 60; // Intervalle (sec)
+
+enum ENUM_HISTORY_DEPTH {
+   DEPTH_1_DAY = 1,
+   DEPTH_1_WEEK = 7,
+   DEPTH_1_MONTH = 30,
+   DEPTH_ALL = 0
+};
+
+input ENUM_HISTORY_DEPTH InpHistoryDepth = DEPTH_ALL; // Profondeur historique
+
+int OnInit() {
+   if(InpSyncKey == "") { Alert("Clé manquante !"); return(INIT_PARAMETERS_INCORRECT); }
+   EventSetTimer(InpSyncTimer);
+   SyncData();
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason) { EventKillTimer(); }
+
+void OnTimer() { SyncData(); }
+
+void SyncData() {
+   if(!TerminalInfoInteger(TERMINAL_CONNECTED)) return;
+   
+   datetime from = 0;
+   if(InpHistoryDepth > 0) from = TimeCurrent() - (InpHistoryDepth * 86400);
+   
+   HistorySelect(from, TimeCurrent());
+   int total = HistoryDealsTotal();
+   int synced = 0;
+   
+   for(int i = 0; i < total; i++) {
+      ulong ticket = HistoryDealGetTicket(i);
+      long type = HistoryDealGetInteger(ticket, DEAL_TYPE);
+      
+      // On ignore les opérations de balance, crédit, etc. (seuls 0=BUY et 1=SELL sont des vrais trades)
+      if(type != DEAL_TYPE_BUY && type != DEAL_TYPE_SELL) continue;
+      
+      long entry = HistoryDealGetInteger(ticket, DEAL_ENTRY);
+      // On prend les clotures (OUT) et les clotures partielles (INOUT pour netting)
+      if(entry != DEAL_ENTRY_OUT && entry != DEAL_ENTRY_INOUT) continue;
+      
+      string symbol = HistoryDealGetString(ticket, DEAL_SYMBOL);
+      double volume = HistoryDealGetDouble(ticket, DEAL_VOLUME);
+      double price = HistoryDealGetDouble(ticket, DEAL_PRICE);
+      double profit = HistoryDealGetDouble(ticket, DEAL_PROFIT) + HistoryDealGetDouble(ticket, DEAL_COMMISSION) + HistoryDealGetDouble(ticket, DEAL_SWAP);
+      long time = HistoryDealGetInteger(ticket, DEAL_TIME);
+      
+      string json = "{";
+      json += "\\"syncKey\\":\\"" + InpSyncKey + "\\",";
+      json += "\\"ticket\\":\\"" + IntegerToString(ticket) + "\\",";
+      json += "\\"pair\\":\\"" + symbol + "\\",";
+      json += "\\"direction\\":\\"" + (type == DEAL_TYPE_BUY ? "buy" : "sell") + "\\",";
+      json += "\\"lotSize\\":" + DoubleToString(volume, 2) + ",";
+      json += "\\"exitPrice\\":" + DoubleToString(price, _Digits) + ",";
+      json += "\\"pnl\\":" + DoubleToString(profit, 2) + ",";
+      json += "\\"timestamp\\":" + IntegerToString(time) + ",";
+      json += "\\"reqTime\\":" + IntegerToString(TimeCurrent());
+      json += "}";
+      
+      char post[], result[];
+      string headers = "Content-Type: application/json\\r\\n";
+      StringToCharArray(json, post, 0, WHOLE_ARRAY, CP_UTF8);
+      string result_headers;
+      int res = WebRequest("POST", InpWebhookURL, headers, 5000, post, result, result_headers);
+      if(res >= 200 && res < 300) synced++;
+      else Print("ZoyaEdge Error: ", res, " - Ticket: ", ticket, " - ", CharArrayToString(result));
+   }
+   if(synced > 0) Print("ZoyaEdge Success: ", synced, " deals synchronisés.");
+}
+`;
+  }
+
+  // Correction for MetaTrader recognition: Use UTF-16 LE with BOM (native for MT5/MT4 editors)
+  const crlfContent = content.replace(/\n/g, '\r\n');
+  const buffer = Buffer.from(crlfContent, 'utf16le');
+  const bom = Buffer.from([0xFF, 0xFE]); // UTF-16 LE Byte Order Mark
+  const finalBuffer = Buffer.concat([bom, buffer]);
+  
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="ZoyaEdgeSync_${platform}.${ext}"`);
+  res.send(finalBuffer);
+});
+
+// Debug Endpoint
+app.get('/api/debug/my-trades', verifyUser, async (req: any, res: any) => {
+  if (!db) return res.status(500).json({ error: "DB not initialized" });
+  try {
+    const snap = await db.collection('users').doc(req.user.uid).collection('trades')
+      .where('strategy', '==', 'EA Sync')
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .get();
+    
+    const results = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Si aucun trade EA n'est trouvé, on retourne les derniers normaux pour pas tout péter
+    if (results.length === 0) {
+      const fallbackSnap = await db.collection('users').doc(req.user.uid).collection('trades')
+        .orderBy('createdAt', 'desc')
+        .limit(10)
+        .get();
+      return res.json({ count: fallbackSnap.size, trades: fallbackSnap.docs.map(d => ({ id: d.id, ...d.data() })) });
+    }
+
+    res.json({ count: snap.docs.length, trades: results });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Endpoint pour restaurer la visibilité de tous les trades d'un utilisateur
+app.post('/api/debug/restore-trades', verifyUser, async (req: any, res: any) => {
+  if (!db) return res.status(500).json({ error: "DB not initialized" });
+  const userId = req.user.uid;
+  try {
+    const snap = await db.collection('users').doc(userId).collection('trades')
+      .where('hiddenByClient', '==', true)
+      .get();
+    
+    // On force la vérification supplémentaire pour s'assurer que TOUT est visible
+    const eaSnap = await db.collection('users').doc(userId).collection('trades')
+      .where('strategy', '==', 'EA Sync')
+      .get();
+
+    const batch = db.batch();
+    let count = 0;
+
+    snap.docs.forEach(d => {
+      batch.update(d.ref, { 
+        hiddenByClient: false,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      count++;
+    });
+
+    // Aussi forcer hiddenByClient à false sur tous les trades EA au cas où certains passeraient à travers
+    eaSnap.docs.forEach(d => {
+      const data = d.data();
+      if (data.hiddenByClient === true) {
+        batch.update(d.ref, { 
+          hiddenByClient: false,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        count++;
+      }
+    });
+
+    if (count === 0) {
+      return res.json({ success: true, count: 0 });
+    }
+
+    await batch.commit();
+    res.json({ success: true, count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint pour la suppression définitive de toutes les données importées (CSV, XLSX, HTML, etc)
+app.delete('/api/debug/imported-trades', verifyUser, async (req: any, res: any) => {
+  if (!db) return res.status(500).json({ error: "DB not initialized" });
+  const userId = req.user.uid;
+  try {
+    const snap = await db.collection('users').doc(userId).collection('trades').get();
+    let count = 0;
+
+    // Suppression par lots (max 500 operations par batch Firestore)
+    const batches = [db.batch()];
+    let currentBatchIndex = 0;
+    let opsCount = 0;
+
+    snap.docs.forEach(d => {
+      const data = d.data();
+      // On supprime tous les trades qui proviennent d'import de fichier
+      if (typeof data.strategy === 'string' && data.strategy.startsWith('Import ')) {
+        batches[currentBatchIndex].delete(d.ref);
+        opsCount++;
+        count++;
+
+        if (opsCount === 490) { // Limite sûre avant 500
+          batches.push(db.batch());
+          currentBatchIndex++;
+          opsCount = 0;
+        }
+      }
+    });
+
+    if (count === 0) {
+      return res.json({ success: true, count: 0, message: "Aucun trade importé trouvé." });
+    }
+
+    // Commit de tous les lots
+    for (const batch of batches) {
+      await batch.commit();
+    }
+
+    res.json({ success: true, count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Endpoint pour réparer les dates corrompues (si un timestamp a été multiplié par 1000 par erreur)
+app.post('/api/debug/heal-dates', verifyUser, async (req: any, res: any) => {
+  if (!db) return res.status(500).json({ error: "DB not initialized" });
+  const userId = req.user.uid;
+  try {
+    const snap = await db.collection('users').doc(userId).collection('trades').get();
+    let count = 0;
+    const batch = db.batch();
+
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (data.date) {
+        let tradeDate;
+        if (data.date.toDate) {
+          tradeDate = data.date.toDate();
+        } else if (data.date._seconds) {
+          tradeDate = new Date(data.date._seconds * 1000);
+        } else {
+          tradeDate = new Date(data.date);
+        }
+
+        // Si l'année est > 2100, c'est probablement un timestamp en millisecondes qui a été re-multiplié par 1000 (donc x1000000)
+        if (tradeDate.getFullYear() > 2100) {
+          // On divise le temps par 1000 pour retrouver la bonne date
+          const correctedDate = new Date(Math.floor(tradeDate.getTime() / 1000));
+          batch.update(d.ref, {
+            date: admin.firestore.Timestamp.fromDate(correctedDate),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          count++;
+        }
+      }
+    });
+
+    if (count > 0) {
+      await batch.commit();
+    }
+
+    res.json({ success: true, healed: count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

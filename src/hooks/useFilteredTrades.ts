@@ -18,8 +18,13 @@ export function useFilteredTrades(trades: Trade[]) {
     platform: 'all'
   });
 
+  // On extrait d'abord UNIQUEMENT les vrais trades (on exclut les dépôts, retraits, ajustements)
+  const realTrades = useMemo(() => {
+    return trades.filter(t => !t.type || t.type === 'trade');
+  }, [trades]);
+
   const filteredTrades = useMemo(() => {
-    return trades.filter(t => {
+    return realTrades.filter(t => {
       // Date filter
       if (filters.dateRange !== 'all') {
         const tMonth = `${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`;
@@ -40,44 +45,45 @@ export function useFilteredTrades(trades: Trade[]) {
       
       return true;
     });
-  }, [trades, filters]);
+  }, [realTrades, filters]);
 
   const uniqueMonths = useMemo(() => {
     const months = new Set<string>();
-    trades.forEach(t => months.add(`${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`));
+    realTrades.forEach(t => months.add(`${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`));
     return Array.from(months).sort().reverse();
-  }, [trades]);
+  }, [realTrades]);
 
   const uniquePairs = useMemo(() => {
     const pairs = new Set<string>();
-    trades.forEach(t => pairs.add(t.pair));
+    realTrades.forEach(t => pairs.add(t.pair));
     return Array.from(pairs).sort();
-  }, [trades]);
+  }, [realTrades]);
 
   const uniqueStrategies = useMemo(() => {
     const strategies = new Set<string>();
-    trades.forEach(t => strategies.add(t.strategy));
+    realTrades.forEach(t => strategies.add(t.strategy));
     return Array.from(strategies).sort();
-  }, [trades]);
+  }, [realTrades]);
 
   const uniqueSessions = useMemo(() => {
     const sessions = new Set<string>();
-    trades.forEach(t => sessions.add(t.session));
+    realTrades.forEach(t => sessions.add(t.session));
     return Array.from(sessions).sort();
-  }, [trades]);
+  }, [realTrades]);
 
   const uniquePlatforms = useMemo(() => {
     const platforms = new Set<string>();
-    trades.forEach(t => {
+    realTrades.forEach(t => {
       if (t.platform) platforms.add(t.platform);
     });
     return Array.from(platforms).sort();
-  }, [trades]);
+  }, [realTrades]);
 
   return {
     filters,
     setFilters,
-    filteredTrades,
+    filteredTrades, // Ne contient plus que les vrais trades (pas de deposit/withdrawal)
+    realTrades, // Tous les vrais trades sans aucun filtre
     uniqueMonths,
     uniquePairs,
     uniqueStrategies,
