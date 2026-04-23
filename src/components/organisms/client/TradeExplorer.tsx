@@ -210,6 +210,7 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Lots</th>
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">R:R</th>
+              <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Pips</th>
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">P&L</th>
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Session</th>
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Date</th>
@@ -242,6 +243,9 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
                 </td>
                 <td className="px-6 py-4 text-xs font-bold text-gray-500">
                   {(!trade.type || trade.type === 'trade') ? formatRR(trade.rr) : '-'}
+                </td>
+                <td className="px-6 py-4 text-xs font-bold text-gray-500">
+                  {(!trade.type || trade.type === 'trade') ? (trade.pips || 0) : '-'}
                 </td>
                 <td className={cn(
                   "px-6 py-4 font-poppins font-black",

@@ -1,5 +1,5 @@
 import { Trade } from '../../../lib/db';
-import { formatCurrency, formatRR } from '../../../lib/utils';
+import { formatCurrency, formatRR, cn } from '../../../lib/utils';
 import { format } from 'date-fns';
 import { ArrowUpRight, ArrowDownRight, Clock, Layers, Zap, Wallet, TrendingUp } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -93,7 +93,13 @@ export default function TradeList({ trades, onTradeClick }: { trades: Trade[], o
                   <Clock size={12} className="text-gray-400 dark:text-gray-500" />
                   <span className="text-[11px] font-medium">{format(trade.date, language === 'fr' ? 'd MMM, HH:mm' : 'MMM d, HH:mm')}</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 justify-end">
+                {isTrade && trade.pips !== undefined && (
+                  <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 justify-end">
+                    <TrendingUp size={12} className={cn("text-gray-400 dark:text-gray-500", trade.pnl > 0 ? "text-emerald-500" : "text-rose-500")} />
+                    <span className="text-[11px] font-bold">{trade.pips} {trade.pips > 1 ? 'Pips' : 'Pip'}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
                   <Zap size={12} className="text-gray-400 dark:text-gray-500" />
                   <span className="text-[11px] font-medium truncate max-w-[80px]">{trade.strategy}</span>
                 </div>

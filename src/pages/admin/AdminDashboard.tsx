@@ -96,50 +96,61 @@ export default function AdminDashboard() {
     });
 
     // 3. Fetch Global Recent Trades (using collectionGroup)
-    const qTrades = query(collectionGroup(db, 'trades'), orderBy('createdAt', 'desc'), limit(10));
-    const unsubscribeTrades = onSnapshot(qTrades, async (snapshot) => {
-      const trades = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...(doc.data() as any),
-        date: doc.data().date?.toDate() || new Date(),
-        createdAt: doc.data().createdAt?.toDate() || new Date()
-      }));
+    const isAdminUser =
+      profile?.role === 'admin' ||
+      profile?.role === 'agent' ||
+      profile?.email === 'kongolmandf@gmail.com';
 
-      // Enrich trades with user names
-      try {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        const userMap: Record<string, any> = {};
-        usersSnap.docs.forEach(d => userMap[d.id] = d.data());
+    let unsubscribeTrades = () => {};
 
-        const enrichedTrades = trades.map(t => {
-          const profile = userMap[t.userId];
-          return {
-            ...t,
-            userName: profile?.displayName || profile?.name || profile?.email?.split('@')[0] || t.userId.substring(0, 8)
-          };
-        });
-        setRecentTrades(enrichedTrades);
+    if (isAdminUser) {
+      const qTrades = query(collectionGroup(db, 'trades'), orderBy('createdAt', 'desc'), limit(10));
+      unsubscribeTrades = onSnapshot(qTrades, async (snapshot) => {
+        const trades = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...(doc.data() as any),
+          date: doc.data().date?.toDate() || new Date(),
+          createdAt: doc.data().createdAt?.toDate() || new Date()
+        }));
 
-        // Update activities with trades
-        setRecentActivities(prev => {
-          const otherActivities = prev.filter(a => a.type !== 'trade');
-          const tradeActivities = enrichedTrades.slice(0, 5).map(t => ({
-            id: `trade-${t.id}`,
-            msg: `Nouveau trade: ${t.userName} - ${t.pair} (${t.direction})`,
-            time: t.createdAt,
-            type: 'trade'
-          }));
-          return [...otherActivities, ...tradeActivities].sort((a, b) => b.time.getTime() - a.time.getTime()).slice(0, 5);
-        });
-      } catch (err) {
-        console.error("Enrichment error:", err);
-        setRecentTrades(trades);
-      }
-      
+        // Enrich trades with user names
+        try {
+          const usersSnap = await getDocs(collection(db, 'users'));
+          const userMap: Record<string, any> = {};
+          usersSnap.docs.forEach(d => userMap[d.id] = d.data());
+
+          const enrichedTrades = trades.map(t => {
+            const profile = userMap[t.userId];
+            return {
+              ...t,
+              userName: profile?.displayName || profile?.name || profile?.email?.split('@')[0] || t.userId.substring(0, 8)
+            };
+          });
+          setRecentTrades(enrichedTrades);
+
+          // Update activities with trades
+          setRecentActivities(prev => {
+            const otherActivities = prev.filter(a => a.type !== 'trade');
+            const tradeActivities = enrichedTrades.slice(0, 5).map(t => ({
+              id: `trade-${t.id}`,
+              msg: `Nouveau trade: ${t.userName} - ${t.pair} (${t.direction})`,
+              time: t.createdAt,
+              type: 'trade'
+            }));
+            return [...otherActivities, ...tradeActivities].sort((a, b) => b.time.getTime() - a.time.getTime()).slice(0, 5);
+          });
+        } catch (err) {
+          console.error("Enrichment error:", err);
+          setRecentTrades(trades);
+        }
+        
+        setLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'trades (collectionGroup)');
+      });
+    } else {
       setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'trades (collectionGroup)');
-    });
+    }
 
     // 4. Fetch recent users for activities
     const qUsers = query(collection(db, 'users'), orderBy('createdAt', 'desc'), limit(5));

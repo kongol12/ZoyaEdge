@@ -105,6 +105,17 @@ export default function TradeDetail({ trade, allTrades = [], onBack }: TradeDeta
                   <div className="text-xl font-poppins font-black text-gray-900 dark:text-white">{trade.lotSize}</div>
                   <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Lots</div>
                 </div>
+                {trade.pips !== undefined && (
+                  <>
+                    <div className="h-10 w-px bg-gray-100 dark:bg-gray-700" />
+                    <div className="text-center">
+                      <div className={cn("text-xl font-poppins font-black", trade.pnl >= 0 ? "text-emerald-600" : "text-rose-600")}>
+                        {trade.pips}
+                      </div>
+                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Pips</div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 

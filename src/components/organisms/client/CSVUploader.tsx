@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth';
 import { importTrades, Trade } from '../../../lib/db';
-import { calculateTradeStats, AssetType } from '../../../lib/tradeCalculations';
+import { calculateTradeStats, AssetType, detectAssetType } from '../../../lib/tradeCalculations';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { UploadCloud, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react';
@@ -34,8 +34,29 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
 
   const parseDate = (dateStr: string) => {
     if (!dateStr) return new Date();
-    let normalized = String(dateStr).replace(/\./g, '-');
-    const date = new Date(normalized);
+    const cleaned = String(dateStr).replace(/\u00a0/g, ' ').trim();
+    
+    // Try YYYY.MM.DD HH:mm:ss (or with / or -)
+    if (/^\d{4}[\.\/-]\d{2}[\.\/-]\d{2}/.test(cleaned)) {
+      return new Date(cleaned.replace(/[\.\/]/g, '-'));
+    }
+    
+    // Try DD.MM.YYYY HH:mm:ss (or with / or -)
+    const dmh = cleaned.match(/^(\d{2,4})[\.\/-](\d{2})[\.\/-](\d{2,4})/);
+    if (dmh) {
+      const [_, part1, m, part3] = dmh;
+      // If part1 is 4 digits, it's YYYY-MM-DD
+      if (part1.length === 4) {
+        return new Date(cleaned.replace(/[\.\/]/g, '-'));
+      }
+      // Otherwise DD-MM-YYYY
+      const d = part1;
+      const y = part3;
+      const timePart = cleaned.split(/\s+/)[1] || '00:00:00';
+      return new Date(`${y}-${m}-${d}T${timePart.replace(/[\.\/]/g, ':')}`);
+    }
+    
+    const date = new Date(cleaned.replace(/\./g, '-'));
     return isNaN(date.getTime()) ? new Date() : date;
   };
 
@@ -48,68 +69,180 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
         reader.onload = (e) => {
           try {
             const data = new Uint8Array(e.target?.result as ArrayBuffer);
-            const workbook = XLSX.read(data, { type: 'array' });
+            const workbook = XLSX.read(data, { type: 'array', cellDates: true });
             const firstSheetName = workbook.SheetNames[0];
             const worksheet = workbook.Sheets[firstSheetName];
-            const json = XLSX.utils.sheet_to_json(worksheet);
-            resolve(json);
+            
+            const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            if (rows.length < 2) {
+              resolve([]);
+              return;
+            }
+
+            let headerRowIndex = -1;
+            for (let i = 0; i < Math.min(rows.length, 20); i++) {
+              const row = rows[i];
+              if (!row) continue;
+              const cellTexts = row.map(c => String(c || '').toLowerCase().trim());
+              const hasSymbol = cellTexts.some(c => c.includes('symbol') || c.includes('symbole') || c.includes('ticket'));
+              const hasProfit = cellTexts.some(c => c.includes('profit') || c.includes('résultat') || c.includes('gain') || c.includes('balance'));
+              
+              if (hasSymbol && hasProfit) {
+                headerRowIndex = i;
+                break;
+              }
+            }
+
+            if (headerRowIndex === -1) {
+              resolve(XLSX.utils.sheet_to_json(worksheet));
+              return;
+            }
+
+            const rawHeaders = rows[headerRowIndex].map(h => String(h || '').trim());
+            const uniqueHeaders: string[] = [];
+            const counts: Record<string, number> = {};
+            rawHeaders.forEach(h => {
+              const h_clean = h || 'Column';
+              const lowerH = h_clean.toLowerCase();
+              if (!counts[lowerH]) {
+                uniqueHeaders.push(h_clean);
+                counts[lowerH] = 1;
+              } else {
+                uniqueHeaders.push(`${h_clean}_${counts[lowerH]}`);
+                counts[lowerH]++;
+              }
+            });
+
+            const jsonResults = rows.slice(headerRowIndex + 1).map(row => {
+              const obj: any = {};
+              uniqueHeaders.forEach((h, idx) => {
+                if (row[idx] !== undefined) obj[h] = row[idx];
+              });
+              return obj;
+            }).filter(obj => Object.keys(obj).length > 2);
+
+            resolve(jsonResults);
           } catch (err) {
             reject(err);
           }
         };
         reader.onerror = (err) => reject(err);
         reader.readAsArrayBuffer(file);
-      } else if (extension === 'html') {
+      } else {
         const reader = new FileReader();
         reader.onload = (e) => {
           try {
-            const text = e.target?.result as string;
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(text, 'text/html');
-            const tables = doc.querySelectorAll('table');
-            let bestTable: HTMLTableElement | null = null;
-            let maxRows = 0;
+            const buffer = e.target?.result as ArrayBuffer;
+            const uint8 = new Uint8Array(buffer);
+            let text = '';
             
-            tables.forEach(table => {
-              if (table.rows.length > maxRows) {
-                maxRows = table.rows.length;
-                bestTable = table;
+            if (uint8[0] === 0xFF && uint8[1] === 0xFE) {
+              text = new TextDecoder('utf-16le').decode(buffer);
+            } else if (uint8[0] === 0xFE && uint8[1] === 0xFF) {
+              text = new TextDecoder('utf-16be').decode(buffer);
+            } else {
+              let zeroCount = 0;
+              const testLimit = Math.min(uint8.length, 1000);
+              for (let i = 1; i < testLimit; i += 2) {
+                if (uint8[i] === 0) zeroCount++;
               }
-            });
-
-            if (!bestTable) {
-              resolve([]);
-              return;
+              if (zeroCount > (testLimit / 4)) {
+                text = new TextDecoder('utf-16le').decode(buffer);
+              } else {
+                text = new TextDecoder('utf-8').decode(buffer);
+              }
             }
 
-            const rows = Array.from(bestTable.rows);
-            if (rows.length < 2) {
-              resolve([]);
-              return;
-            }
+            if (extension === 'html') {
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(text, 'text/html');
+              const tables = Array.from(doc.querySelectorAll('table'));
+              let bestData: any[] = [];
 
-            const headers = Array.from(rows[0].cells).map(c => c.innerText.trim());
-            const data = rows.slice(1).map(row => {
-              const obj: any = {};
-              Array.from(row.cells).forEach((cell, i) => {
-                if (headers[i]) obj[headers[i]] = cell.innerText.trim();
+              if (tables.length === 0) {
+                 throw new Error("Aucune table de données trouvée dans le fichier HTML.");
+              }
+              
+              tables.forEach(table => {
+                const rows = Array.from(table.rows);
+                if (rows.length < 2) return;
+                
+                let headerRowIndex = -1;
+                let rawHeaders: string[] = [];
+                
+                for (let i = 0; i < Math.min(rows.length, 15); i++) {
+                   const cellTexts = Array.from(rows[i].cells).map(c => c.innerText.replace(/\u00a0/g, ' ').trim().toLowerCase());
+                   const hasSymbol = cellTexts.some(c => c.includes('symbol') || c.includes('symbole') || c.includes('ticket'));
+                   const hasProfit = cellTexts.some(c => c.includes('profit') || c.includes('résultat') || c.includes('gain') || c.includes('balance'));
+                   const hasType = cellTexts.some(c => c.includes('type') || c.includes('direction') || c.includes('action'));
+                   
+                   if (hasSymbol && (hasProfit || hasType)) {
+                      headerRowIndex = i;
+                      rawHeaders = Array.from(rows[i].cells).map(c => c.innerText.replace(/\u00a0/g, ' ').trim());
+                      break;
+                   }
+                }
+                
+                if (headerRowIndex !== -1) {
+                   const uniqueHeaders: string[] = [];
+                   const counts: Record<string, number> = {};
+                   rawHeaders.forEach(h => {
+                     const lowerH = h.toLowerCase();
+                     if (!counts[lowerH]) {
+                       uniqueHeaders.push(h);
+                       counts[lowerH] = 1;
+                     } else {
+                       uniqueHeaders.push(`${h}_${counts[lowerH]}`);
+                       counts[lowerH]++;
+                     }
+                   });
+
+                   const tableData = rows.slice(headerRowIndex + 1).map(row => {
+                     const obj: any = {};
+                     const cells = Array.from(row.cells);
+                     
+                     uniqueHeaders.forEach((h, idx) => {
+                        if (cells[idx]) obj[h] = cells[idx].innerText.replace(/\u00a0/g, ' ').trim();
+                     });
+                     return obj;
+                   }).filter(obj => Object.keys(obj).length > 2);
+                   
+                   if (tableData.length > bestData.length) {
+                      bestData = tableData;
+                   }
+                }
               });
-              return obj;
-            });
-            resolve(data);
+
+              if (bestData.length === 0) {
+                 const largestTable = tables.reduce((prev, curr) => curr.rows.length > prev.rows.length ? curr : prev);
+                 if (largestTable.rows.length > 2) {
+                    const headers = Array.from(largestTable.rows[0].cells).map(c => c.innerText.trim() || 'Col');
+                    bestData = Array.from(largestTable.rows).slice(1).map(row => {
+                      const obj: any = {};
+                      Array.from(row.cells).forEach((c, i) => {
+                        if (headers[i]) obj[headers[i]] = c.innerText.trim();
+                      });
+                      return obj;
+                    });
+                 }
+              }
+
+              resolve(bestData);
+            } else {
+              Papa.parse(text, {
+                header: true,
+                skipEmptyLines: true,
+                complete: (results) => resolve(results.data),
+                error: (err) => reject(err)
+              });
+            }
           } catch (err) {
             reject(err);
           }
         };
         reader.onerror = (err) => reject(err);
-        reader.readAsText(file);
-      } else {
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => resolve(results.data),
-          error: (err) => reject(err)
-        });
+        reader.readAsArrayBuffer(file);
       }
     });
   };
@@ -122,18 +255,61 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
 
     const getVal = (keys: string[]) => {
       for (const k of keys) {
-        const foundKey = Object.keys(normalizedRow).find(rk => rk.includes(k));
+        const foundKey = Object.keys(normalizedRow).find(rk => rk === k || rk.includes(k));
         if (foundKey) return normalizedRow[foundKey];
       }
       return undefined;
     };
 
-    const typeStr = String(getVal(['type', 'action', 'side', 'direction', 'comment']) || '').toLowerCase();
+    const normalizeNumber = (val: any): number => {
+      if (val === undefined || val === null || val === '') return 0;
+      if (typeof val === 'number') return val;
+      
+      let str = String(val).replace(/\u00a0/g, ' ').trim();
+      
+      // Robust decimal detection for formats like "3 971,10" or "90 664,211"
+      if (str.includes(' ') && str.includes(',')) {
+        // Space is thousands, comma is decimal
+        str = str.replace(/\s+/g, '').replace(',', '.');
+      } else if (str.includes(' ') && str.includes('.')) {
+        // Space is thousands, dot is decimal
+        str = str.replace(/\s+/g, '');
+      } else {
+        // Existing logic for ambiguous cases
+        const hasComma = str.includes(',');
+        const hasDot = str.includes('.');
+        
+        if (hasComma && hasDot) {
+          if (str.indexOf(',') < str.indexOf('.')) {
+            str = str.replace(/,/g, ''); 
+          } else {
+            str = str.replace(/\./g, '').replace(',', '.');
+          }
+        } else if (hasComma) {
+          const lastCommaIndex = str.lastIndexOf(',');
+          if (str.length - lastCommaIndex <= 3 || str.split(',').length > 2) {
+            str = str.replace(',', '.');
+          } else {
+            str = str.replace(',', '');
+          }
+        } else if (hasDot) {
+          const lastDotIndex = str.lastIndexOf('.');
+          if (str.length - lastDotIndex > 3 || str.split('.').length > 2) {
+            str = str.replace(/\./g, '');
+          }
+        }
+      }
+
+      str = str.replace(/\s+/g, '').replace(/[^-0-9.]/g, '');
+      return parseFloat(str) || 0;
+    };
+
+    const typeStr = String(getVal(['type', 'action', 'side', 'direction', 'side', 'type_1']) || '').toLowerCase();
     
     let type: 'trade' | 'deposit' | 'withdrawal' | 'adjustment' = 'trade';
     let direction: 'buy' | 'sell' = 'buy';
 
-    if (typeStr.includes('deposit') || typeStr.includes('depôt') || typeStr.includes('credit')) {
+    if (typeStr.includes('deposit') || typeStr.includes('dépot') || typeStr.includes('dépôt') || typeStr.includes('credit')) {
       type = 'deposit';
     } else if (typeStr.includes('withdrawal') || typeStr.includes('retrait') || typeStr.includes('debit')) {
       type = 'withdrawal';
@@ -142,58 +318,56 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
     }
 
     if (type === 'trade') {
-      if (typeStr.includes('sell') || typeStr.includes('short')) direction = 'sell';
-      else if (typeStr.includes('buy') || typeStr.includes('long')) direction = 'buy';
+      if (typeStr.includes('sell') || typeStr.includes('short') || typeStr.includes('vente')) direction = 'sell';
+      else if (typeStr.includes('buy') || typeStr.includes('long') || typeStr.includes('achat')) direction = 'buy';
     }
 
-    const symbol = String(getVal(['symbol', 'item', 'market', 'instrument', 'pair']) || (type !== 'trade' ? 'BALANCE' : 'UNKNOWN')).toUpperCase();
+    const symbol = String(getVal(['symbol', 'symbole', 'item', 'market', 'instrument', 'pair']) || (type !== 'trade' ? 'BALANCE' : 'UNKNOWN')).toUpperCase();
     
-    const entryPriceStr = getVal(['open price', 'entry price', 'price', 'avg price', 'fill price', 'open_price', 'entry_price']);
-    const exitPriceStr = getVal(['close price', 'exit price', 'price', 'close_price', 'exit_price']);
+    const entryPriceStr = getVal(['open price', 'entry price', 'prix d\'ouverture', 'prix', 'open_price', 'entry_price', 'prix_1']);
+    const exitPriceStr = getVal(['close price', 'exit price', 'prix de fermeture', 'prix_1', 'exit_price', 'close_price']) || entryPriceStr;
     
-    const entryPrice = parseFloat(String(entryPriceStr).replace(/[^0-9.-]/g, '')) || 0;
-    const exitPrice = parseFloat(String(exitPriceStr).replace(/[^0-9.-]/g, '')) || entryPrice;
+    const entryPrice = normalizeNumber(entryPriceStr);
+    const exitPrice = normalizeNumber(exitPriceStr) || entryPrice;
 
-    const lotSizeStr = getVal(['size', 'volume', 'qty', 'quantity']);
-    const lotSize = parseFloat(String(lotSizeStr).replace(/[^0-9.-]/g, '')) || 0;
+    const lotSizeStr = getVal(['size', 'volume', 'qty', 'quantity', 'taille', 'v o l u m e']);
+    const lotSize = normalizeNumber(lotSizeStr);
 
-    const pnlStr = getVal(['profit', 'pnl', 'net pnl', 'gross pnl', 'realized pnl', 'net', 'amount', 'gain']);
-    const pnl = parseFloat(String(pnlStr).replace(/[^0-9.-]/g, '').replace(/ /g, '')) || 0;
+    const pnlStr = getVal(['profit', 'pnl', 'net pnl', 'gross pnl', 'realized pnl', 'net', 'amount', 'gain', 'résultat', 'benefice']);
+    const pnlRaw = normalizeNumber(pnlStr);
 
-    const slStr = getVal(['sl', 'stoploss', 'stop loss', 'stop_loss', 's/l']);
-    const tpStr = getVal(['tp', 'takeprofit', 'take profit', 'take_profit', 't/p']);
-    const sl = slStr ? parseFloat(String(slStr).replace(/[^0-9.-]/g, '')) : undefined;
-    const tp = tpStr ? parseFloat(String(tpStr).replace(/[^0-9.-]/g, '')) : undefined;
+    const commStr = getVal(['commission', 'comm', 'frais']);
+    const swapStr = getVal(['swap', 'echange', 'échanges', 'èchanges', 'swap_1', 'echange_1']);
+    const commission = normalizeNumber(commStr);
+    const swap = normalizeNumber(swapStr);
 
-    const dateStr = getVal(['time', 'open time', 'date', 'close time', 'open_time', 'close_time', 'timestamp']);
+    // Some MT5 reports already include commission and swap in the profit column.
+    // However, usually "Profit" is raw and we should sum up. 
+    // We'll trust the summed value for net.
+    const netPnl = pnlRaw + commission + swap;
+
+    const slStr = getVal(['sl', 'stoploss', 'stop loss', 'stop_loss', 's / l', 's/l']);
+    const tpStr = getVal(['tp', 'takeprofit', 'take profit', 'take_profit', 't / p', 't/p']);
+    const sl = normalizeNumber(slStr);
+    const tp = normalizeNumber(tpStr);
+    
+    const dateStr = getVal(['time', 'heure', 'date', 'open time', 'heure_1', 'close time', 'timestamp']);
     const date = parseDate(String(dateStr));
 
-    if (type === 'trade' && symbol.trim() === 'UNKNOWN' && pnl === 0 && lotSize === 0) return null;
-    if (type !== 'trade' && pnl === 0) return null;
+    if (type === 'trade' && (symbol.trim() === 'UNKNOWN' || symbol.trim() === '') && Math.abs(netPnl) < 0.0001 && lotSize === 0) return null;
+    if (type !== 'trade' && Math.abs(netPnl) < 0.0001) return null;
 
-    // Double check if it's a deposit based on symbol (MT4/5 style)
     const sTrim = symbol.trim();
     if (sTrim === 'BALANCE' || sTrim === 'DBASE') {
-      type = pnl >= 0 ? 'deposit' : 'withdrawal';
+      type = netPnl >= 0 ? 'deposit' : 'withdrawal';
     }
 
-    // Use shared calculation logic for R:R if it's a trade and we have SL/TP
     let risk = 0;
     let reward = 0;
     let rr = 0;
+    let pips = 0;
 
-    // Detect Asset Type
-    let assetType: AssetType = 'forex';
-    const symbolStr = symbol.toUpperCase();
-    if (symbolStr.includes('XAU') || symbolStr.includes('GOLD') || symbolStr.includes('OIL') || symbolStr.includes('WTI')) {
-      assetType = 'commodities';
-    } else if (symbolStr.includes('BTC') || symbolStr.includes('ETH') || symbolStr.includes('SOL')) {
-      assetType = 'crypto';
-    } else if (symbolStr.includes('NAS') || symbolStr.includes('US30') || symbolStr.includes('GER') || symbolStr.includes('DAX')) {
-      assetType = 'indices';
-    } else if (symbolStr.includes('VOLATILITY') || symbolStr.includes('BOOM') || symbolStr.includes('CRASH') || symbolStr.includes('INDEX')) {
-      assetType = 'synthetic';
-    }
+    let assetType = detectAssetType(symbol);
 
     if (type === 'trade') {
       const calculated = calculateTradeStats(
@@ -209,18 +383,14 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
       risk = calculated.risk;
       reward = calculated.reward;
       rr = calculated.rr;
+      pips = calculated.pips;
     }
 
-    return {
+    const tradeObj: any = {
       pair: symbol.trim(),
-      direction: type === 'trade' ? direction : undefined,
-      assetType: type === 'trade' ? assetType : undefined,
-      entryPrice: type === 'trade' ? entryPrice : 0,
-      exitPrice: type === 'trade' ? exitPrice : 0,
-      stopLoss: sl,
-      takeProfit: tp,
-      lotSize: type === 'trade' ? lotSize : 0,
-      pnl,
+      pnl: netPnl,
+      commission,
+      swap,
       type,
       strategy: type === 'trade' ? `Import ${platform}` : 'Balance Movement',
       emotion: '😐',
@@ -229,8 +399,23 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
       platform,
       risk,
       reward,
-      rr
+      rr,
+      pips,
+      isDemo: false,
+      hiddenByClient: false
     };
+
+    if (type === 'trade') {
+      tradeObj.direction = direction;
+      tradeObj.assetType = assetType;
+      tradeObj.entryPrice = entryPrice;
+      tradeObj.exitPrice = exitPrice;
+      tradeObj.lotSize = lotSize;
+      tradeObj.stopLoss = sl || 0;
+      tradeObj.takeProfit = tp || 0;
+    }
+
+    return tradeObj;
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

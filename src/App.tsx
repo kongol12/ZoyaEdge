@@ -109,7 +109,9 @@ function AppRoutes() {
         setMaintenance(snapshot.data().maintenanceMode);
       }
     }, (error) => {
-      console.error("Global Settings Error:", error);
+      if (error.code !== 'permission-denied') {
+        console.error("Global Settings Error:", error);
+      }
     });
     return () => unsubscribe();
   }, []);

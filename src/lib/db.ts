@@ -72,6 +72,7 @@ export interface Trade {
   rr?: number;
   risk?: number;
   reward?: number;
+  pips?: number;
   platform?: string;
   commission?: number;
   swap?: number;
@@ -173,23 +174,31 @@ export const subscribeToStrategies = (userId: string, callback: (strategies: Str
 export const importTrades = async (userId: string, trades: Omit<Trade, 'id' | 'userId' | 'createdAt'>[]) => {
   const path = `users/${userId}/trades (batch)`;
   try {
-    const batch = writeBatch(db);
-    const tradesRef = collection(db, 'users', userId, 'trades');
-    
-    trades.forEach((trade) => {
-      const newTradeRef = doc(tradesRef);
-      batch.set(newTradeRef, {
-        ...trade,
-        userId,
-        date: Timestamp.fromDate(trade.date),
-        createdAt: serverTimestamp(),
-        isDemo: false,
+    // Firestore batches are limited to 500 operations. We split the trades into chunks.
+    const CHUNK_SIZE = 450;
+    for (let i = 0; i < trades.length; i += CHUNK_SIZE) {
+      const chunk = trades.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      const tradesRef = collection(db, 'users', userId, 'trades');
+      
+      chunk.forEach((trade) => {
+        const newTradeRef = doc(tradesRef);
+        batch.set(newTradeRef, {
+          ...trade,
+          userId,
+          date: Timestamp.fromDate(trade.date),
+          createdAt: serverTimestamp(),
+          isDemo: false,
+          hiddenByClient: false // Ensure they are visible
+        });
       });
-    });
 
-    await batch.commit();
+      await batch.commit();
+      console.log(`[Firestore] Batch chunk ${i / CHUNK_SIZE + 1} committed (${chunk.length} trades)`);
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
   }
 };
 

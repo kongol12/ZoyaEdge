@@ -4,8 +4,9 @@ import { useTranslation } from '../../lib/i18n';
 import { db } from '../../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
-import { Settings as SettingsIcon, Save, Loader2 } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { softDeleteAllTrades } from '../../lib/db';
 
 export default function TradingSettings() {
   const { user, updateProfile } = useAuth();
@@ -13,7 +14,9 @@ export default function TradingSettings() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [showConfirmReset, setShowConfirmReset] = useState(false);
 
   useEffect(() => {
     async function fetchProfile() {
@@ -32,6 +35,21 @@ export default function TradingSettings() {
     }
     fetchProfile();
   }, [user]);
+
+  const handleResetJournal = async () => {
+    if (!user) return;
+    setResetting(true);
+    try {
+      await softDeleteAllTrades(user.uid);
+      setMessage({ type: 'success', text: 'Journal réinitialisé avec succès.' });
+      setShowConfirmReset(false);
+    } catch (error) {
+      console.error("Error resetting journal:", error);
+      setMessage({ type: 'error', text: 'Erreur lors de la réinitialisation du journal.' });
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,6 +220,61 @@ export default function TradingSettings() {
             {saving ? t.common.saving : t.common.save}
           </button>
         </form>
+      </motion.section>
+
+      {/* Danger Zone */}
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white dark:bg-gray-800 rounded-3xl p-6 shadow-lg border border-rose-100 dark:border-rose-900/30 overflow-hidden relative"
+      >
+        <div className="absolute top-0 right-0 p-8 opacity-5">
+          <Trash2 size={120} className="text-rose-600" />
+        </div>
+
+        <div className="flex items-center gap-3 mb-6 relative z-10">
+          <div className="p-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 rounded-2xl">
+            <AlertTriangle size={24} />
+          </div>
+          <h2 className="text-xl font-poppins font-black text-rose-600">Zone de Danger</h2>
+        </div>
+
+        <div className="space-y-6 relative z-10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-rose-50 dark:bg-rose-900/10 border border-rose-100 dark:border-rose-900/20">
+            <div>
+              <h3 className="font-bold text-rose-900 dark:text-rose-100">Réinitialiser le Journal</h3>
+              <p className="text-xs text-rose-700 dark:text-rose-400 mt-1">
+                Cette action masquera tous vos trades actuels. Les données ne seront plus visibles dans vos statistiques ni votre dashboard.
+              </p>
+            </div>
+            {!showConfirmReset ? (
+              <button
+                onClick={() => setShowConfirmReset(true)}
+                className="px-6 py-2.5 bg-rose-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-rose-700 transition-all shadow-md shadow-rose-600/20 whitespace-nowrap"
+              >
+                Réinitialiser
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowConfirmReset(false)}
+                  className="px-4 py-2.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-gray-300 transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleResetJournal}
+                  disabled={resetting}
+                  className="px-4 py-2.5 bg-rose-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-rose-700 transition-all shadow-md shadow-rose-600/20 flex items-center gap-2"
+                >
+                  {resetting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  Confirmer
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </motion.section>
     </div>
   );

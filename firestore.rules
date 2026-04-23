@@ -59,12 +59,27 @@ service cloud.firestore {
       return data.keys().hasAll(['userId', 'pnl', 'strategy', 'date', 'createdAt']) &&
              data.userId == userId &&
              data.pnl is number &&
-             data.strategy is string && data.strategy.size() <= 100 &&
+             data.strategy is string && data.strategy.size() <= 120 &&
              data.date is timestamp &&
              data.createdAt is timestamp &&
-             (!('pair' in data) || (data.pair is string && data.pair.size() <= 20)) &&
+             (!('pair' in data) || (data.pair is string && data.pair.size() <= 50)) &&
              (!('direction' in data) || data.direction in ['buy', 'sell']) &&
-             (!('lotSize' in data) || data.lotSize is number);
+             (!('lotSize' in data) || data.lotSize is number) &&
+             (!('entryPrice' in data) || data.entryPrice is number) &&
+             (!('exitPrice' in data) || data.exitPrice is number) &&
+             (!('stopLoss' in data) || data.stopLoss is number) &&
+             (!('takeProfit' in data) || data.takeProfit is number) &&
+             (!('type' in data) || data.type in ['trade', 'deposit', 'withdrawal', 'adjustment']) &&
+             (!('platform' in data) || data.platform is string) &&
+             (!('isDemo' in data) || data.isDemo is bool) &&
+             (!('hiddenByClient' in data) || data.hiddenByClient is bool) &&
+             (!('assetType' in data) || data.assetType is string) &&
+             (!('pips' in data) || data.pips is number) &&
+             (!('risk' in data) || data.risk is number) &&
+             (!('reward' in data) || data.reward is number) &&
+             (!('rr' in data) || data.rr is number) &&
+             (!('commission' in data) || data.commission is number) &&
+             (!('swap' in data) || data.swap is number);
     }
 
     function isValidBrokerConnection(data, userId) {
@@ -116,7 +131,7 @@ service cloud.firestore {
         allow read: if isOwner(userId) || isAdmin();
         allow create: if isOwner(userId) && isValidTrade(incoming(), userId) && isValidId(tradeId);
         allow update: if isOwner(userId) && isValidTrade(incoming(), userId) && 
-                      incoming().diff(existing()).affectedKeys().hasOnly(['pair', 'direction', 'entryPrice', 'exitPrice', 'lotSize', 'pnl', 'strategy', 'emotion', 'session', 'date', 'stopLoss', 'takeProfit', 'updatedAt']);
+                      incoming().diff(existing()).affectedKeys().hasOnly(['pair', 'direction', 'entryPrice', 'exitPrice', 'lotSize', 'pnl', 'strategy', 'emotion', 'session', 'date', 'stopLoss', 'takeProfit', 'updatedAt', 'pips', 'risk', 'reward', 'rr', 'assetType', 'hiddenByClient']);
         allow delete: if isOwner(userId) || isAdmin();
       }
 
