@@ -372,33 +372,67 @@ async function finalizePayment(txId: string, resultData: any) {
     return { success: true, alreadyProcessed: true };
   }
 
-  // Robust Status Extraction
+  // Extraction robuste de tous les champs possibles de réponse Araka
   const getDeepStatus = (obj: any): string => {
-    if (!obj) return "";
-    const keys = ["status", "statusCode", "transactionStatus", "Status", "statusText", "code"];
+    if (!obj || typeof obj !== 'object') return '';
+    const keys = [
+      'status', 'statusCode', 'transactionStatus', 'Status', 
+      'statusText', 'code', 'responseCode', 'responseMessage',
+      'paymentStatus', 'orderStatus', 'state', 'result',
+      'StatusCode', 'StatusMessage', 'TransactionStatus'
+    ];
     for (const k of keys) {
-      if (typeof obj[k] === "string" || typeof obj[k] === "number") return String(obj[k]);
+      if (obj[k] !== undefined && obj[k] !== null) {
+        return String(obj[k]);
+      }
     }
-    if (obj.data) return getDeepStatus(obj.data);
-    if (obj.order) return getDeepStatus(obj.order);
-    if (obj.result) return getDeepStatus(obj.result);
-    if (Array.isArray(obj.data) && obj.data.length > 0) return getDeepStatus(obj.data[0]);
-    return "";
+    // Chercher récursivement dans les sous-objets
+    for (const nested of ['data', 'order', 'payment', 'transaction', 'response']) {
+      if (obj[nested] && typeof obj[nested] === 'object') {
+        const found = getDeepStatus(obj[nested]);
+        if (found) return found;
+      }
+    }
+    if (Array.isArray(obj) && obj.length > 0) return getDeepStatus(obj[0]);
+    return '';
   };
 
   const rawStatus = getDeepStatus(resultData);
-  const status = rawStatus.toUpperCase();
-  const rawDesc = resultData.statusDescription || resultData.message || resultData.statusMessage || "";
-  const desc = String(rawDesc).toUpperCase();
+  const status = rawStatus.toUpperCase().trim();
   
   const isSuccess = 
-    status.includes('SUCCESS') || status.includes('COMPLET') || status.includes('APPROV') || 
-    status === '200' || status === 'PAID' || desc.includes('APPROV') || desc.includes('SUCCESS');
-  
-  const isFailed = 
-    status.includes('FAIL') || status.includes('REJECT') || status.includes('CANCEL') || 
-    status.includes('ERR') || status.includes('400') || status.includes('DECLIN') || 
-    status.includes('EXPIRE') || desc.includes('REJECT') || desc.includes('FAIL');
+    // Statuts explicites
+    status === 'SUCCESSFUL' || status === 'SUCCESS' || status === 'COMPLETED' ||
+    status === 'PAID' || status === 'APPROVED' || status === 'CONFIRMED' ||
+    status === 'ACCEPTED' || status === '00' || status === '000' ||
+    status === '200' || status === 'OK' || status === 'ACTIVE' ||
+    // Détection par inclusion
+    status.includes('SUCCESS') || status.includes('COMPLET') || 
+    status.includes('APPROV') || status.includes('PAID') ||
+    status.includes('CONFIRM') || status.includes('ACCEPT') ||
+    // Détection dans description
+    (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('SUCCESS')) ||
+    (resultData.message && String(resultData.message).toUpperCase().includes('SUCCESS')) ||
+    (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('PAID')) ||
+    // Si "Manual override by admin"
+    (resultData.statusDescription === 'Manual override by admin');
+
+  const isFailed =
+    !isSuccess && (
+      status === 'FAILED' || status === 'FAIL' || status === 'REJECTED' ||
+      status === 'CANCELLED' || status === 'CANCELED' || status === 'DECLINED' ||
+      status === 'ERROR' || status === 'EXPIRED' || status === 'INVALID' ||
+      status === 'DENIED' || status === 'STOPPED' ||
+      status.includes('FAIL') || status.includes('REJECT') || 
+      status.includes('CANCEL') || status.includes('DECLIN') ||
+      status.includes('EXPIR') || status.includes('INVALID') ||
+      status.includes('DENI') || status.includes('STOP') ||
+      (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('FAIL')) ||
+      (resultData.message && String(resultData.message).toUpperCase().includes('FAIL'))
+    );
+
+  // Log pour debug production
+  console.log(`[finalizePayment] txId=${txId} rawStatus="${rawStatus}" isSuccess=${isSuccess} isFailed=${isFailed}`);
 
   if (isSuccess) {
     await paymentDoc.ref.update({ 
@@ -1388,7 +1422,7 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
         reference: transactionReference,
         amount: expectedTotal, // It is already either integer (CDF) or 2 max decimals (USD)
         currency: currency || "USD",
-        redirectURL: `${process.env.APP_URL}/subscription/callback`
+        redirectURL: `${process.env.APP_URL}/api/webhook/araka`
       },
       paymentChannel: {
         channel: "MOBILEMONEY",
@@ -1431,6 +1465,20 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
     const result = await response.json();
     const actualTransactionId = result.transactionId || result.id || result.reference || result.data?.id || result.data?.transactionId || transactionReference;
     
+    // Correction 1.1 - Stocker originatingTransactionId et log complet
+    const originatingTxId = result.originatingTransactionId || 
+                          result.originatingId || 
+                          result.OrigTransactionId || 
+                          actualTransactionId;
+
+    console.log('[Araka Pay 201 Response]', JSON.stringify({
+      transactionId: result.transactionId,
+      originatingTransactionId: result.originatingTransactionId,
+      paymentLink: result.paymentLink,
+      allKeys: Object.keys(result),
+      fullResult: result
+    }));
+    
     if (db) {
       await db.collection('payments').add({
         userId: req.user.uid,
@@ -1449,6 +1497,7 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
         provider,
         transactionReference: transactionReference,
         transactionId: actualTransactionId,
+        originatingTransactionId: originatingTxId, // Correction 1.2
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
@@ -1464,7 +1513,8 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
     res.json({ 
       ...result, 
       transactionId: actualTransactionId,
-      transactionReference 
+      transactionReference,
+      originatingTransactionId: originatingTxId 
     });
   } catch (error: any) {
     console.error("Mobile Money Error:", error);
@@ -1502,37 +1552,64 @@ app.get('/api/user/sync-status/:txId', verifyUser, async (req: any, res: any) =>
       return res.json({ status: "SUCCESSFUL", _statusText: "SUCCESS" });
     }
 
-    // 2. Interroger Araka pour le statut réel
+    // Correction 1.3 - Stratégie de polling multi-stratégies
+    console.log('[Sync-Status] Payment document found:', {
+      transactionId: paymentData.transactionId,
+      originatingTransactionId: paymentData.originatingTransactionId,
+      transactionReference: paymentData.transactionReference,
+      status: paymentData.status
+    });
+
     const token = await getArakaToken();
     const url = await getArakaUrl();
     
-    // First try mapping by reference
-    let arakaResponse = await fetch(`${url}/api/Reporting/transactionstatusbyreference/${paymentData.transactionReference || txId}`, {
-      method: 'GET',
-      headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' }
-    });
+    let arakaResponse: any = null;
+    let lastError = '';
 
-    // If not found by reference, try by Araka's transactionId
-    if (arakaResponse.status === 404) {
-      arakaResponse = await fetch(`${url}/api/Reporting/transactionstatus/${txId}`, {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' }
-      });
+    // Stratégie 1 : par transactionReference (notre référence interne)
+    if (paymentData.transactionReference) {
+      try {
+        arakaResponse = await fetch(
+          `${url}/api/Reporting/transactionstatusbyreference/${paymentData.transactionReference}`,
+          { method: 'GET', headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' } }
+        );
+        if (!arakaResponse.ok) { lastError = `ref=${arakaResponse.status}`; arakaResponse = null; }
+      } catch (e) { lastError = String(e); arakaResponse = null; }
+    }
+
+    // Stratégie 2 : par originatingTransactionId (ID retourné par Araka dans le callback)
+    if (!arakaResponse && paymentData.originatingTransactionId && 
+        paymentData.originatingTransactionId !== paymentData.transactionId) {
+      try {
+        arakaResponse = await fetch(
+          `${url}/api/Reporting/transactionstatus/${paymentData.originatingTransactionId}`,
+          { method: 'GET', headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' } }
+        );
+        if (!arakaResponse.ok) { lastError += ` origId=${arakaResponse.status}`; arakaResponse = null; }
+      } catch (e) { lastError += String(e); arakaResponse = null; }
+    }
+
+    // Stratégie 3 : par transactionId direct (fallback)
+    if (!arakaResponse) {
+      arakaResponse = await fetch(
+        `${url}/api/Reporting/transactionstatus/${txId}`,
+        { method: 'GET', headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' } }
+      );
     }
 
     if (!arakaResponse.ok) {
       const errorText = await arakaResponse.text();
       if (arakaResponse.status === 404) {
-         return res.json({ status: "PENDING", _statusText: "PENDING", details: "Transaction not found yet" });
+        return res.json({ status: "PENDING", _statusText: "PENDING", details: "Transaction not found yet" });
       }
       if (arakaResponse.status === 400) {
-         return res.json({ status: "FAILED", _statusText: "FAILED", details: "Transaction invalid or dropped by Araka (400)" });
+        return res.json({ status: "FAILED", _statusText: "FAILED", details: "Transaction invalid (400)" });
       }
       return res.status(arakaResponse.status).json({ error: "Vérification échouée", details: errorText });
     }
 
     const result = await arakaResponse.json();
-    console.log(`[Araka Polling] Result for ${txId}:`, JSON.stringify(result));
+    console.log(`[Araka Status Response] txId=${txId}:`, JSON.stringify(result));
     
     // 3. Finaliser (Mise à jour DB + Abonnement) si succès détecté par le serveur
     const finalizationResult = await finalizePayment(txId, result);
@@ -1609,6 +1686,63 @@ app.post('/api/webhook/araka', async (req, res) => {
   } catch (error) {
     console.error("[Araka Webhook] Error processing callback:", error);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.get('/api/admin/araka-debug/:txId', verifyAdmin, async (req: any, res: any) => {
+  const { txId } = req.params;
+  try {
+    const token = await getArakaToken();
+    const url = await getArakaUrl();
+    
+    const results: any = {};
+    
+    // Test toutes les stratégies de lookup
+    try {
+      const r1 = await fetch(`${url}/api/Reporting/transactionstatus/${txId}`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' }
+      });
+      results.byTransactionId = { status: r1.status, body: await r1.text() };
+    } catch (e) { results.byTransactionId = { error: String(e) }; }
+
+    // Chercher en DB
+    if (db) {
+      const snap = await db.collection('payments').where('transactionId', '==', txId).limit(1).get();
+      if (!snap.empty) {
+        const pd = snap.docs[0].data();
+        results.dbDocument = {
+          transactionId: pd.transactionId,
+          originatingTransactionId: pd.originatingTransactionId,
+          transactionReference: pd.transactionReference,
+          status: pd.status,
+          plan: pd.plan
+        };
+        
+        if (pd.originatingTransactionId && pd.originatingTransactionId !== txId) {
+          try {
+            const r2 = await fetch(`${url}/api/Reporting/transactionstatus/${pd.originatingTransactionId}`, {
+              headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' }
+            });
+            results.byOriginatingId = { status: r2.status, body: await r2.text() };
+          } catch (e) { results.byOriginatingId = { error: String(e) }; }
+        }
+
+        if (pd.transactionReference) {
+          try {
+            const r3 = await fetch(`${url}/api/Reporting/transactionstatusbyreference/${pd.transactionReference}`, {
+              headers: { 'Authorization': `Bearer ${token}`, 'User-Agent': 'ZoyaEdge-Server/1.0' }
+            });
+            results.byReference = { status: r3.status, body: await r3.text() };
+          } catch (e) { results.byReference = { error: String(e) }; }
+        }
+      } else {
+        results.dbDocument = null;
+      }
+    }
+    
+    res.json(results);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

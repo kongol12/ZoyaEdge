@@ -26,7 +26,10 @@ interface AppSettings {
   premiumYearlyCDF: number;
   globalDiscount: number;
   transactionFee: number; 
-  vatRate: number; 
+  vatRate: number;
+  mpesaPrefixes: string;
+  orangePrefixes: string;
+  airtelPrefixes: string;
   updatedAt: any;
 }
 
@@ -63,6 +66,9 @@ export default function PricingManagement() {
           globalDiscount: data.globalDiscount ?? 0,
           transactionFee: data.transactionFee ?? 2,
           vatRate: data.vatRate ?? 16,
+          mpesaPrefixes: data.mpesaPrefixes || '81, 82, 83',
+          orangePrefixes: data.orangePrefixes || '89, 84, 85',
+          airtelPrefixes: data.airtelPrefixes || '97, 98, 99',
           updatedAt: data.updatedAt
         } as AppSettings);
       }
@@ -182,6 +188,42 @@ export default function PricingManagement() {
                   className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700">
+            <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white mb-6">Préfixes Opérateurs (Séparés par des virgules)</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">M-Pesa</label>
+                <input
+                  type="text"
+                  value={settings?.mpesaPrefixes || ''}
+                  onChange={(e) => setSettings({ ...settings, mpesaPrefixes: e.target.value } as AppSettings)}
+                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
+                  placeholder="Ex: 81, 82, 83"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Orange Money</label>
+                <input
+                  type="text"
+                  value={settings?.orangePrefixes || ''}
+                  onChange={(e) => setSettings({ ...settings, orangePrefixes: e.target.value } as AppSettings)}
+                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
+                  placeholder="Ex: 89, 84, 85"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Airtel Money</label>
+                <input
+                  type="text"
+                  value={settings?.airtelPrefixes || ''}
+                  onChange={(e) => setSettings({ ...settings, airtelPrefixes: e.target.value } as AppSettings)}
+                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
+                  placeholder="Ex: 97, 98, 99"
+                />
               </div>
             </div>
           </div>

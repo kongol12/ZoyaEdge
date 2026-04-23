@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Shield, CreditCard, ChevronRight, Check, MapPin, User, Mail, Smartphone, ArrowRight, Lock, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { useAuth } from '../../../lib/auth';
+import { db } from '../../../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 interface ZoyaPayCheckoutProps {
   isOpen: boolean;
@@ -113,12 +115,24 @@ export default function ZoyaPayCheckout({
     address: '',
     country: 'DR Congo'
   });
-  const [selectedProvider, setSelectedProvider] = useState<'MPESA' | 'ORANGE' | 'AIRTEL'>('MPESA');
+  const [prefixes, setPrefixes] = useState({
+    MPESA: ['81', '82', '83'],
+    ORANGE: ['89', '84', '85'],
+    AIRTEL: ['97', '98', '99']
+  });
+  const [detectedProvider, setDetectedProvider] = useState<'MPESA' | 'ORANGE' | 'AIRTEL' | null>(null);
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [pollingAttempt, setPollingAttempt] = useState(0);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const isPolling = useRef(false);
+  const paymentStateRef = useRef<PaymentState>('IDLE');
+
+  useEffect(() => {
+    paymentStateRef.current = paymentState;
+  }, [paymentState]);
 
   // Calculations with strict number coercion to prevent NaN
   const safePrice = Number(plan.price) || 0;
@@ -142,11 +156,68 @@ export default function ZoyaPayCheckout({
     };
   }, []);
 
+  // Fetch operator prefixes from Firestore
+  useEffect(() => {
+    const fetchPrefixes = async () => {
+      try {
+        const docSnap = await getDoc(doc(db, 'app_settings', 'global'));
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.mpesaPrefixes || data.orangePrefixes || data.airtelPrefixes) {
+            setPrefixes({
+              MPESA: data.mpesaPrefixes ? data.mpesaPrefixes.split(',').map((s: string) => s.trim()) : ['81', '82', '83'],
+              ORANGE: data.orangePrefixes ? data.orangePrefixes.split(',').map((s: string) => s.trim()) : ['89', '84', '85'],
+              AIRTEL: data.airtelPrefixes ? data.airtelPrefixes.split(',').map((s: string) => s.trim()) : ['97', '98', '99']
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load prefixes", err);
+      }
+    };
+    fetchPrefixes();
+  }, []);
+
+  const validatePhone = (phone: string) => {
+    let cleaned = phone.replace(/\D/g, '');
+    if (cleaned.startsWith('243')) return cleaned.slice(0, 12);
+    if (cleaned.startsWith('0')) return '243' + cleaned.slice(1, 10);
+    if (cleaned.length === 9) return '243' + cleaned;
+    return cleaned;
+  };
+
+  useEffect(() => {
+    const cleaned = validatePhone(formData.phone);
+    if (cleaned.length === 12 && cleaned.startsWith('243')) {
+      const prefix = cleaned.substring(3, 5);
+      let provider = null;
+      if (prefixes.MPESA.includes(prefix)) provider = 'MPESA';
+      else if (prefixes.ORANGE.includes(prefix)) provider = 'ORANGE';
+      else if (prefixes.AIRTEL.includes(prefix)) provider = 'AIRTEL';
+      setDetectedProvider(provider as any);
+    } else {
+      setDetectedProvider(null);
+    }
+  }, [formData.phone, prefixes]);
+
   const handleNext = () => {
     if (!formData.fullName || !formData.email || !formData.phone || !formData.address) {
       setError("Veuillez remplir tous les champs obligatoires.");
       return;
     }
+    
+    const cleaned = validatePhone(formData.phone);
+    if (cleaned.length !== 12 || !cleaned.startsWith('243')) {
+      setError("Format de téléphone invalide pour DR Congo. (Ex: 0812345678 ou 243812345678)");
+      return;
+    }
+    
+    if (!detectedProvider) {
+      const prefix = cleaned.substring(3, 5);
+      setError(`L'opérateur du numéro (${prefix}) n'est pas reconnu. Les réseaux acceptés sont : M-Pesa, Orange, Airtel.`);
+      return;
+    }
+
     setError("");
     setSubStep('payment');
   };
@@ -166,62 +237,72 @@ export default function ZoyaPayCheckout({
     }
   }, [paymentState]);
 
-  // Polling Effect
+  // Polling Effect - Correction 3.3
   useEffect(() => {
     if (!transactionId) return;
-    if (paymentState !== 'PENDING' && paymentState !== 'AWAITING_USER' && paymentState !== 'PROCESSING') return;
+    if (isPolling.current) return;
 
+    isPolling.current = true;
     let attempts = 0;
+
     const interval = setInterval(async () => {
       attempts++;
+
+      const current = paymentStateRef.current;
+      if (['SUCCESS', 'FAILED', 'CANCELLED', 'TIMEOUT', 'EXPIRED'].includes(current)) {
+        clearInterval(interval);
+        isPolling.current = false;
+        return;
+      }
+
       try {
         const idToken = await user?.getIdToken();
         const response = await fetch(`/api/user/sync-status/${transactionId}`, {
           headers: { 'Authorization': `Bearer ${idToken}` }
         });
-        if (!response.ok) return;
+        
+        if (!response.ok) {
+          console.error('[Polling] HTTP error:', response.status);
+          return;
+        }
+
         const data = await response.json();
+        
+        // Priorité : _statusText (normalisé serveur) > status brut
         const rawStatus = data._statusText || data.status;
         const normalized = normalizeStatus(rawStatus);
         const mapped = mapBackendStatus(normalized);
-        if (mapped !== paymentState) {
+
+        console.log('[ZoyaPay Polling]', { attempts, rawStatus, normalized, mapped, current });
+
+        // Dispatch uniquement sur changement ou état terminal
+        if (['SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'].includes(mapped)) {
+          clearInterval(interval);
+          isPolling.current = false;
+          dispatch({ type: 'STATUS', payload: mapped });
+          return;
+        }
+        
+        if (mapped !== current) {
           dispatch({ type: 'STATUS', payload: mapped });
         }
+
       } catch (err) {
-        console.error('Polling error:', err);
+        console.error('[Polling] Network error:', err);
       }
-      if (attempts >= 40) {
+
+      if (attempts >= 60) { // 3 minutes max en production
         clearInterval(interval);
+        isPolling.current = false;
         dispatch({ type: 'STATUS', payload: 'TIMEOUT' });
       }
     }, 3000);
 
     return () => {
       clearInterval(interval);
+      isPolling.current = false;
     };
-  }, [transactionId, paymentState]);
-
-  const validatePhone = (phone: string) => {
-    // Remove all non-digits
-    let cleaned = phone.replace(/\D/g, '');
-    
-    // Handle +243... or 243...
-    if (cleaned.startsWith('243')) {
-      return cleaned.slice(0, 12);
-    }
-    
-    // Handle 081... 082... 084... 085... 089... 090... 097... 099...
-    if (cleaned.startsWith('0')) {
-      return '243' + cleaned.slice(1, 10);
-    }
-    
-    // Handle 81... 82... (no 0)
-    if (cleaned.length === 9) {
-      return '243' + cleaned;
-    }
-    
-    return cleaned;
-  };
+  }, [transactionId]);
 
   const handlePay = async () => {
     setLoading(true);
@@ -232,6 +313,12 @@ export default function ZoyaPayCheckout({
     
     if (normalizedPhone.length !== 12 || !normalizedPhone.startsWith('243')) {
       setError("Format de téléphone invalide pour DR Congo. (Ex: 0812345678 ou 243812345678)");
+      setLoading(false);
+      return;
+    }
+
+    if (!detectedProvider) {
+      setError("Opérateur non détecté.");
       setLoading(false);
       return;
     }
@@ -252,7 +339,7 @@ export default function ZoyaPayCheckout({
           amount: totalPrice,
           currency,
           phoneNumber: normalizedPhone,
-          provider: selectedProvider,
+          provider: detectedProvider,
           planId: plan.id,
           userName: formData.fullName,
           billingCycle,
@@ -287,8 +374,8 @@ export default function ZoyaPayCheckout({
         stack: err.stack,
         url: '/api/user/sync-settings'
       });
-      if (err instanceof TypeError && err.message === 'Failed to fetch') {
-         setError("Erreur réseau: Impossible de joindre le serveur. Il se peut qu'un bloqueur de publicité ou un proxy interfère. Veuillez essayer de désactiver temporairement votre bloqueur de pub.");
+      if (err instanceof TypeError && (err.message === 'Failed to fetch' || err.message === 'Load failed')) {
+         setError("Erreur réseau: Impossible de joindre le serveur. Il se peut qu'un bloqueur de publicité, un proxy, ou le pare-feu Safari interfère. Veuillez vérifier votre connexion.");
       } else {
          setError(`Erreur lors du paiement: ${err?.message || "Erreur inconnue."}`);
       }
@@ -425,7 +512,14 @@ export default function ZoyaPayCheckout({
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Téléphone Pour Paiement</label>
+                      <div className="flex items-center justify-between ml-1">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Téléphone Pour Paiement</label>
+                        {detectedProvider && (
+                          <span className="text-[10px] font-black text-zoya-red uppercase tracking-widest">
+                            {detectedProvider === 'MPESA' ? 'M-Pesa' : detectedProvider === 'ORANGE' ? 'Orange Money' : 'Airtel Money'}
+                          </span>
+                        )}
+                      </div>
                       <div className="relative">
                         <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                         <input
@@ -452,45 +546,39 @@ export default function ZoyaPayCheckout({
               <div className="p-8 space-y-8">
                 <div className="text-center space-y-2">
                   <h2 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Validation du Paiement</h2>
-                  <p className="text-sm text-gray-500">Sélectionnez votre opérateur Mobile Money.</p>
+                  <p className="text-sm text-gray-500">Un récapitulatif de votre paiement avant confirmation.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4">
-                  {[
-                    { id: 'MPESA', name: 'M-Pesa', desc: 'Vodacom' },
-                    { id: 'ORANGE', name: 'Orange Money', desc: 'Orange' },
-                    { id: 'AIRTEL', name: 'Airtel Money', desc: 'Airtel' }
-                  ].map((provider) => (
-                    <button
-                      key={provider.id}
-                      onClick={() => setSelectedProvider(provider.id as any)}
-                      className={cn(
-                        "p-6 rounded-3xl border-2 transition-all flex items-center justify-between group",
-                        selectedProvider === provider.id 
-                          ? "border-zoya-red bg-zoya-red/5" 
-                          : "border-gray-100 dark:border-gray-800 hover:border-gray-200"
-                      )}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "w-12 h-12 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center shadow-sm transition-colors",
-                          selectedProvider === provider.id ? "bg-white" : ""
-                        )}>
-                          <Smartphone className={selectedProvider === provider.id ? "text-zoya-red" : "text-gray-400"} size={24} />
+                  {(() => {
+                    const providerDetails = {
+                      MPESA: { name: 'M-Pesa', desc: 'Vodacom' },
+                      ORANGE: { name: 'Orange Money', desc: 'Orange' },
+                      AIRTEL: { name: 'Airtel Money', desc: 'Airtel' }
+                    }[detectedProvider as 'MPESA' | 'ORANGE' | 'AIRTEL'];
+                    
+                    if (!providerDetails) return null;
+
+                    return (
+                      <div className="p-6 rounded-3xl border-2 border-zoya-red bg-zoya-red/5 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                            <Smartphone className="text-zoya-red" size={24} />
+                          </div>
+                          <div className="text-left">
+                            <p className="font-black text-gray-900 dark:text-white flex items-center gap-2">
+                              {providerDetails.name}
+                              <span className="px-2 py-0.5 bg-zoya-red/10 text-zoya-red rounded border border-zoya-red/20 text-[10px] tracking-widest uppercase">Détecté</span>
+                            </p>
+                            <p className="text-xs text-gray-500 text-left w-full block mt-0.5">{providerDetails.desc} - {formData.phone}</p>
+                          </div>
                         </div>
-                        <div className="text-left">
-                          <p className="font-black text-gray-900 dark:text-white">{provider.name}</p>
-                          <p className="text-xs text-gray-500">{provider.desc}</p>
+                        <div className="w-8 h-8 rounded-full bg-zoya-red flex items-center justify-center text-white">
+                          <Check size={16} />
                         </div>
                       </div>
-                      <div className={cn(
-                        "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
-                        selectedProvider === provider.id ? "border-zoya-red" : "border-gray-200"
-                      )}>
-                        {selectedProvider === provider.id && <div className="w-3 h-3 bg-zoya-red rounded-full" />}
-                      </div>
-                    </button>
-                  ))}
+                    );
+                  })()}
                 </div>
 
                 <div className="p-6 bg-gray-50 dark:bg-gray-800/50 rounded-3xl space-y-3">
@@ -579,19 +667,27 @@ export default function ZoyaPayCheckout({
             {paymentState === 'SUCCESS' && (
               <div className="p-12 text-center space-y-8">
                 <motion.div 
-                  initial={{ scale: 0.5, rotate: -45 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  className="w-40 h-24 mx-auto bg-gradient-to-br from-zoya-red to-rose-700 rounded-3xl shadow-2xl flex flex-col justify-between p-5 text-white relative overflow-hidden"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                  className="w-28 h-28 mx-auto bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30"
                 >
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full -mr-12 -mt-12" />
-                  <div className="flex justify-between items-start">
-                    <Check size={28} className="bg-white text-zoya-red rounded-full p-1" />
-                    <Shield size={20} className="text-white/30" />
-                  </div>
-                  <div className="space-y-1 text-left">
-                    <p className="text-[10px] font-bold tracking-widest italic uppercase">ZOYA<span className="text-white/50">PAY</span></p>
-                    <p className="text-lg font-black tracking-widest uppercase">APPROUVÉ</p>
-                  </div>
+                  <motion.svg 
+                    className="w-14 h-14 text-white" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="4" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                  >
+                    <motion.path
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      animate={{ pathLength: 1, opacity: 1 }}
+                      transition={{ delay: 0.2, duration: 0.6, ease: "easeOut" }}
+                      d="M20 6L9 17l-5-5"
+                    />
+                  </motion.svg>
                 </motion.div>
                 
                 <div className="space-y-2">
@@ -625,7 +721,12 @@ export default function ZoyaPayCheckout({
                   </p>
                 </div>
                 <button 
-                  onClick={() => { setTransactionId(null); setSubStep('payment'); dispatch({ type: 'RESET', payload: null }); }}
+                  onClick={() => { 
+                    isPolling.current = false;
+                    setTransactionId(null); 
+                    setSubStep('payment'); 
+                    dispatch({ type: 'RESET', payload: null }); 
+                  }}
                   className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-black text-lg transition-transform hover:scale-105"
                 >
                   Fermer ou réessayer
@@ -635,9 +736,35 @@ export default function ZoyaPayCheckout({
 
             {(paymentState === 'FAILED' || paymentState === 'CANCELLED') && (
               <div className="p-12 text-center space-y-8">
-                <div className="w-20 h-20 mx-auto bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center text-red-500">
-                  <X size={32} />
-                </div>
+                <motion.div 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                  className="w-28 h-28 mx-auto bg-red-500 rounded-full flex items-center justify-center shadow-lg shadow-red-500/30"
+                >
+                  <motion.svg 
+                    className="w-14 h-14 text-white" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="4" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                  >
+                    <motion.path
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      animate={{ pathLength: 1, opacity: 1 }}
+                      transition={{ delay: 0.2, duration: 0.4, ease: "easeOut" }}
+                      d="M18 6L6 18"
+                    />
+                    <motion.path
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      animate={{ pathLength: 1, opacity: 1 }}
+                      transition={{ delay: 0.4, duration: 0.4, ease: "easeOut" }}
+                      d="M6 6l12 12"
+                    />
+                  </motion.svg>
+                </motion.div>
                 <div className="space-y-2">
                   <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">
                     {paymentState === 'CANCELLED' ? 'Paiement annulé' : 'Échec du paiement'}
@@ -654,7 +781,12 @@ export default function ZoyaPayCheckout({
                   </p>
                 </div>
                 <button 
-                  onClick={() => { setTransactionId(null); setSubStep('payment'); dispatch({ type: 'RESET', payload: null }); }}
+                  onClick={() => { 
+                    isPolling.current = false;
+                    setTransactionId(null); 
+                    setSubStep('payment'); 
+                    dispatch({ type: 'RESET', payload: null }); 
+                  }}
                   className="w-full py-4 bg-zoya-red text-white rounded-2xl font-black text-lg transition-transform hover:scale-105"
                 >
                   Réessayer
@@ -674,7 +806,12 @@ export default function ZoyaPayCheckout({
                   </p>
                 </div>
                 <button
-                  onClick={() => { setTransactionId(null); setSubStep('info'); dispatch({ type: 'RESET', payload: null }); }}
+                  onClick={() => { 
+                    isPolling.current = false;
+                    setTransactionId(null); 
+                    setSubStep('info'); 
+                    dispatch({ type: 'RESET', payload: null }); 
+                  }}
                   className="w-full py-4 bg-zoya-red text-white rounded-2xl font-black text-lg"
                 >
                   Recommencer
@@ -702,7 +839,7 @@ export default function ZoyaPayCheckout({
                   <RefreshCw className="animate-spin" size={20} />
                 ) : (
                   <>
-                    {subStep === 'info' ? 'Étape Suivante' : `Payer ${totalPrice.toLocaleString()} ${currency}`}
+                    {subStep === 'info' ? 'Payer' : `Confirmer le Paiement`}
                     <ArrowRight size={18} />
                   </>
                 )}
