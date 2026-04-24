@@ -10,6 +10,39 @@ export interface TradeMetrics {
   label: 'Pips' | 'Points' | 'Ticks';
 }
 
+/**
+ * Calcule les points d'un mouvement de prix pour un actif donné
+ * @param entryPrice Prix d'entrée
+ * @param exitPrice Prix de sortie
+ * @param assetId ID de l'actif (ex: 'cmd_xauusdmicro')
+ * @returns Nombre de points (variation / pipSize)
+ */
+export function calculatePoints(entryPrice: number, exitPrice: number, assetId: string): number {
+  const asset = ASSET_DATABASE.find(a => a.id === assetId);
+  const pipSize = asset?.pipSize ?? 0.0001;
+  return (exitPrice - entryPrice) / pipSize;
+}
+
+/**
+ * Calcule le PnL monétaire d'un trade
+ * @param points Nombre de points calculés
+ * @param volume Volume en lots
+ * @param assetId ID de l'actif
+ * @returns PnL en devise de base
+ */
+export function calculatePnL(points: number, volume: number, assetId: string): number {
+  const asset = ASSET_DATABASE.find(a => a.id === assetId);
+  const pipValue = asset?.pipValue ?? 1;
+  return points * pipValue * volume;
+}
+
+/**
+ * TEST VALIDATION cmd_xauusdmicro (XAUUSD Micro Deriv)
+ * Example Buy 1.00 lot: 2000.00 -> 2001.00 (+1.00 USD)
+ * points = (2001.00 - 2000.00) / 0.01 = 100 points
+ * pnl = 100 * 0.01 * 1.00 = 1.00 USD
+ */
+
 function calculateFallback(
   symbol: string,
   priceDiff: number,

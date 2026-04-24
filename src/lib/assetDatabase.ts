@@ -1,11 +1,12 @@
+// Mise à jour cmd_xauusdmicro - aligné Deriv Micro Gold
 /**
  * Base de données unifiée des actifs tradables (Deriv + TradingView)
  * Couvre : Forex, Indices, Commodities, Crypto, Synthetics, Futures
  */
 
 export type AssetCategory = 'forex' | 'indices' | 'crypto' | 'commodities' | 'futures' | 'synthetic';
-export type ContractType = 'spot' | 'cfds' | 'indices_cash' | 'crypto_spot' | 'futures' | 'options' | 'multipliers' | 'synthetic' | 'unknown';
-export type Platform = 'mt5' | 'cTrader' | 'derivx' | 'derivtrader' | 'smarttrader' | 'derivgo' | 'tradingview';
+export type ContractType = 'spot' | 'cfds' | 'indices_cash' | 'crypto_spot' | 'futures' | 'options' | 'multipliers' | 'synthetic' | 'unknown' | 'CFD';
+export type Platform = 'mt5' | 'cTrader' | 'derivx' | 'derivtrader' | 'smarttrader' | 'derivgo' | 'tradingview' | 'Deriv';
 
 export interface TradingHours {
   days: string;
@@ -30,7 +31,7 @@ export interface AssetDefinition {
   maxLot: number;
   isMicro: boolean;
   swapEnabled: boolean;           // False pour Synthetics et Futures
-  tradingHours: TradingHours;
+  tradingHours: TradingHours | string;
   tickSize?: number;              // Spécifique aux futures
 }
 
@@ -116,21 +117,21 @@ export const ASSET_DATABASE: AssetDefinition[] = [
   },
   {
     id: "cmd_xauusdmicro",
-    canonical: "XAUUSDmicro",
-    displayName: "Gold Spot Micro",
-    aliases: ["XAUUSDMicro", "XAUUSD MICRO", "GOLD MICRO", "FX:XAUUSDMICRO", "XAUUSD.micro"],
+    canonical: "XAUUSDm",
+    displayName: "Gold Micro (Deriv)",
+    aliases: ["XAUUSDmicro", "GoldMicro", "cmd_xauusdm", "XAUUSD.micro", "GOLD.m"],
     category: "commodities",
-    contractType: "cfds",
-    platforms: ["mt5", "cTrader", "derivx", "tradingview"],
+    contractType: "CFD",
+    platforms: ["Deriv", "mt5", "derivx"],
     pipSize: 0.01,
-    pipValue: 0.5,
+    pipValue: 0.01,
     precision: 2,
     lotSize: 1,
     minLot: 0.01,
-    maxLot: 500,
+    maxLot: 100,
     isMicro: true,
     swapEnabled: true,
-    tradingHours: { days: "Mon-Fri", session: "24h", timezone: "UTC" }
+    tradingHours: "24/5"
   },
   {
     id: "cmd_tvc_usoil",
