@@ -57,31 +57,51 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 export interface Trade {
   id?: string;
   userId: string;
-  pair?: string;
+
+  // Identité de l’actif
+  pair: string; // symbole normalisé : XAUUSD, NAS100, VOLATILITY_100, CME:6E1!, etc.
+  assetType?: 'forex' | 'indices' | 'crypto' | 'commodities' | 'futures' | 'synthetic' | 'unknown';
+
+  // Métadonnées de marché
+  platform?: 'deriv' | 'tradingview' | 'mt4' | 'mt5' | 'csv' | 'manual' | string;
+  type?: 'trade' | 'deposit' | 'withdrawal' | 'adjustment';
+
+  // Sens et prix
   direction?: 'buy' | 'sell';
   entryPrice?: number;
   exitPrice?: number;
   stopLoss?: number;
   takeProfit?: number;
   lotSize?: number;
+
+  // Métriques calculées
   pnl: number;
-  strategy: string;
-  emotion: '😐' | '😰' | '🔥' | 'neutral' | 'fear' | 'confidence';
-  session: 'London' | 'NY' | 'Asia' | 'london' | 'newyork' | 'asia' | 'other';
-  date: Date;
-  createdAt?: Date;
-  rr?: number;
+  pips?: number;
   risk?: number;
   reward?: number;
-  pips?: number;
-  platform?: string;
+  rr?: number;
+  label?: 'Pips' | 'Points' | 'Ticks';
+
+  // Métadonnées de trade
+  strategy?: string;
+  emotion?: '😐' | '😰' | '🔥';
+  session?: 'London' | 'NY' | 'Asia' | 'other';
+  date: Date;
+  createdAt?: Date;
+
+  // Données import MT5 / CSV
   commission?: number;
   swap?: number;
-  closedAt?: Date;
-  hiddenByClient?: boolean;
+  positionId?: string;
+  openTime?: Date;
+  closeTime?: Date;
+
+  // Flags
   isDemo?: boolean;
-  type?: 'trade' | 'deposit' | 'withdrawal' | 'adjustment';
-  assetType?: 'forex' | 'indices' | 'crypto' | 'commodities' | 'futures' | 'synthetic';
+  hiddenByClient?: boolean;
+
+  // Champ libre pour compatibilité future
+  [key: string]: any;
 }
 
 export interface Strategy {

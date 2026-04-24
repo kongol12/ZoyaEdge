@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth';
 import { importTrades, Trade } from '../../../lib/db';
-import { calculateTradeStats, AssetType, detectAssetType } from '../../../lib/tradeCalculations';
+import { calculateTradeMetrics, normalizeSymbol } from '../../../lib/tradeCalculations';
+import { getAssetDefinition } from '../../../lib/assetDatabase';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 import { UploadCloud, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react';
@@ -362,57 +363,57 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
       type = netPnl >= 0 ? 'deposit' : 'withdrawal';
     }
 
-    let risk = 0;
-    let reward = 0;
-    let rr = 0;
-    let pips = 0;
-
-    let assetType = detectAssetType(symbol);
-
-    if (type === 'trade') {
-      const calculated = calculateTradeStats(
-        symbol,
-        direction,
-        entryPrice,
-        exitPrice,
-        sl,
-        tp,
-        lotSize,
-        assetType
-      );
-      risk = calculated.risk;
-      reward = calculated.reward;
-      rr = calculated.rr;
-      pips = calculated.pips;
-    }
+    const normalizedPair = normalizeSymbol(symbol.trim());
+    const asset = getAssetDefinition(normalizedPair);
 
     const tradeObj: any = {
-      pair: symbol.trim(),
+      pair: normalizedPair,
       pnl: netPnl,
-      commission,
-      swap,
       type,
       strategy: type === 'trade' ? `Import ${platform}` : 'Balance Movement',
       emotion: '😐',
       session: 'other',
       date,
       platform,
-      risk,
-      reward,
-      rr,
-      pips,
       isDemo: false,
       hiddenByClient: false
     };
 
     if (type === 'trade') {
+      const metrics = calculateTradeMetrics(
+        normalizedPair,
+        direction,
+        entryPrice,
+        exitPrice,
+        lotSize,
+        sl || undefined,
+        tp || undefined
+      );
+
+      const positionId = getVal(['position', 'ticket', 'order', 'deal']);
+      const openTimeStr = getVal(['time', 'heure', 'open time', 'heure_1', 'date']);
+      const closeTimeStr = getVal(['heure_1', 'close time', 'time_1', 'date_1']);
+
       tradeObj.direction = direction;
-      tradeObj.assetType = assetType;
+      tradeObj.assetType = asset?.category || 'forex';
       tradeObj.entryPrice = entryPrice;
       tradeObj.exitPrice = exitPrice;
       tradeObj.lotSize = lotSize;
       tradeObj.stopLoss = sl || 0;
       tradeObj.takeProfit = tp || 0;
+
+      tradeObj.pips = metrics.pips;
+      tradeObj.risk = metrics.risk;
+      tradeObj.reward = metrics.reward;
+      tradeObj.rr = metrics.rr;
+      tradeObj.pnl = metrics.pnl;
+      tradeObj.label = metrics.label;
+
+      tradeObj.commission = commission;
+      tradeObj.swap = swap;
+      tradeObj.positionId = positionId ? String(positionId) : undefined;
+      tradeObj.openTime = openTimeStr ? parseDate(String(openTimeStr)) : date;
+      tradeObj.closeTime = closeTimeStr ? parseDate(String(closeTimeStr)) : date;
     }
 
     return tradeObj;

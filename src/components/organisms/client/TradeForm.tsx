@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../../lib/auth';
 import { addTrade, subscribeToStrategies, Strategy } from '../../../lib/db';
 import { cn, formatRR } from '../../../lib/utils';
-import { calculateTradeStats } from '../../../lib/tradeCalculations';
+import { calculateTradeMetrics, normalizeSymbol } from '../../../lib/tradeCalculations';
+import { getAssetDefinition } from '../../../lib/assetDatabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2 } from 'lucide-react';
 import { useTranslation } from '../../../lib/i18n';
@@ -55,26 +56,41 @@ export default function TradeForm({ onSuccess }: { onSuccess?: () => void }) {
     const tp = parseFloat(formData.takeProfit);
     const lots = parseFloat(formData.lotSize);
     
-    if (!isNaN(entry)) {
-      const calculated = calculateTradeStats(
-        formData.pair,
+    if (!isNaN(entry) && !isNaN(lots) && lots > 0) {
+      const calculated = calculateTradeMetrics(
+        normalizeSymbol(formData.pair),
         formData.direction,
         entry,
-        exit,
-        sl,
-        tp,
+        !isNaN(exit) && exit > 0 ? exit : entry,
         lots,
-        formData.assetType
+        !isNaN(sl) && sl > 0 ? sl : undefined,
+        !isNaN(tp) && tp > 0 ? tp : undefined
       );
 
-      setStats(calculated);
+      setStats({
+        pips: calculated.pips,
+        label: calculated.label,
+        risk: calculated.risk,
+        reward: calculated.reward,
+        rr: calculated.rr,
+        pnl: calculated.pnl
+      });
 
-      // Automatic PnL calculation if allowed
-      if (!isManualPnl && !isNaN(exit) && !isNaN(lots)) {
+      if (!isManualPnl && !isNaN(exit) && exit > 0) {
         setFormData(prev => ({ ...prev, pnl: calculated.pnl.toString() }));
       }
     }
-  }, [formData.entryPrice, formData.exitPrice, formData.stopLoss, formData.takeProfit, formData.lotSize, formData.direction, formData.pair, formData.assetType, isManualPnl]);
+  }, [
+    formData.entryPrice,
+    formData.exitPrice,
+    formData.stopLoss,
+    formData.takeProfit,
+    formData.lotSize,
+    formData.direction,
+    formData.pair,
+    formData.assetType,
+    isManualPnl
+  ]);
 
   const quickPairs = ['EURUSD', 'NAS100', 'XAUUSD', 'US30'];
 
@@ -85,11 +101,12 @@ export default function TradeForm({ onSuccess }: { onSuccess?: () => void }) {
     setLoading(true);
     try {
       const finalPnl = parseFloat(formData.pnl);
+      const normalizedPair = normalizeSymbol(formData.pair);
 
       await addTrade(user.uid, {
-        pair: formData.pair.toUpperCase(),
+        pair: normalizedPair,
         direction: formData.direction,
-        assetType: formData.assetType,
+        assetType: getAssetDefinition(normalizedPair)?.category || formData.assetType,
         entryPrice: parseFloat(formData.entryPrice),
         exitPrice: parseFloat(formData.exitPrice),
         stopLoss: formData.stopLoss ? parseFloat(formData.stopLoss) : undefined,
@@ -103,6 +120,8 @@ export default function TradeForm({ onSuccess }: { onSuccess?: () => void }) {
         rr: stats.rr || 0,
         risk: stats.risk || 0,
         reward: stats.reward || 0,
+        pips: stats.pips || 0,
+        type: 'trade'
       });
 
       logActivity(user.uid, 'trade_logged', { 
