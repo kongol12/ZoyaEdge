@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import React, { useState } from 'react';
 import { useAuth, auth } from '../lib/auth';
 import { useTranslation } from '../lib/i18n';
@@ -10,6 +11,7 @@ export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verificationSent, setVerificationSent] = useState(false);
 
   const [formData, setFormData] = useState({
     email: '',
@@ -26,12 +28,16 @@ export default function Auth() {
         await signInWithEmail(formData.email, formData.password);
       } else {
         await signUpWithEmail(formData.email, formData.password, formData.name);
+        setVerificationSent(true);
       }
     } catch (err: any) {
+      console.error("Auth Error:", err);
       if (err.code === 'auth/operation-not-allowed') {
         setError("Cette méthode de connexion n'est pas activée dans la console Firebase. Veuillez activer 'Email/Password' dans les paramètres d'Authentication.");
       } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError("Identifiants incorrects. Veuillez vérifier votre email et mot de passe.");
+      } else if (err.code === 'auth/internal-error') {
+        setError("Erreur interne Firebase (auth/internal-error). Cela est souvent dû à une restriction de domaine ou une configuration manquante. Essayez de rafraîchir.");
       } else {
         setError(err.message || "Une erreur est survenue");
       }
@@ -45,10 +51,12 @@ export default function Auth() {
     setError(null);
     try {
       await signInWithGoogle();
-      // Everyone is allowed to sign in with Google now
     } catch (err: any) {
+      console.error("Google Auth Error:", err);
       if (err.code === 'auth/operation-not-allowed') {
         setError("La connexion Google n'est pas activée dans la console Firebase. Veuillez l'activer dans les paramètres d'Authentication.");
+      } else if (err.code === 'auth/internal-error' || err.code === 'auth/popup-closed-by-user') {
+        setError("La fenêtre de connexion a été fermée ou une erreur interne est survenue. Veuillez réessayer.");
       } else {
         setError(err.message || "Erreur de connexion Google");
       }
@@ -61,6 +69,10 @@ export default function Auth() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
+          <Link to="/home" className="inline-flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-zoya-red transition-colors mb-6 uppercase tracking-widest">
+            <ArrowRight className="rotate-180" size={14} />
+            Retour à l'accueil
+          </Link>
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -97,8 +109,30 @@ export default function Auth() {
 
           <div className="p-8">
             <AnimatePresence mode="wait">
-              <motion.form
-                key={isLogin ? 'login' : 'signup'}
+              {verificationSent ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-8 text-center space-y-4"
+                >
+                  <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Mail size={32} />
+                  </div>
+                  <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white uppercase italic">Activez votre compte.</h2>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed font-medium">
+                    Un lien de validation a été envoyé à <strong>{formData.email}</strong>.<br /><br />
+                    Veuillez cliquer sur le lien dans l'email pour activer votre accès et commencer l'onboarding.
+                  </p>
+                  <button
+                    onClick={() => setIsLogin(true)}
+                    className="w-full bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 py-3 rounded-2xl font-bold hover:bg-gray-100 transition-all border border-gray-100 dark:border-gray-700"
+                  >
+                    Retour à la connexion
+                  </button>
+                </motion.div>
+              ) : (
+                <motion.form
+                  key={isLogin ? 'login' : 'signup'}
                 initial={{ opacity: 0, x: isLogin ? -20 : 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: isLogin ? 20 : -20 }}
@@ -176,7 +210,8 @@ export default function Auth() {
                   )}
                 </button>
               </motion.form>
-            </AnimatePresence>
+            )}
+          </AnimatePresence>
 
             <div className="relative my-8">
               <div className="absolute inset-0 flex items-center">

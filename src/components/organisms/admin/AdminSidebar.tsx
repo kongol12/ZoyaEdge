@@ -9,10 +9,11 @@ import { cn } from '../../../lib/utils';
 interface AdminSidebarProps {
   isCollapsed: boolean;
   onToggle: () => void;
+  onItemClick?: () => void;
   className?: string;
 }
 
-export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggle, className }) => {
+export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggle, onItemClick, className }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout, profile } = useAuth();
@@ -23,7 +24,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
     { icon: Icons.DollarSign, label: 'Finances', path: '/admin/finance', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
     { icon: Icons.CreditCard, label: 'Tarification', path: '/admin/pricing', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
     { icon: Icons.CreditCard, label: 'Transactions', path: '/admin/transactions', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
-    { icon: Icons.Terminal, label: 'Activités Système', path: '/admin/activities', color: 'text-zinc-500 bg-zinc-50 dark:bg-zinc-900/20' },
     { icon: Icons.BarChart3, label: 'Rapports Trades', path: '/admin/trade-reports', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
     { icon: Icons.PieChart, label: 'Abonnements', path: '/admin/subscription-reports', color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
     { icon: Icons.Users, label: 'Clients', path: '/admin/clients', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
@@ -32,7 +32,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
     { icon: Icons.Bug, label: 'Bugs & Rapports', path: '/admin/reports', color: 'text-rose-500 bg-rose-50 dark:bg-rose-900/20' },
     { icon: Icons.Bell, label: 'Notifications', path: '/admin/notifications', color: 'text-red-500 bg-red-50 dark:bg-red-900/20', badge: unreadCount },
     { icon: Icons.BrainCircuit, label: 'Monitoring IA', path: '/admin/ai', color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
-    { icon: Icons.Terminal, label: 'Logs Système', path: '/admin/logs', color: 'text-zinc-500 bg-zinc-50 dark:bg-zinc-900/20' },
+    { icon: Icons.ShieldAlert, label: 'Journal Industriel', path: '/admin/logs', color: 'text-zinc-500 bg-zinc-50 dark:bg-zinc-900/20' },
     { icon: Icons.Settings, label: 'Paramètres', path: '/admin/settings', color: 'text-gray-500 bg-gray-50 dark:bg-gray-900/40' },
   ];
 
@@ -68,6 +68,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ isCollapsed, onToggl
           <Link
             key={item.path}
             to={item.path}
+            onClick={onItemClick}
             title={isCollapsed ? item.label : ""}
             className={cn(
               "flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 relative",

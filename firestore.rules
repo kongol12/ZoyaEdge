@@ -16,7 +16,20 @@ service cloud.firestore {
       return isSignedIn() && 
              'email' in request.auth.token && 
              request.auth.token.email != null && 
-             request.auth.token.email.lower() == 'kongolmandf@gmail.com'; 
+             (
+               request.auth.token.email.lower() == 'kongolmandf@gmail.com' || // Fallback during migration
+               (exists(/databases/$(database)/documents/app_settings/global) && 
+                (request.auth.token.email.lower() == get(/databases/$(database)/documents/app_settings/global).data.primarySuperAdmin ||
+                 request.auth.token.email.lower() in get(/databases/$(database)/documents/app_settings/global).data.superAdmins))
+             );
+    }
+    
+    function isPrimarySuperAdmin() {
+      return isSignedIn() && 
+             'email' in request.auth.token && 
+             (request.auth.token.email.lower() == 'kongolmandf@gmail.com' ||
+              (exists(/databases/$(database)/documents/app_settings/global) && 
+               request.auth.token.email.lower() == get(/databases/$(database)/documents/app_settings/global).data.primarySuperAdmin));
     }
     
     // Admin check via RBAC document
@@ -40,6 +53,8 @@ service cloud.firestore {
     function isValidUser(data) {
       return (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('country' in data) || (data.country is string && data.country.size() <= 100)) &&
              (!('photoURL' in data) || (data.photoURL is string)) &&
              (!('tradingStyle' in data) || data.tradingStyle is string) &&
              (!('experienceLevel' in data) || data.experienceLevel is string) &&
@@ -52,7 +67,9 @@ service cloud.firestore {
              (!('role' in data) || data.role in ['user', 'agent', 'admin']) &&
              (!('subscription' in data) || data.subscription is string) &&
              (!('subscriptionStatus' in data) || data.subscriptionStatus is string) &&
-             (!('aiCredits' in data) || (data.aiCredits is int && data.aiCredits >= 0));
+             (!('aiCredits' in data) || (data.aiCredits is int && data.aiCredits >= 0)) &&
+             (!('createdBy' in data) || data.createdBy is string) &&
+             (!('isEmergencyAdmin' in data) || data.isEmergencyAdmin is bool);
     }
 
     function isValidTrade(data, userId) {
@@ -119,14 +136,15 @@ service cloud.firestore {
                     incoming().keys().hasAll(['email', 'createdAt']) &&
                     isValidUser(incoming()) && 
                     incoming().role == 'user' && 
-                    (incoming().subscription in ['free', 'discovery']); 
+                    (incoming().subscription in ['free', 'discovery', 'pro']); 
       
       allow update: if (isOwner(userId) && 
                     isValidUser(incoming()) &&
                     !incoming().diff(existing()).affectedKeys().hasAny([
-                      'role', 'subscription', 'createdAt', 'email', 'subscriptionEndDate', 'subscriptionStatus', 'aiCredits'
+                      'role', 'subscription', 'createdAt', 'email', 'subscriptionEndDate', 'subscriptionStatus', 'aiCredits', 'createdBy', 'isEmergencyAdmin'
                     ])) ||
-              isAdmin();
+              isSuperAdmin() ||
+              (isAdmin() && !('role' in incoming() || 'isEmergencyAdmin' in incoming()));
       match /trades/{tradeId} {
         allow read: if isOwner(userId) || isAdmin();
         allow create: if isOwner(userId) && isValidTrade(incoming(), userId) && isValidId(tradeId);
@@ -210,9 +228,22 @@ service cloud.firestore {
       allow write: if isSuperAdmin();
     }
 
+    function isValidSystemLog(data) {
+      return data.keys().hasAll(['type', 'severity', 'message', 'createdAt']) &&
+             data.type in ['auth', 'navigation', 'action', 'system', 'security'] &&
+             data.severity in ['info', 'warning', 'error', 'critical'] &&
+             data.message is string && data.message.size() <= 1000 &&
+             data.createdAt == request.time &&
+             (!('userId' in data) || data.userId is string) &&
+             (!('userEmail' in data) || data.userEmail is string) &&
+             (!('path' in data) || data.path is string) &&
+             (!('ip' in data) || data.ip is string) &&
+             (!('metadata' in data) || data.metadata is map);
+    }
+
     match /system_logs/{logId} {
       allow read: if isAdmin();
-      allow create: if isSignedIn();
+      allow create: if isValidSystemLog(incoming()) && isValidId(logId);
     }
 
     match /user_activity/{actId} {

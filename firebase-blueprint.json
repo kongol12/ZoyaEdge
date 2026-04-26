@@ -7,6 +7,8 @@
       "properties": {
         "email": { "type": "string" },
         "displayName": { "type": "string" },
+        "phone": { "type": "string" },
+        "country": { "type": "string" },
         "role": { "type": "string", "enum": ["user", "agent", "admin"] },
         "subscription": { "type": "string", "enum": ["discovery", "pro", "premium"] },
         "subscriptionStatus": { "type": "string", "enum": ["active", "trialing", "expired", "suspended", "canceled"] },
@@ -102,9 +104,29 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "amount", "currency", "plan", "status", "createdAt"]
+    },
+    "SystemLog": {
+      "title": "System Activity Log",
+      "description": "Real-time activity log for audit and security.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["auth", "navigation", "action", "system", "security"] },
+        "severity": { "type": "string", "enum": ["info", "warning", "error", "critical"] },
+        "message": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "path": { "type": "string" },
+        "ip": { "type": "string" },
+        "metadata": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
+    "/system_logs/{logId}": {
+      "schema": "SystemLog",
+      "description": "Activity and audit logs."
+    },
     "/users/{userId}": {
       "schema": "User",
       "description": "Root user profile document."

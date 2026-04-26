@@ -9,6 +9,7 @@ import { User, Save, Loader2, Languages, Trash2, AlertTriangle, Filter, Check, X
 import { cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { COUNTRIES } from '../../lib/countries';
 
 export default function ProfileSettings() {
   const { user, updateProfile } = useAuth();
@@ -187,6 +188,74 @@ export default function ProfileSettings() {
                 value={profile?.email || ''}
                 disabled
                 className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 cursor-not-allowed"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Pays</label>
+              <select
+                value={profile?.country || ''}
+                onChange={e => setProfile(prev => prev ? { ...prev, country: e.target.value } : null)}
+                className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all appearance-none"
+              >
+                <option value="">Sélectionner...</option>
+                {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Téléphone</label>
+              <input
+                type="text"
+                value={profile?.phone || ''}
+                onChange={e => setProfile(prev => prev ? { ...prev, phone: e.target.value } : null)}
+                placeholder="+33 6..."
+                className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          <h3 className="text-lg font-poppins font-bold text-gray-900 dark:text-white mt-8 mb-4 border-b border-gray-100 dark:border-gray-700 pb-2">Préférences de Trading</h3>
+          
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Style de Trading</label>
+              <select
+                value={profile?.tradingStyle || ''}
+                onChange={e => setProfile(prev => prev ? { ...prev, tradingStyle: e.target.value } : null)}
+                className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all appearance-none"
+              >
+                <option value="">Sélectionner...</option>
+                <option value="Scalping">Scalping (Court terme)</option>
+                <option value="Day Trading">Day Trading (Intraday)</option>
+                <option value="Swing Trading">Swing Trading (Moyen terme)</option>
+                <option value="Position Trading">Position Trading (Long terme)</option>
+              </select>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Niveau d'expérience</label>
+              <select
+                value={profile?.experienceLevel || ''}
+                onChange={e => setProfile(prev => prev ? { ...prev, experienceLevel: e.target.value as any } : null)}
+                className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all appearance-none"
+              >
+                <option value="beginner">Débutant (- de 1 an)</option>
+                <option value="intermediate">Intermédiaire (1 à 3 ans)</option>
+                <option value="advanced">Avancé (+ de 3 ans)</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Taille du capital</label>
+              <input
+                type="text"
+                value={profile?.capitalSize || ''}
+                onChange={e => setProfile(prev => prev ? { ...prev, capitalSize: e.target.value } : null)}
+                placeholder="Ex: 5000"
+                className="w-full px-4 py-2.5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-zoya-red outline-none transition-all"
               />
             </div>
           </div>

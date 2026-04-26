@@ -33,6 +33,7 @@ export default function ClientManagement() {
 
   const fetchClients = () => {
     setLoading(true);
+    const PRIMARY_EMAIL = import.meta.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL?.toLowerCase();
     const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
       setDebugInfo({
         totalInDb: snapshot.size,
@@ -40,7 +41,12 @@ export default function ClientManagement() {
       });
       const data = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() }) as (UserProfile & { id: string }))
-        .filter(u => !u.role || u.role === 'user' || u.email === 'kongolmandf@gmail.com');
+        .filter(u => {
+          // Only show regular users, and hide the primary admin from this list
+          const isUser = !u.role || u.role === 'user';
+          const isNotPrimary = u.email?.toLowerCase() !== PRIMARY_EMAIL;
+          return isUser && isNotPrimary;
+        });
         
       setUsers(data);
       setLoading(false);
@@ -105,13 +111,15 @@ export default function ClientManagement() {
     const tableData = users.map(u => [
       u.displayName || 'N/A',
       u.email,
+      u.phone || 'N/A',
+      u.country || 'N/A',
       u.subscription || 'free',
       u.aiCredits || 0,
       u.subscriptionStatus || 'inactive'
     ]);
 
     (doc as any).autoTable({
-      head: [['Nom', 'Email', 'Plan', 'Crédits', 'Statut']],
+      head: [['Nom', 'Email', 'Tel', 'Pays', 'Plan', 'Crédits', 'Statut']],
       body: tableData,
       startY: 20,
       theme: 'grid',
@@ -126,6 +134,8 @@ export default function ClientManagement() {
     const worksheet = XLSX.utils.json_to_sheet(users.map(u => ({
       Nom: u.displayName || 'N/A',
       Email: u.email,
+      Telephone: u.phone || 'N/A',
+      Pays: u.country || 'N/A',
       Abonnement: u.subscription || 'free',
       Credits_AI: u.aiCredits || 0,
       Statut: u.subscriptionStatus || 'inactive',
@@ -156,14 +166,14 @@ export default function ClientManagement() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-start">
+    <div className="space-y-6 md:space-y-8">
+      <div className="flex flex-col md:flex-row justify-between items-start gap-4">
         <div>
-          <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">Gestion des Clients</h1>
-          <p className="text-gray-500 dark:text-gray-400">Gérez les comptes clients, leurs abonnements et accès.</p>
+          <h1 className="text-2xl md:text-3xl font-poppins font-black text-gray-900 dark:text-white">Gestion des Clients</h1>
+          <p className="text-sm md:text-base text-gray-500 dark:text-gray-400">Gérez les comptes clients, leurs abonnements et accès.</p>
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           {isSuper && debugInfo && (
             <div className="flex items-center gap-2">
               <div className="text-[10px] bg-gray-100 dark:bg-gray-800 p-2 rounded-xl font-mono">
@@ -177,13 +187,13 @@ export default function ClientManagement() {
               </button>
             </div>
           )}
-          <div className="relative">
+          <div className="relative flex-1 md:flex-none">
             <button 
               onClick={() => setShowExportMenu(!showExportMenu)}
-              className="flex items-center gap-2 bg-white dark:bg-gray-800 px-6 py-3 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg font-bold text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+              className="w-full flex items-center justify-center gap-2 bg-white dark:bg-gray-800 px-4 md:px-6 py-2.5 md:py-3 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg font-bold text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
             >
               <FileDown size={18} className="text-zoya-red" />
-              Exporter la Liste
+              Exporter
             </button>
 
             <AnimatePresence>
@@ -234,103 +244,201 @@ export default function ClientManagement() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-gray-900/50 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                  <th className="px-6 py-4">Client</th>
-                  <th className="px-6 py-4">Abonnement</th>
-                  <th className="px-6 py-4">Statut</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                {users.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center text-gray-400">
-                          <UserIcon size={20} />
+          <>
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50 dark:bg-gray-900/50 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                    <th className="px-6 py-4">Client</th>
+                    <th className="px-6 py-4">Pays / Zone</th>
+                    <th className="px-6 py-4">Contact</th>
+                    <th className="px-6 py-4">Abonnement</th>
+                    <th className="px-6 py-4">Statut</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                  {users.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center text-gray-400">
+                            <UserIcon size={20} />
+                          </div>
+                          <div>
+                            <p className="font-bold text-gray-900 dark:text-white line-clamp-1">{user.displayName || 'Sans nom'}</p>
+                            <p className="text-xs text-gray-500 line-clamp-1">{user.email}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold text-gray-900 dark:text-white">{user.displayName || 'Sans nom'}</p>
-                          <p className="text-xs text-gray-500">{user.email}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{user.country || 'N/A'}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="text-xs font-medium text-gray-500">{user.phone || 'N/A'}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={cn(
+                          "text-xs font-bold px-3 py-1.5 rounded-xl",
+                          user.subscription === 'premium' ? "bg-orange-100 text-orange-600" :
+                          user.subscription === 'pro' ? "bg-emerald-100 text-emerald-600" :
+                          user.subscription === 'discovery' ? "bg-blue-100 text-blue-600" :
+                          "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                        )}>
+                          {user.subscription || 'Free'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5">
+                          {user.subscriptionStatus === 'suspended' ? (
+                            <XCircle size={14} className="text-rose-500" />
+                          ) : user.subscriptionStatus === 'active' ? (
+                            <CheckCircle size={14} className="text-emerald-500" />
+                          ) : (
+                            <XCircle size={14} className="text-gray-300" />
+                          )}
+                          <span className={cn(
+                            "text-xs font-medium capitalize",
+                            user.subscriptionStatus === 'suspended' ? "text-rose-500" : ""
+                          )}>
+                            {user.subscriptionStatus || 'Inactif'}
+                          </span>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={() => handleResetPassword(user.email)}
+                            title="Réinitialiser Mot de passe"
+                            className="p-2 text-gray-400 hover:text-amber-500 transition-colors"
+                          >
+                            <Key size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleToggleStatus(user)}
+                            title={user.subscriptionStatus === 'suspended' ? "Activer" : "Suspendre"}
+                            className={cn(
+                              "p-2 transition-colors",
+                              user.subscriptionStatus === 'suspended' 
+                                ? "text-emerald-500 hover:text-emerald-600" 
+                                : "text-gray-400 hover:text-rose-500"
+                            )}
+                          >
+                            <Power size={18} />
+                          </button>
+                          <button 
+                            onClick={() => setSelectedUser(user)}
+                            title="Gérer Profil"
+                            className="p-2 text-gray-400 hover:text-indigo-500 transition-colors"
+                          >
+                            <Settings size={18} />
+                          </button>
+                          <button 
+                            onClick={() => {
+                              if (confirm("Supprimer ce client ?")) {
+                                handleDeleteUser(user.id);
+                              }
+                            }}
+                            title="Supprimer"
+                            className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card Layout */}
+            <div className="md:hidden space-y-4 p-4 divide-y divide-gray-50 dark:divide-gray-700/50">
+              {users.map((user) => (
+                <div key={user.id} className="pt-4 first:pt-0 pb-4 last:pb-0">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center text-gray-400 shrink-0">
+                        <UserIcon size={24} />
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
+                      <div className="min-w-0">
+                        <p className="font-bold text-gray-900 dark:text-white truncate">{user.displayName || 'Sans nom'}</p>
+                        <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
                       <span className={cn(
-                        "text-xs font-bold px-3 py-1.5 rounded-xl",
-                        user.subscription === 'premium' ? "bg-orange-100 text-orange-600" :
-                        user.subscription === 'pro' ? "bg-emerald-100 text-emerald-600" :
-                        "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                        "text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg",
+                        user.subscription === 'premium' ? "bg-orange-100 text-orange-600 shadow-[0_0_10px_rgba(234,88,12,0.1)]" :
+                        user.subscription === 'pro' ? "bg-emerald-100 text-emerald-600 shadow-[0_0_10px_rgba(16,185,129,0.1)]" :
+                        "bg-gray-100 text-gray-500"
                       )}>
                         {user.subscription || 'Free'}
                       </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5">
-                        {user.subscriptionStatus === 'suspended' ? (
-                          <XCircle size={14} className="text-rose-500" />
-                        ) : user.subscriptionStatus === 'active' ? (
-                          <CheckCircle size={14} className="text-emerald-500" />
-                        ) : (
-                          <XCircle size={14} className="text-gray-300" />
+                      <div className="flex items-center gap-1">
+                         <div className={cn("w-1.5 h-1.5 rounded-full", 
+                           user.subscriptionStatus === 'active' ? "bg-emerald-500" : 
+                           user.subscriptionStatus === 'suspended' ? "bg-rose-500" : "bg-gray-300"
+                         )} />
+                         <span className="text-[10px] font-bold text-gray-400 uppercase">{user.subscriptionStatus || 'Inactif'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-800">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Pays / Zone</p>
+                      <p className="text-xs font-bold text-gray-700 dark:text-gray-300">{user.country || 'N/A'}</p>
+                    </div>
+                    <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-2xl border border-gray-100 dark:border-gray-800">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Contact</p>
+                      <p className="text-xs font-bold text-gray-700 dark:text-gray-300 truncate">{user.phone || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <button 
+                      onClick={() => handleResetPassword(user.email)}
+                      className="flex items-center gap-2 text-amber-500 font-bold text-xs"
+                    >
+                      <Key size={14} />
+                      Reset Pwd
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => handleToggleStatus(user)}
+                        className={cn(
+                          "p-2.5 rounded-xl transition-colors",
+                          user.subscriptionStatus === 'suspended' 
+                            ? "bg-emerald-50 text-emerald-500" 
+                            : "bg-rose-50 text-rose-500"
                         )}
-                        <span className={cn(
-                          "text-xs font-medium capitalize",
-                          user.subscriptionStatus === 'suspended' ? "text-rose-500" : ""
-                        )}>
-                          {user.subscriptionStatus || 'Inactif'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => handleResetPassword(user.email)}
-                          title="Réinitialiser Mot de passe"
-                          className="p-2 text-gray-400 hover:text-amber-500 transition-colors"
-                        >
-                          <Key size={18} />
-                        </button>
-                        <button 
-                          onClick={() => handleToggleStatus(user)}
-                          title={user.subscriptionStatus === 'suspended' ? "Activer" : "Suspendre"}
-                          className={cn(
-                            "p-2 transition-colors",
-                            user.subscriptionStatus === 'suspended' 
-                              ? "text-emerald-500 hover:text-emerald-600" 
-                              : "text-gray-400 hover:text-rose-500"
-                          )}
-                        >
-                          <Power size={18} />
-                        </button>
-                        <button 
-                          onClick={() => setSelectedUser(user)}
-                          title="Gérer Profil"
-                          className="p-2 text-gray-400 hover:text-indigo-500 transition-colors"
-                        >
-                          <Settings size={18} />
-                        </button>
-                        <button 
-                          onClick={() => {
-                            if (confirm("Supprimer ce client ?")) {
-                              handleDeleteUser(user.id);
-                            }
-                          }}
-                          title="Supprimer"
-                          className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      >
+                        <Power size={18} />
+                      </button>
+                      <button 
+                        onClick={() => setSelectedUser(user)}
+                        className="p-2.5 bg-indigo-50 text-indigo-500 rounded-xl transition-colors"
+                      >
+                        <Settings size={18} />
+                      </button>
+                      <button 
+                        onClick={() => {
+                          if (confirm("Supprimer ce client ?")) {
+                            handleDeleteUser(user.id);
+                          }
+                        }}
+                        className="p-2.5 bg-rose-50 text-rose-500 rounded-xl transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

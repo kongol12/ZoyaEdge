@@ -13,17 +13,14 @@ import {
   reauthenticateWithCredential,
   sendPasswordResetEmail,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
+  sendEmailVerification
 } from 'firebase/auth';
 import { auth, db } from './firebase';
 export { auth };
-import { doc, setDoc, getDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp, onSnapshot, collection, addDoc } from 'firebase/firestore';
 
-// Set persistence to local storage
-setPersistence(auth, browserLocalPersistence).catch(err => {
-  console.error("Auth persistence error:", err);
-});
-
+// Set persistence was moved inside AuthProvider
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
@@ -51,8 +48,10 @@ export interface OnboardingState {
 export interface UserProfile {
   email: string;
   displayName: string;
+  phone?: string;
+  country?: string;
   tradingStyle?: string;
-  experienceLevel?: 'beginner' | 'intermediate' | 'advanced';
+  experienceLevel?: 'beginner' | 'intermediate' | 'advanced' | 'expert' | string;
   capitalSize?: string;
   defaultRisk?: number;
   defaultLotSize?: number;
@@ -61,16 +60,15 @@ export interface UserProfile {
   onboardingState?: OnboardingState;
   subscription?: 'free' | 'pro' | 'premium' | 'discovery' | 'elite';
   subscriptionCycle?: 'monthly' | 'yearly';
-  subscriptionStatus?: 'active' | 'expired' | 'canceled' | 'trialing' | 'suspended';
+  subscriptionStatus?: 'active' | 'expired' | 'canceled' | 'trialing' | 'suspended' | string;
   subscriptionEndDate?: any;
   hasUsedTrial?: boolean;
   initialBalance?: number;
   aiCredits?: number;
-  role?: 'user' | 'agent' | 'admin';
+  role?: 'user' | 'agent' | 'admin' | 'super_admin';
+  createdBy?: string;
+  isEmergencyAdmin?: boolean;
   bypassMaintenance?: boolean;
-  calendarShowPnL?: boolean;
-  calendarShowTrades?: boolean;
-  assetTypes?: string[];
   createdAt: any;
   updatedAt?: any;
 }
@@ -109,6 +107,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    // Set persistence to local storage safely
+    setPersistence(auth, browserLocalPersistence).catch(err => {
+      console.error("Auth persistence error:", err);
+    });
+
     let unsubscribeProfile: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
@@ -117,8 +120,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Set user immediately
           setUser(currentUser);
 
-          // Listen to profile changes in real-time
+          // Force fresh fetch or just wait for onSnapshot
+          // If the profile doesn't exist yet, it's likely a new signup
           const userRef = doc(db, 'users', currentUser.uid);
+          
           unsubscribeProfile = onSnapshot(userRef, async (userSnap) => {
             if (userSnap.exists()) {
               setProfile(userSnap.data() as UserProfile);
@@ -130,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
                 const newProfile = {
                   email: currentUser.email || '',
-                  displayName: currentUser.displayName || '',
+                  displayName: currentUser.displayName || (auth.currentUser?.displayName) ||  'Utilisateur',
                   createdAt: serverTimestamp(),
                   onboarded: false,
                   subscription: 'pro',
@@ -142,7 +147,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   role: 'user',
                 };
                 await setDoc(doc(db, 'users', currentUser.uid), newProfile);
-                // The snapshot listener above will pick this up
               } catch (createError) {
                 console.error("Error creating profile:", createError);
               }
@@ -166,14 +170,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const logAuthEvent = async (message: string, type: 'auth' | 'security' = 'auth', severity: 'info' | 'warning' = 'info') => {
+    if (!auth.currentUser) return;
+    try {
+      await addDoc(collection(db, 'system_logs'), {
+        type,
+        severity,
+        message,
+        userId: auth.currentUser.uid,
+        userEmail: auth.currentUser.email,
+        createdAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.error("Failed to log auth event:", e);
+    }
+  };
+
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
+    await logAuthEvent("Connexion via Google réussie");
   };
 
   const signUpWithEmail = async (email: string, pass: string, name: string) => {
     const res = await createUserWithEmailAndPassword(auth, email, pass);
     await updateFirebaseProfile(res.user, { displayName: name });
+    
+    // Send verification email
+    await sendEmailVerification(res.user);
     
     const trialEndDate = new Date();
     trialEndDate.setDate(trialEndDate.getDate() + 7);
@@ -193,13 +217,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     await setDoc(doc(db, 'users', res.user.uid), newProfile);
     setProfile(newProfile as UserProfile);
+    await logAuthEvent("Nouvelle inscription par email réussie");
   };
 
   const signInWithEmail = async (email: string, pass: string) => {
     await signInWithEmailAndPassword(auth, email, pass);
+    await logAuthEvent("Connexion par email réussie");
   };
 
   const logout = async () => {
+    await logAuthEvent("Déconnexion de l'utilisateur", 'auth', 'info');
     await signOut(auth);
   };
 
@@ -248,16 +275,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isSuperAdmin = async (email: string | null | undefined) => {
     if (!email) return false;
+    const PRIMARY_EMAIL = import.meta.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL?.toLowerCase();
+    
+    if (email.toLowerCase() === PRIMARY_EMAIL) return true;
+
     try {
       const settingsSnap = await getDoc(doc(db, 'app_settings', 'global'));
       if (settingsSnap.exists()) {
-        const superAdmins = settingsSnap.data().superAdmins || ['kongolmandf@gmail.com'];
+        const superAdmins = settingsSnap.data().superAdmins || [];
         return superAdmins.includes(email.toLowerCase());
       }
-      return email.toLowerCase() === 'kongolmandf@gmail.com';
+      return false;
     } catch (error) {
       console.error("Error checking super admin status:", error);
-      return email.toLowerCase() === 'kongolmandf@gmail.com';
+      return false;
     }
   };
 

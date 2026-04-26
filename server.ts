@@ -13,7 +13,7 @@ import cors from 'cors';
 const app = express();
 const PORT = 3000;
 
-const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL || '';
+const PRIMARY_SUPER_ADMIN_EMAIL = (process.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL || '').toLowerCase();
 
 // Trust proxy is required for express-rate-limit to work correctly behind the AI Studio proxy
 app.set('trust proxy', 1);
@@ -101,7 +101,7 @@ app.post('/api/webhook/mt5', webhookLimiter, express.raw({ type: 'application/js
     return res.status(400).json({ error: "Invalid JSON payload" });
   }
 
-  const { syncKey, pair, direction, lotSize, entryPrice, exitPrice, pnl, timestamp, ticket, reqTime } = parsedBody;
+  const { syncKey, action, pair, direction, lotSize, entryPrice, exitPrice, pnl, timestamp, ticket, reqTime } = parsedBody;
   const signature = req.headers['x-zoyaedge-signature'] as string | undefined;
   const now = Math.floor(Date.now() / 1000);
 
@@ -150,6 +150,32 @@ app.post('/api/webhook/mt5', webhookLimiter, express.raw({ type: 'application/js
     if (!isValid) {
       await connectionDoc.ref.update({ status: 'error' });
       return res.status(403).json({ error: "Abonnement expiré ou invalide." });
+    }
+
+    // Handle Heartbeat and Push Notifications
+    if (action === 'heartbeat') {
+      const updates: any = {
+        status: 'active',
+        lastSync: admin.firestore.FieldValue.serverTimestamp()
+      };
+      // Check pending pushes
+      let pushMessage = "";
+      if (connectionData.pendingPush && connectionData.pendingPush.status === 'pending') {
+         pushMessage = connectionData.pendingPush.message;
+         updates.pendingPush = {
+            message: pushMessage,
+            status: 'sent',
+            sentAt: admin.firestore.FieldValue.serverTimestamp()
+         };
+      }
+      
+      await connectionDoc.ref.update(updates);
+      
+      const responsePayload: any = { success: true };
+      if (pushMessage) {
+         responsePayload.pushMessage = pushMessage;
+      }
+      return res.json(responsePayload);
     }
 
     // Déduplication par ticket
@@ -256,6 +282,19 @@ async function verifyUser(req: any, res: any, next: any) {
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;
+    
+    // Log access to sensitive API
+    if (req.method !== 'GET') {
+      logSystemActivity({
+        type: 'action',
+        severity: 'info',
+        message: `API Call: ${req.method} ${req.path}`,
+        userId: req.user.uid,
+        userEmail: req.user.email,
+        metadata: { path: req.path, method: req.method }
+      });
+    }
+    
     next();
   } catch (error) {
     console.error("User verification failed:", error);
@@ -516,6 +555,26 @@ async function finalizePayment(txId: string, resultData: any) {
   return { success: false, pending: true, status };
 }
 
+// Global System Logging Helper
+async function logSystemActivity(data: {
+  type: 'auth' | 'navigation' | 'action' | 'system' | 'security';
+  severity: 'info' | 'warning' | 'error' | 'critical';
+  message: string;
+  userId?: string;
+  userEmail?: string;
+  metadata?: any;
+}) {
+  if (!db) return;
+  try {
+    await db.collection('system_logs').add({
+      ...data,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (error) {
+    console.error('[Logger] Failed to log system activity:', error);
+  }
+}
+
 // Initialize Firebase Admin lazily or safely
 let db: admin.firestore.Firestore | null = null;
 
@@ -576,6 +635,29 @@ async function initFirebaseAdmin() {
         console.warn("[Firebase] CRITICAL: Permission Denied. The most common cause is missing FIREBASE_SERVICE_ACCOUNT_KEY or incorrect database setup.");
       }
     });
+
+    // Ensure primary admin is in settings
+    if (PRIMARY_SUPER_ADMIN_EMAIL) {
+      const globalSettingsRef = db.collection('app_settings').doc('global');
+      const doc = await globalSettingsRef.get();
+      if (!doc.exists) {
+        await globalSettingsRef.set({
+          primarySuperAdmin: PRIMARY_SUPER_ADMIN_EMAIL,
+          superAdmins: [PRIMARY_SUPER_ADMIN_EMAIL],
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`[Firebase] Initialized global settings with primary admin: ${PRIMARY_SUPER_ADMIN_EMAIL}`);
+      } else {
+        const data = doc.data()!;
+        if (data.primarySuperAdmin !== PRIMARY_SUPER_ADMIN_EMAIL) {
+          await globalSettingsRef.update({
+            primarySuperAdmin: PRIMARY_SUPER_ADMIN_EMAIL,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          console.log(`[Firebase] Updated primary admin in settings to: ${PRIMARY_SUPER_ADMIN_EMAIL}`);
+        }
+      }
+    }
     
     console.log("Firebase Admin initialized successfully");
   } catch (error) {
@@ -741,11 +823,11 @@ async function verifyAdmin(req: any, res: any, next: any) {
       userData = userDoc.data();
 
       const settingsSnap = await db.collection('app_settings').doc('global').get();
-      const superAdmins = settingsSnap.data()?.superAdmins || [SUPER_ADMIN_EMAIL];
-      isSuperAdmin = email && (superAdmins.includes(email) || email === SUPER_ADMIN_EMAIL);
+      const superAdmins = settingsSnap.data()?.superAdmins || [PRIMARY_SUPER_ADMIN_EMAIL];
+      isSuperAdmin = email && (superAdmins.includes(email?.toLowerCase()) || email?.toLowerCase() === PRIMARY_SUPER_ADMIN_EMAIL);
     } catch (dbError) {
       console.error("Firestore check failed in verifyAdmin, falling back to hardcoded check:", dbError);
-      isSuperAdmin = email === SUPER_ADMIN_EMAIL;
+      isSuperAdmin = email?.toLowerCase() === PRIMARY_SUPER_ADMIN_EMAIL;
     }
 
     if (isSuperAdmin || userData?.role === 'admin' || userData?.role === 'agent') {
@@ -779,9 +861,9 @@ async function verifySuperAdmin(req: any, res: any, next: any) {
 
     try {
       const settingsSnap = await db.collection('app_settings').doc('global').get();
-      const superAdmins = settingsSnap.data()?.superAdmins || [SUPER_ADMIN_EMAIL];
+      const superAdmins = settingsSnap.data()?.superAdmins || [PRIMARY_SUPER_ADMIN_EMAIL];
 
-      if (email && (superAdmins.includes(email?.toLowerCase()) || email?.toLowerCase() === SUPER_ADMIN_EMAIL)) {
+      if (email && (superAdmins.includes(email?.toLowerCase()) || email?.toLowerCase() === PRIMARY_SUPER_ADMIN_EMAIL)) {
         req.user = decodedToken;
         next();
       } else {
@@ -789,7 +871,7 @@ async function verifySuperAdmin(req: any, res: any, next: any) {
       }
     } catch (dbError) {
       console.error("Firestore check failed in verifySuperAdmin, falling back to hardcoded check:", dbError);
-      if (email?.toLowerCase() === SUPER_ADMIN_EMAIL) {
+      if (email?.toLowerCase() === PRIMARY_SUPER_ADMIN_EMAIL) {
         req.user = decodedToken;
         next();
       } else {
@@ -804,7 +886,8 @@ async function verifySuperAdmin(req: any, res: any, next: any) {
 
 // Admin User Creation Endpoint (Super Admin Only)
 app.post('/api/admin/users/create', authLimiter, verifySuperAdmin, async (req, res) => {
-  const { email, password, displayName, role } = req.body;
+  const { email, password, displayName, role, isEmergencyAdmin } = req.body;
+  const creatorEmail = (req as any).user.email.toLowerCase();
 
   if (!email || !password || !displayName || !role) {
     return res.status(400).json({ error: "Champs requis manquants" });
@@ -813,6 +896,22 @@ app.post('/api/admin/users/create', authLimiter, verifySuperAdmin, async (req, r
   if (!db) return res.status(503).json({ error: "Service de base de données indisponible" });
 
   try {
+    // Check if creating a super admin / emergency admin
+    if (role === 'super_admin' || isEmergencyAdmin) {
+      if (creatorEmail !== PRIMARY_SUPER_ADMIN_EMAIL) {
+        return res.status(403).json({ error: "Seul le Super Admin Principal peut créer des Admins de secours" });
+      }
+
+      // Check limit for emergency admins
+      const emergencyAdmins = await db.collection('users')
+        .where('isEmergencyAdmin', '==', true)
+        .get();
+      
+      if (emergencyAdmins.size >= 2) {
+        return res.status(400).json({ error: "Limite de 2 Admins de secours atteinte." });
+      }
+    }
+
     // Basic validation
     if (password.length < 8) {
       return res.status(400).json({ error: "Le mot de passe doit faire au moins 8 caractères" });
@@ -829,11 +928,13 @@ app.post('/api/admin/users/create', authLimiter, verifySuperAdmin, async (req, r
     await db.collection('users').doc(userRecord.uid).set({
       email: email.toLowerCase(),
       displayName,
-      role,
+      role: isEmergencyAdmin ? 'admin' : role,
+      isEmergencyAdmin: !!isEmergencyAdmin,
+      createdBy: creatorEmail,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       onboarded: false,
       subscription: 'free',
-      aiCredits: 3, // 3 analyses Discovery offertes
+      aiCredits: 3,
     });
 
     res.json({ success: true, userId: userRecord.uid });
@@ -1021,7 +1122,7 @@ app.post('/api/auth/start-trial', verifyUser, async (req: any, res: any) => {
 
 app.post('/api/auth/complete-onboarding', verifyUser, async (req: any, res: any) => {
   if (!db) return res.status(503).json({ error: 'Database unavailable' });
-  const { tradingStyle, experienceLevel, capitalSize, currency, defaultRisk, defaultLotSize, assetTypes } = req.body;
+  const { tradingStyle, experienceLevel, capitalSize, currency, country, phone, defaultRisk, defaultLotSize, assetTypes } = req.body;
   try {
     const userRef = db.collection('users').doc(req.user.uid);
     await userRef.set({
@@ -1029,6 +1130,8 @@ app.post('/api/auth/complete-onboarding', verifyUser, async (req: any, res: any)
       experienceLevel: experienceLevel || 'beginner',
       capitalSize: capitalSize || '0',
       currency: currency || 'USD',
+      country: country || '',
+      phone: phone || '',
       defaultRisk: defaultRisk || 1,
       defaultLotSize: defaultLotSize || 0.01,
       assetTypes: assetTypes || [],
@@ -1048,7 +1151,10 @@ app.post('/api/ai/coach', verifyUser, async (req: any, res: any) => {
   const { input } = req.body;
   
   if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: "GEMINI_API_KEY non configurée sur le serveur." });
+    console.error("[AI] Coach request failed: GEMINI_API_KEY is missing.");
+    return res.status(500).json({ 
+      error: "Service IA indisponible: Clé API Gemini manquante. Veuillez configurer GEMINI_API_KEY dans les secrets de l'application." 
+    });
   }
 
   if (!db) return res.status(503).json({ error: "Service de base de données indisponible" });
@@ -1145,7 +1251,10 @@ app.post('/api/ai/ask', verifyUser, async (req: any, res: any) => {
   const { trades, language, strategies, instruction, mode = 'STANDARD' } = req.body;
 
   if (!process.env.GEMINI_API_KEY) {
-    return res.status(500).json({ error: "GEMINI_API_KEY non configurée." });
+    console.error("[AI] Ask request failed: GEMINI_API_KEY is missing.");
+    return res.status(500).json({ 
+      error: "Service IA indisponible: Clé API Gemini manquante. Veuillez configurer GEMINI_API_KEY dans les secrets de l'application." 
+    });
   }
   if (!db) return res.status(503).json({ error: "Service de base de données indisponible" });
 
@@ -1488,8 +1597,9 @@ app.post('/api/user/sync-settings', verifyUser, async (req: any, res: any) => {
         vat: vatAmount || 0,
         vatRate: vatRate || 0,
         feeRate: transactionFee || 0,
-        method: 'mobile_money',
+        method: 'Mobile Money',
         provider,
+        operator: provider,
         transactionReference: transactionReference,
         transactionId: actualTransactionId,
         originatingTransactionId: originatingTxId, // Correction 1.2
@@ -1823,6 +1933,34 @@ void SyncData() {
       }
    }
    if(synced > 0) Print("ZoyaEdge: ", synced, " trades synchronisés.");
+   
+   // Heartbeat & Push Notifications
+   string hb_json = "{";
+   hb_json += "\\"syncKey\\":\\"" + InpSyncKey + "\\",";
+   hb_json += "\\"action\\":\\"heartbeat\\",";
+   hb_json += "\\"platform\\":\\"MT4\\"";
+   hb_json += "}";
+   
+   char hb_post[], hb_result[];
+   string hb_headers = "Content-Type: application/json\\r\\n";
+   StringToCharArray(hb_json, hb_post, 0, WHOLE_ARRAY, CP_UTF8);
+   string hb_res_headers;
+   int hb_res = WebRequest("POST", InpWebhookURL, hb_headers, 5000, hb_post, hb_result, hb_res_headers);
+   if(hb_res >= 200 && hb_res < 300) {
+      string responseStr = CharArrayToString(hb_result);
+      int msgPos = StringFind(responseStr, "\\"pushMessage\\":\\"");
+      if(msgPos >= 0) {
+         msgPos += 15;
+         int endPos = StringFind(responseStr, "\\"", msgPos);
+         if(endPos > msgPos) {
+            string msg = StringSubstr(responseStr, msgPos, endPos - msgPos);
+            if(msg != "") {
+               SendNotification(msg);
+               Print("ZoyaEdge Push Notification envoyée: ", msg);
+            }
+         }
+      }
+   }
 }
 `;
   } else {
@@ -1908,6 +2046,34 @@ void SyncData() {
       else Print("ZoyaEdge Error: ", res, " - Ticket: ", ticket, " - ", CharArrayToString(result));
    }
    if(synced > 0) Print("ZoyaEdge Success: ", synced, " deals synchronisés.");
+   
+   // Heartbeat & Push Notifications
+   string hb_json = "{";
+   hb_json += "\\"syncKey\\":\\"" + InpSyncKey + "\\",";
+   hb_json += "\\"action\\":\\"heartbeat\\",";
+   hb_json += "\\"platform\\":\\"MT5\\"";
+   hb_json += "}";
+   
+   char hb_post[], hb_result[];
+   string hb_headers = "Content-Type: application/json\\r\\n";
+   StringToCharArray(hb_json, hb_post, 0, WHOLE_ARRAY, CP_UTF8);
+   string hb_res_headers;
+   int hb_res = WebRequest("POST", InpWebhookURL, hb_headers, 5000, hb_post, hb_result, hb_res_headers);
+   if(hb_res >= 200 && hb_res < 300) {
+      string responseStr = CharArrayToString(hb_result);
+      int msgPos = StringFind(responseStr, "\\"pushMessage\\":\\"");
+      if(msgPos >= 0) {
+         msgPos += 15;
+         int endPos = StringFind(responseStr, "\\"", msgPos);
+         if(endPos > msgPos) {
+            string msg = StringSubstr(responseStr, msgPos, endPos - msgPos);
+            if(msg != "") {
+               SendNotification(msg);
+               Print("ZoyaEdge Push Notification envoyée: ", msg);
+            }
+         }
+      }
+   }
 }
 `;
   }
@@ -2123,6 +2289,11 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    if (process.env.GEMINI_API_KEY) {
+      console.log(`[AI] GEMINI_API_KEY is configured.`);
+    } else {
+      console.warn(`[AI] WARNING: GEMINI_API_KEY is not configured! AI features will not work.`);
+    }
   });
 }
 

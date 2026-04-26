@@ -24,6 +24,7 @@ export default function AdminSettings() {
   useEffect(() => {
     if (!profile) return;
 
+    const PRIMARY_EMAIL = import.meta.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL?.toLowerCase();
     const unsubscribe = onSnapshot(doc(db, 'app_settings', 'global'), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
@@ -31,7 +32,7 @@ export default function AdminSettings() {
           maintenanceMode: data.maintenanceMode || false,
           aiModel: data.aiModel || 'gemini-1.5-pro',
           defaultCredits: data.defaultCredits || 10,
-          superAdmins: data.superAdmins || ['kongolmandf@gmail.com'],
+          superAdmins: data.superAdmins || [PRIMARY_EMAIL],
           updatedAt: data.updatedAt
         } as AppSettings);
       } else {
@@ -40,7 +41,7 @@ export default function AdminSettings() {
           maintenanceMode: false,
           aiModel: 'gemini-1.5-pro',
           defaultCredits: 10,
-          superAdmins: ['kongolmandf@gmail.com'],
+          superAdmins: [PRIMARY_EMAIL],
           updatedAt: serverTimestamp()
         };
         setDoc(doc(db, 'app_settings', 'global'), defaultSettings);
@@ -76,46 +77,49 @@ export default function AdminSettings() {
   };
 
   const removeSuperAdmin = async (email: string) => {
-    if (!settings || email === 'kongolmandf@gmail.com') return;
-    const updated = settings.superAdmins.filter(e => e !== email);
+    const PRIMARY_EMAIL = import.meta.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL?.toLowerCase();
+    if (!settings || email.toLowerCase() === PRIMARY_EMAIL) return;
+    const updated = settings.superAdmins.filter(e => e.toLowerCase() !== email.toLowerCase());
     await handleUpdate('superAdmins', updated);
   };
 
   if (loading) return <div className="flex items-center justify-center h-64"><RefreshCw className="animate-spin text-zoya-red" /></div>;
 
+  const PRIMARY_EMAIL = import.meta.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL?.toLowerCase();
+
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-6 md:space-y-8 max-w-4xl pb-10">
       <div>
-        <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">Paramètres Système</h1>
-        <p className="text-gray-500 dark:text-gray-400">Contrôlez les options globales de l'application et de l'IA.</p>
+        <h1 className="text-2xl md:text-3xl font-poppins font-black text-gray-900 dark:text-white">Paramètres Système</h1>
+        <p className="text-sm md:text-base text-gray-500 dark:text-gray-400">Contrôlez les options globales de l'application et de l'IA.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         {/* Super Admins Management */}
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-6 md:col-span-2">
+        <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-[32px] md:rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-6 md:col-span-2">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 rounded-2xl flex items-center justify-center text-amber-600">
-              <ShieldCheck size={24} />
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-amber-50 dark:bg-amber-900/20 rounded-xl md:rounded-2xl flex items-center justify-center text-amber-600">
+              <ShieldCheck size={20} />
             </div>
-            <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white">Super Administrateurs (Secours)</h2>
+            <h2 className="text-lg md:text-xl font-poppins font-black text-gray-900 dark:text-white">Super Administrateurs</h2>
           </div>
 
           <div className="space-y-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Seuls ces comptes peuvent se connecter via Google. Les autres administrateurs/agents doivent utiliser Email/Mot de passe.
+            <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
+              Seuls ces comptes peuvent se connecter via Google.
             </p>
             
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="email"
                 placeholder="email@exemple.com"
                 value={newSuperAdmin}
                 onChange={(e) => setNewSuperAdmin(e.target.value)}
-                className="flex-1 bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
+                className="flex-1 bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 font-bold text-sm md:text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
               />
               <button
                 onClick={addSuperAdmin}
-                className="px-6 py-3 bg-zoya-red text-white rounded-2xl font-bold hover:bg-zoya-red/90 transition-all"
+                className="w-full sm:w-auto px-6 py-3 bg-zoya-red text-white rounded-xl md:rounded-2xl font-black text-xs md:text-sm uppercase tracking-widest hover:bg-zoya-red/90 transition-all"
               >
                 Ajouter
               </button>
@@ -125,7 +129,7 @@ export default function AdminSettings() {
               {settings?.superAdmins?.map((email) => (
                 <div key={email} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-700">
                   <span className="text-sm font-bold text-gray-700 dark:text-gray-300 truncate mr-2">{email}</span>
-                  {email !== 'kongolmandf@gmail.com' && (
+                  {email.toLowerCase() !== PRIMARY_EMAIL && (
                     <button
                       onClick={() => removeSuperAdmin(email)}
                       className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-all"
@@ -140,57 +144,57 @@ export default function AdminSettings() {
         </div>
 
         {/* AI Control */}
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-6">
+        <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-[32px] md:rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-6">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl flex items-center justify-center text-indigo-600">
-              <Cpu size={24} />
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl md:rounded-2xl flex items-center justify-center text-indigo-600">
+              <Cpu size={20} />
             </div>
-            <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white">Contrôle de l'IA</h2>
+            <h2 className="text-lg md:text-xl font-poppins font-black text-gray-900 dark:text-white">Contrôle de l'IA</h2>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Modèle Actif</label>
+              <label className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Modèle Actif</label>
               <select
                 value={settings?.aiModel}
                 onChange={(e) => handleUpdate('aiModel', e.target.value)}
-                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
+                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 font-bold text-sm md:text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
               >
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro (Expert)</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Rapide)</option>
-                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Experimental)</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
               </select>
             </div>
 
             <div>
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Crédits par Défaut (Nouveaux Users)</label>
+              <label className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Crédits (New Users)</label>
               <div className="flex items-center gap-4">
                 <input
                   type="number"
                   value={settings?.defaultCredits}
                   onChange={(e) => handleUpdate('defaultCredits', parseInt(e.target.value))}
-                  className="flex-1 bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
+                  className="flex-1 bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 font-bold text-sm md:text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
                 />
-                <CreditCard className="text-gray-400" />
+                <CreditCard className="text-gray-400 shrink-0" size={20} />
               </div>
             </div>
           </div>
         </div>
 
         {/* Global Security / Status */}
-        <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-6">
+        <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-[32px] md:rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-6">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-rose-50 dark:bg-rose-900/20 rounded-2xl flex items-center justify-center text-rose-600">
-              <ShieldCheck size={24} />
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-rose-50 dark:bg-rose-900/20 rounded-xl md:rounded-2xl flex items-center justify-center text-rose-600">
+              <ShieldCheck size={20} />
             </div>
-            <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white">Sécurité Globale</h2>
+            <h2 className="text-lg md:text-xl font-poppins font-black text-gray-900 dark:text-white">Sécurité Globale</h2>
           </div>
 
           <div className="space-y-6">
-            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl">
-              <div>
-                <p className="font-bold text-gray-900 dark:text-white">Mode Maintenance</p>
-                <p className="text-xs text-gray-500">Bloque l'accès aux utilisateurs. Super Admin, Admins et Agents autorisés conservent l'accès.</p>
+            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900/50 rounded-2xl">
+              <div className="flex-1 mr-4">
+                <p className="font-bold text-sm md:text-base text-gray-900 dark:text-white">Mode Maintenance</p>
+                <p className="text-[10px] md:text-xs text-gray-500 leading-tight">Bloque l'accès aux utilisateurs normaux.</p>
               </div>
               <button
                 onClick={() => handleUpdate('maintenanceMode', !settings?.maintenanceMode)}

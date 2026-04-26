@@ -19,6 +19,8 @@ import { useUserTrades } from '../../hooks/useUserTrades';
 
 import { useTheme } from '../../lib/theme';
 
+import { COUNTRIES } from '../../lib/countries';
+
 export default function Onboarding() {
   const { user, updateProfile, profile, logout, refreshProfile } = useAuth();
   const { t } = useTranslation();
@@ -57,6 +59,8 @@ export default function Onboarding() {
     experienceLevel: 'beginner' as const,
     capitalSize: '1000',
     currency: 'USD',
+    country: '',
+    phone: '',
     defaultRisk: 1,
     defaultLotSize: 0.1,
     assetTypes: [] as string[]
@@ -70,6 +74,8 @@ export default function Onboarding() {
         tradingStyle: profile.tradingStyle || prev.tradingStyle,
         experienceLevel: profile.experienceLevel || prev.experienceLevel,
         capitalSize: profile.capitalSize || prev.capitalSize,
+        country: profile.country || prev.country,
+        phone: profile.phone || prev.phone,
         assetTypes: profile.assetTypes || prev.assetTypes
       }));
       if (profile.onboardingState) {
@@ -156,21 +162,38 @@ export default function Onboarding() {
       console.log("Finalizing onboarding for user:", user?.uid);
       
       const idToken = await user?.getIdToken();
+      const payload = {
+        tradingStyle: formData.tradingStyle,
+        experienceLevel: formData.experienceLevel,
+        capitalSize: formData.capitalSize,
+        currency: formData.currency,
+        country: formData.country,
+        phone: formData.phone,
+        defaultRisk: formData.defaultRisk,
+        defaultLotSize: formData.defaultLotSize,
+        assetTypes: formData.assetTypes,
+      };
+
+      console.log("Sending onboarding data:", payload);
+
       const resp = await fetch('/api/auth/complete-onboarding', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-        body: JSON.stringify({
-          tradingStyle: formData.tradingStyle,
-          experienceLevel: formData.experienceLevel,
-          capitalSize: formData.capitalSize,
-          currency: formData.currency,
-          defaultRisk: formData.defaultRisk,
-          defaultLotSize: formData.defaultLotSize,
-          assetTypes: formData.assetTypes,
-        })
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${idToken}` 
+        },
+        body: JSON.stringify(payload)
       });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'Erreur de finalisation');
+
+      const contentType = resp.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Erreur de finalisation');
+      } else {
+        const text = await resp.text();
+        console.error("SERVER RETURNED NON-JSON RESPONSE:", text.substring(0, 500));
+        throw new Error("Le serveur a renvoyé une réponse invalide (HTML). Veuillez réessayer ou contacter le support.");
+      }
       
       await refreshProfile();
       
@@ -199,7 +222,7 @@ export default function Onboarding() {
 
   const canContinue = useMemo(() => {
     if (onboardingState.step === 'PROFILE') {
-      if (profileSubStep === 1) return formData.tradingStyle && formData.capitalSize;
+      if (profileSubStep === 1) return formData.tradingStyle && formData.capitalSize && formData.country && formData.phone;
       if (profileSubStep === 2) return formData.assetTypes.length > 0;
     }
     if (onboardingState.step === 'ADD_TRADES') {
@@ -291,6 +314,32 @@ export default function Onboarding() {
                         placeholder="Ex: 10000"
                         className="w-full px-4 py-2.5 md:px-6 md:py-4 rounded-xl bg-gray-50 dark:bg-gray-800 border-none text-base md:text-xl font-poppins font-black text-gray-900 dark:text-white focus:ring-1 focus:ring-zoya-red transition-all"
                       />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-gray-400">Pays</label>
+                        <select
+                          value={formData.country}
+                          onChange={e => setFormData({ ...formData, country: e.target.value })}
+                          className="w-full px-4 py-2.5 md:px-6 md:py-4 rounded-xl bg-gray-50 dark:bg-gray-800 border-none font-bold text-xs md:text-base text-gray-900 dark:text-white focus:ring-1 focus:ring-zoya-red transition-all appearance-none"
+                        >
+                          <option value="">Sélectionner le pays...</option>
+                          {COUNTRIES.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-gray-400">Téléphone (WhatsApp recommandé)</label>
+                        <input
+                          type="tel"
+                          value={formData.phone}
+                          onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                          placeholder="+243..."
+                          className="w-full px-4 py-2.5 md:px-6 md:py-4 rounded-xl bg-gray-50 dark:bg-gray-800 border-none font-bold text-xs md:text-base text-gray-900 dark:text-white focus:ring-1 focus:ring-zoya-red transition-all"
+                        />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4">

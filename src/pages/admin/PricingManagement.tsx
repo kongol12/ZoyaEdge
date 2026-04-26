@@ -100,30 +100,30 @@ export default function PricingManagement() {
   if (loading) return <div className="flex items-center justify-center h-64"><RefreshCw className="animate-spin text-zoya-red" /></div>;
 
   return (
-    <div className="space-y-8 max-w-5xl">
+    <div className="space-y-6 md:space-y-8 max-w-5xl pb-10">
        <div>
-        <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">Tarification & Finance</h1>
-        <p className="text-gray-500 dark:text-gray-400">Gérez les prix des abonnements, les taux de change et les passerelles de paiement.</p>
+        <h1 className="text-2xl md:text-3xl font-poppins font-black text-gray-900 dark:text-white">Tarification & Finance</h1>
+        <p className="text-sm md:text-base text-gray-500 dark:text-gray-400">Gérez les prix, les taux de change et les paiements.</p>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-8">
+      <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-[32px] md:rounded-3xl border border-gray-100 dark:border-gray-700 shadow-lg space-y-6 md:space-y-8">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl flex items-center justify-center text-emerald-600">
-            <CreditCard size={24} />
+          <div className="w-10 h-10 md:w-12 md:h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl md:rounded-2xl flex items-center justify-center text-emerald-600">
+            <CreditCard size={20} />
           </div>
-          <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white">Grille Tarifaire</h2>
+          <h2 className="text-lg md:text-xl font-poppins font-black text-gray-900 dark:text-white">Grille Tarifaire</h2>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Taux et Réduction */}
-          <div className="lg:col-span-1 space-y-4">
+          <div className="md:col-span-2 lg:col-span-1 space-y-4">
             <div>
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Taux de Change (1 USD en CDF)</label>
+              <label className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Taux de Change (1 USD en CDF)</label>
               <input
                 type="number"
                 value={settings?.exchangeRate || 2800}
                 onChange={(e) => setSettings({ ...settings, exchangeRate: parseFloat(e.target.value) } as AppSettings)}
-                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
+                className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 font-bold text-sm md:text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
               />
             </div>
 
@@ -192,46 +192,46 @@ export default function PricingManagement() {
             </div>
           </div>
 
-          <div className="p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white mb-6">Préfixes Opérateurs (Séparés par des virgules)</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 lg:col-span-3 p-6 bg-white dark:bg-gray-800 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700">
+            <h2 className="text-lg font-poppins font-black text-gray-900 dark:text-white mb-6">Préfixes Opérateurs</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">M-Pesa</label>
+                <label className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">M-Pesa</label>
                 <input
                   type="text"
                   value={settings?.mpesaPrefixes || ''}
                   onChange={(e) => setSettings({ ...settings, mpesaPrefixes: e.target.value } as AppSettings)}
-                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
-                  placeholder="Ex: 81, 82, 83"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 font-bold text-sm md:text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
+                  placeholder="Ex: 81, 82"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Orange Money</label>
+                <label className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Orange Money</label>
                 <input
                   type="text"
                   value={settings?.orangePrefixes || ''}
                   onChange={(e) => setSettings({ ...settings, orangePrefixes: e.target.value } as AppSettings)}
-                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
-                  placeholder="Ex: 89, 84, 85"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 font-bold text-sm md:text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
+                  placeholder="Ex: 89, 84"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Airtel Money</label>
+                <label className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Airtel Money</label>
                 <input
                   type="text"
                   value={settings?.airtelPrefixes || ''}
                   onChange={(e) => setSettings({ ...settings, airtelPrefixes: e.target.value } as AppSettings)}
-                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
-                  placeholder="Ex: 97, 98, 99"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 font-bold text-sm md:text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red transition-all"
+                  placeholder="Ex: 97, 98"
                 />
               </div>
             </div>
           </div>
 
           {[
-            { id: 'discovery', label: 'DISCOVERY', color: 'bg-emerald-500' },
-            { id: 'pro', label: 'Plan PRO', color: 'bg-blue-500' },
-            { id: 'premium', label: 'PREMIUM', color: 'bg-amber-500' }
+            { id: 'discovery', label: 'Discovery', color: 'bg-emerald-500' },
+            { id: 'pro', label: 'Zoya Pro', color: 'bg-blue-500' },
+            { id: 'premium', label: 'Zoya Premium', color: 'bg-amber-500' }
           ].map((plan) => (
             <div key={plan.id} className="p-6 bg-gray-50 dark:bg-gray-900 rounded-3xl space-y-6 border border-gray-100 dark:border-gray-800">
               <h3 className="font-poppins font-black text-gray-900 dark:text-white text-sm uppercase tracking-wider flex items-center gap-2">
@@ -354,13 +354,13 @@ export default function PricingManagement() {
           </div>
         </div>
 
-        <div className="flex justify-end pt-4">
+        <div className="flex flex-col sm:flex-row justify-end pt-4">
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50"
+            className="w-full sm:w-auto px-8 py-4 bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50"
           >
-            <Save size={18} /> {saving ? "Enregistrement..." : "Enregistrer la Tarification"}
+            <Save size={18} /> {saving ? "Enregistrement..." : "Enregistrer"}
           </button>
         </div>
       </div>

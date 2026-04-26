@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { X, Shield, CreditCard, User as UserIcon, Mail, Crown, Save, Trash2, AlertTriangle, Send, Bell, Coins, Zap, BarChart3, Gem, Clock, Bitcoin, Activity, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserProfile } from '../../lib/auth';
+import { UserProfile, useAuth } from '../../lib/auth';
 import { cn } from '../../lib/utils';
 import { Trade, subscribeToTrades, sendNotificationToUser } from '../../lib/db';
+import { auth } from '../../lib/firebase';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+import { COUNTRIES } from '../../lib/countries';
 
 interface UserDetailModalProps {
   user: UserProfile & { id: string };
@@ -17,16 +19,51 @@ interface UserDetailModalProps {
 }
 
 export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDelete }: UserDetailModalProps) {
+  const { isSuperAdmin } = useAuth();
   const [activeTab, setActiveTab] = useState<'profile' | 'trades' | 'notif'>('profile');
   const [formData, setFormData] = useState({
     displayName: user.displayName || '',
     email: user.email || '',
     role: user.role || 'user',
     subscription: user.subscription || 'free',
+    subscriptionStatus: user.subscriptionStatus || 'active',
     aiCredits: user.aiCredits || 0,
     bypassMaintenance: user.bypassMaintenance || false,
+    country: user.country || '',
+    phone: user.phone || '',
+    capitalSize: user.capitalSize || '0',
+    tradingStyle: user.tradingStyle || '',
+    experienceLevel: user.experienceLevel || 'beginner'
   });
   const [saving, setSaving] = useState(false);
+  const [isPrimary, setIsPrimary] = useState(false);
+
+  React.useEffect(() => {
+    const checkPrimary = async () => {
+      const PRIMARY_EMAIL = import.meta.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL?.toLowerCase();
+      const currentEmail = auth.currentUser?.email?.toLowerCase();
+      setIsPrimary(currentEmail === PRIMARY_EMAIL);
+    };
+    checkPrimary();
+  }, []);
+
+  React.useEffect(() => {
+    setFormData({
+      displayName: user.displayName || '',
+      email: user.email || '',
+      role: user.role || 'user',
+      subscription: user.subscription || 'free',
+      subscriptionStatus: user.subscriptionStatus || 'active',
+      aiCredits: user.aiCredits || 0,
+      bypassMaintenance: user.bypassMaintenance || false,
+      country: user.country || '',
+      phone: user.phone || '',
+      capitalSize: user.capitalSize || '0',
+      tradingStyle: user.tradingStyle || '',
+      experienceLevel: user.experienceLevel || 'beginner'
+    });
+  }, [user]);
+
   const [notifData, setNotifData] = useState({
     title: '',
     message: '',
@@ -88,31 +125,31 @@ export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDel
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-2xl bg-white dark:bg-gray-800 rounded-[40px] shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700 my-8"
+            className="relative w-full max-w-2xl bg-white dark:bg-gray-800 rounded-[32px] md:rounded-[40px] shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700 my-auto flex flex-col h-[95vh] md:h-auto md:max-h-[85vh] lg:max-h-[90vh]"
           >
-            <div className="p-8 space-y-8">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-3xl flex items-center justify-center text-gray-400">
-                    <UserIcon size={32} />
+            <div className="p-5 md:p-8 flex flex-col flex-1 overflow-hidden">
+              <div className="flex justify-between items-center mb-6 md:mb-8 shrink-0">
+                <div className="flex items-center gap-3 md:gap-4">
+                  <div className="w-10 h-10 md:w-14 md:h-14 bg-gray-100 dark:bg-gray-700 rounded-xl md:rounded-2xl flex items-center justify-center text-gray-400 shrink-0">
+                    <UserIcon size={20} />
                   </div>
-                  <div>
-                    <h2 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Gérer le Profil</h2>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">ID: {user.id}</p>
+                  <div className="min-w-0">
+                    <h2 className="text-lg md:text-2xl font-poppins font-black text-gray-900 dark:text-white truncate">Profile Management</h2>
+                    <p className="text-[10px] md:text-xs font-mono text-gray-400 truncate uppercase mt-0.5">{user.email}</p>
                   </div>
                 </div>
-                <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-2xl transition-colors">
-                  <X size={24} className="text-gray-400" />
+                <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
+                  <X size={20} className="text-gray-400" />
                 </button>
               </div>
 
-              <div className="flex gap-1 bg-gray-100 dark:bg-gray-900/50 p-1 rounded-2xl">
+              <div className="flex gap-1 bg-gray-100 dark:bg-gray-900/50 p-1 rounded-2xl mb-6 md:mb-8 shrink-0 overflow-x-auto no-scrollbar">
                 {(['profile', 'trades', 'notif'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
                     className={cn(
-                      "flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all",
+                      "flex-1 min-w-[80px] py-2 text-[10px] md:text-xs font-black uppercase tracking-widest rounded-xl transition-all",
                       activeTab === tab 
                         ? "bg-white dark:bg-gray-800 text-zoya-red shadow-sm" 
                         : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
@@ -123,206 +160,224 @@ export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDel
                 ))}
               </div>
 
-              <div className="space-y-8">
+              <div className="flex-1 overflow-y-auto pr-1 md:pr-2 custom-scrollbar">
+                <div className="pb-6">
                 {activeTab === 'profile' && (
-                  <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Basic Info */}
-                    <div className="space-y-4">
-                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        <UserIcon size={14} /> Informations de Base
-                      </h3>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Nom d'affichage</label>
-                        <input
-                          type="text"
-                          value={formData.displayName}
-                          onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-                          className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Email</label>
-                        <input
-                          type="email"
-                          value={formData.email}
-                          disabled
-                          className="w-full bg-gray-100 dark:bg-gray-900/50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-gray-400 cursor-not-allowed"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Security & Access */}
-                    <div className="space-y-4">
-                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        <Shield size={14} /> Sécurité & Accès
-                      </h3>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Rôle Système</label>
-                        <select
-                          value={formData.role}
-                          onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
-                          className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
-                        >
-                          <option value="user">Client Standard</option>
-                          <option value="agent">Agent Support</option>
-                          <option value="admin">Administrateur</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Plan d'Abonnement</label>
-                        <select
-                          value={formData.subscription}
-                          onChange={(e) => setFormData({ ...formData, subscription: e.target.value as any })}
-                          className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
-                        >
-                          <option value="free">Free Plan</option>
-                          <option value="pro">Pro Plan</option>
-                          <option value="premium">Premium Plan</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* AI Credits */}
-                    <div className="md:col-span-2 space-y-4">
-                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        <CreditCard size={14} /> Gestion des Crédits AI
-                      </h3>
-                      <div className="flex items-center gap-4 bg-gray-50 dark:bg-gray-900 p-4 rounded-3xl">
-                        <div className="flex-1">
-                          <p className="text-sm font-bold text-gray-900 dark:text-white">Crédits Disponibles</p>
-                          <p className="text-xs text-gray-500">Ces crédits permettent d'utiliser l'AI Coach.</p>
+                  <form id="user-profile-form" onSubmit={handleSubmit} className="space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                      {/* Basic Info */}
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                          <UserIcon size={14} className="text-zoya-red" /> Identité & Contact
+                        </h3>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Nom complet</label>
+                            <input
+                              type="text"
+                              value={formData.displayName}
+                              onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
+                              className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                              placeholder="Nom du client"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Numéro de téléphone</label>
+                            <input
+                              type="text"
+                              value={formData.phone}
+                              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                              className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                              placeholder="+243..."
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Pays / Zone</label>
+                            <select
+                              value={formData.country}
+                              onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                              className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red appearance-none"
+                            >
+                              <option value="">Sélectionner...</option>
+                              {COUNTRIES.map(c => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
-                        <input
-                          type="number"
-                          value={formData.aiCredits}
-                          onChange={(e) => setFormData({ ...formData, aiCredits: parseInt(e.target.value) })}
-                          className="w-32 bg-white dark:bg-gray-800 border-none rounded-2xl px-4 py-3 text-center font-black text-lg text-zoya-red outline-none focus:ring-2 focus:ring-zoya-red"
-                        />
                       </div>
-                    </div>
 
-                    {/* Preferences & Markets */}
-                    <div className="md:col-span-2 space-y-4">
-                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                        <Activity size={14} /> Préférences & Marchés
-                      </h3>
-                      <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-3xl space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                           <div className="p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
-                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Capital</p>
-                             <p className="text-lg font-black dark:text-white">{user.capitalSize || '0'} $</p>
-                           </div>
-                           <div className="p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
-                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Style</p>
-                             <p className="text-lg font-black dark:text-white">{user.tradingStyle || 'N/A'}</p>
-                           </div>
-                           <div className="p-4 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700">
-                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Expérience</p>
-                             <p className="text-lg font-black dark:text-white capitalize">{user.experienceLevel || 'N/A'}</p>
-                           </div>
-                        </div>
-
-                        <div className="space-y-3">
-                           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Marchés Sélectionnés</p>
-                           <div className="flex flex-wrap gap-2">
-                              {user.assetTypes && user.assetTypes.length > 0 ? (
-                                user.assetTypes.map(asset => {
-                                  let Icon = Coins;
-                                  if (asset === 'synthetic') Icon = Zap;
-                                  if (asset === 'indices') Icon = BarChart3;
-                                  if (asset === 'commodities') Icon = Gem;
-                                  if (asset === 'futures') Icon = Clock;
-                                  if (asset === 'crypto') Icon = Bitcoin;
-                                  
-                                  return (
-                                    <div key={asset} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-                                      <Icon size={14} className="text-zoya-red" />
-                                      <span className="text-xs font-bold capitalize">{asset}</span>
-                                    </div>
-                                  );
-                                })
-                              ) : (
-                                <p className="text-xs text-gray-500 italic">Aucun marché sélectionné</p>
-                              )}
-                           </div>
-                        </div>
-
-                        {user.subscriptionStatus === 'trialing' && (
-                          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-2xl flex items-center gap-3">
-                             <AlertTriangle size={20} className="text-amber-500" />
+                      {/* Control Panel */}
+                      <div className="space-y-4">
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                          <Shield size={14} className="text-zoya-red" /> Control Panel
+                        </h3>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Rôle Système</label>
+                            <select
+                              value={formData.role}
+                              disabled={!isPrimary}
+                              onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                              className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red uppercase tracking-widest disabled:opacity-50"
+                            >
+                              <option value="user">Client (Standard)</option>
+                              <option value="agent">Support (Agent)</option>
+                              <option value="admin">Admin (Full access)</option>
+                            </select>
+                            {!isPrimary && (
+                              <p className="text-[8px] text-rose-500 font-black mt-1 uppercase tracking-widest ml-2">Modification du rôle réservée au Super Admin</p>
+                            )}
+                          </div>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                              <div>
-                                <p className="text-xs font-black text-amber-700 dark:text-amber-500 uppercase tracking-widest">En Période d'Essai (7 Jours)</p>
-                                <p className="text-[10px] text-amber-600 dark:text-amber-400">Expire le {user.subscriptionEndDate ? format(user.subscriptionEndDate.toDate ? user.subscriptionEndDate.toDate() : new Date(user.subscriptionEndDate), 'dd MMMM yyyy', { locale: fr }) : 'N/A'}</p>
+                               <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Niveau</label>
+                               <select
+                                 value={formData.subscription}
+                                 onChange={(e) => setFormData({ ...formData, subscription: e.target.value as any })}
+                                 className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-3 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-zoya-red"
+                               >
+                                 <option value="free">Free Account</option>
+                                 <option value="discovery">Discovery</option>
+                                 <option value="pro">Zoya Pro</option>
+                                 <option value="premium">Zoya Premium</option>
+                               </select>
+                             </div>
+                             <div>
+                               <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block">Status</label>
+                               <select
+                                 value={formData.subscriptionStatus}
+                                 onChange={(e) => setFormData({ ...formData, subscriptionStatus: e.target.value as any })}
+                                 className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-3 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-zoya-red"
+                               >
+                                 <option value="active">Compte Actif</option>
+                                 <option value="suspended">Compte Suspendu</option>
+                                 <option value=" ट्रायलing">Trial Mode</option>
+                                 <option value="inactive">Inactif</option>
+                               </select>
                              </div>
                           </div>
-                        )}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="md:col-span-2 flex justify-end gap-3">
-                      <button
-                        type="submit"
-                        disabled={saving}
-                        className="flex items-center gap-2 px-8 py-3 bg-zoya-red text-white rounded-2xl font-poppins font-black text-sm hover:bg-zoya-red/90 transition-all shadow-lg shadow-zoya-red/20 disabled:opacity-50"
-                      >
-                        {saving ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
-                        Enregistrer les modifications
-                      </button>
+                    {/* AI Credits Section */}
+                    <div className="space-y-4">
+                      <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                        <Coins size={14} className="text-zoya-red" /> AI Engine Credits
+                      </h3>
+                      <div className="bg-gray-50 dark:bg-gray-900 p-4 md:p-6 rounded-[24px] md:rounded-[32px] flex flex-col sm:flex-row items-center gap-4">
+                        <div className="flex-1 text-center sm:text-left">
+                          <p className="text-sm font-black text-gray-900 dark:text-white">Crédits AI Coach</p>
+                          <p className="text-[10px] text-gray-500 font-bold">Ajustez manuellement le quota de l'utilisateur.</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button 
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, aiCredits: Math.max(0, prev.aiCredits - 10) }))}
+                            className="w-10 h-10 flex items-center justify-center bg-white dark:bg-gray-800 rounded-xl shadow-sm text-gray-400 hover:text-rose-500 font-black"
+                          >
+                            -10
+                          </button>
+                          <input
+                            type="number"
+                            value={formData.aiCredits}
+                            onChange={(e) => setFormData({ ...formData, aiCredits: parseInt(e.target.value) || 0 })}
+                            className="w-24 bg-white dark:bg-gray-800 border-2 border-transparent focus:border-zoya-red rounded-xl px-4 py-3 text-center font-poppins font-black text-lg text-zoya-red outline-none"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, aiCredits: prev.aiCredits + 10 }))}
+                            className="w-10 h-10 flex items-center justify-center bg-white dark:bg-gray-800 rounded-xl shadow-sm text-gray-400 hover:text-emerald-500 font-black"
+                          >
+                            +10
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Advanced Settings */}
+                    <div className="space-y-4">
+                       <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                         <BarChart3 size={14} className="text-zoya-red" /> Paramètres de Trading
+                       </h3>
+                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-2">Capital ($)</label>
+                            <input
+                              type="text"
+                              value={formData.capitalSize}
+                              onChange={(e) => setFormData({ ...formData, capitalSize: e.target.value })}
+                              className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl px-4 py-3 text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-zoya-red"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-2">Style</label>
+                            <input
+                              type="text"
+                              value={formData.tradingStyle}
+                              onChange={(e) => setFormData({ ...formData, tradingStyle: e.target.value })}
+                              className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                              placeholder="Scalping / Day"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-2">Niveau</label>
+                            <select
+                              value={formData.experienceLevel}
+                              onChange={(e) => setFormData({ ...formData, experienceLevel: e.target.value as any })}
+                              className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl px-4 py-3 text-xs font-bold outline-none focus:ring-2 focus:ring-zoya-red uppercase tracking-widest"
+                            >
+                              <option value="beginner">Débutant</option>
+                              <option value="intermediate">Intermédiaire</option>
+                              <option value="expert">Expert</option>
+                            </select>
+                          </div>
+                       </div>
                     </div>
                   </form>
                 )}
 
                 {activeTab === 'trades' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Historique des Trades (Admin View)</h3>
-                      <span className="text-[10px] font-bold text-zoya-red bg-zoya-red/10 px-2 py-0.5 rounded-full">
-                        {trades.length} trades au total
-                      </span>
+                  <div className="space-y-6">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Audit des Performances</h3>
+                      <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-1 rounded-full">
+                         <Activity size={12} className="text-indigo-600" />
+                         <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{trades.length} Opérations</span>
+                      </div>
                     </div>
                     
-                    <div className="max-h-[400px] overflow-y-auto rounded-3xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                    <div className="space-y-3">
                       {trades.length > 0 ? (
-                        <table className="w-full text-left">
-                          <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 text-[10px] font-black uppercase text-gray-400">
-                            <tr>
-                              <th className="px-4 py-3">Paire</th>
-                              <th className="px-4 py-3">Date</th>
-                              <th className="px-4 py-3">PnL</th>
-                              <th className="px-4 py-3">Masqué ?</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                            {trades.map(t => (
-                              <tr key={t.id} className="text-xs hover:bg-white dark:hover:bg-gray-800 transition-colors">
-                                <td className="px-4 py-3 font-bold text-gray-900 dark:text-white uppercase">{t.pair}</td>
-                                <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                                  {format(t.date, 'dd/MM/yy HH:mm')}
-                                </td>
-                                <td className={cn(
-                                  "px-4 py-3 font-bold",
-                                  t.pnl >= 0 ? "text-emerald-500" : "text-rose-500"
-                                )}>
-                                  {t.pnl >= 0 ? '+' : ''}{t.pnl}$
-                                </td>
-                                <td className="px-4 py-3">
-                                  {t.hiddenByClient ? (
-                                    <span className="px-1.5 py-0.5 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-md font-bold text-[9px] uppercase tracking-tighter">
-                                      OUI
-                                    </span>
-                                  ) : (
-                                    <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-md font-bold text-[9px] uppercase tracking-tighter">
-                                      NON
-                                    </span>
+                        trades.map(t => (
+                          <div key={t.id} className="bg-gray-50 dark:bg-gray-900 p-4 rounded-2xl border border-gray-100 dark:border-gray-800 flex justify-between items-center group">
+                            <div className="min-w-0">
+                               <div className="flex items-center gap-2">
+                                  <p className="font-poppins font-black text-gray-900 dark:text-white uppercase truncate">{t.pair}</p>
+                                  {t.hiddenByClient && (
+                                    <span className="text-[8px] font-black bg-rose-100 text-rose-500 px-1.5 py-0.5 rounded-md uppercase tracking-widest">Hidden</span>
                                   )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                               </div>
+                               <p className="text-[10px] font-bold text-gray-400 mt-0.5">
+                                 {format(t.date, 'dd MMM yyyy • HH:mm')}
+                               </p>
+                            </div>
+                            <div className="text-right">
+                               <p className={cn(
+                                 "font-poppins font-black text-sm",
+                                 t.pnl >= 0 ? "text-emerald-500" : "text-rose-500"
+                               )}>
+                                 {t.pnl >= 0 ? '+' : ''}{t.pnl}$
+                               </p>
+                               <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{t.direction}</p>
+                            </div>
+                          </div>
+                        ))
                       ) : (
-                        <div className="p-12 text-center text-gray-400 italic">
-                          Aucun trade trouvé pour cet utilisateur.
+                        <div className="py-12 text-center text-gray-400 font-bold italic text-sm">
+                          Aucun trade trouvé pour ce profil.
                         </div>
                       )}
                     </div>
@@ -330,82 +385,103 @@ export default function UserDetailModal({ user, isOpen, onClose, onUpdate, onDel
                 )}
 
                 {activeTab === 'notif' && (
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                      <Bell size={14} /> Envoyer une Notification Directe
-                    </h3>
-                    <div className="bg-gray-50 dark:bg-gray-900 p-6 rounded-[32px] space-y-4">
+                  <div className="space-y-6">
+                    <div className="text-center md:text-left space-y-1">
+                      <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center justify-center md:justify-start gap-2">
+                        <Send size={14} className="text-zoya-red" /> Notification Directe
+                      </h3>
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Envoyez un message système à cet utilisateur.</p>
+                    </div>
+
+                    <div className="bg-gray-50 dark:bg-gray-900 p-5 md:p-8 rounded-[32px] space-y-5 border border-gray-100 dark:border-gray-800">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Titre</label>
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-2">Objet du Message</label>
                           <input
                             type="text"
-                            placeholder="Ex: Alerte de Trading"
+                            placeholder="Titre de l'alerte"
                             value={notifData.title}
                             onChange={(e) => setNotifData({ ...notifData, title: e.target.value })}
-                            className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                            className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
                           />
                         </div>
-                        <div>
-                          <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Type</label>
+                        <div className="space-y-1.5">
+                          <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-2">Sévérité</label>
                           <select
                             value={notifData.type}
                             onChange={(e) => setNotifData({ ...notifData, type: e.target.value as any })}
-                            className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red"
+                            className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-3 text-xs font-black uppercase tracking-widest outline-none focus:ring-2 focus:ring-zoya-red"
                           >
-                            <option value="info">Information</option>
-                            <option value="success">Succès</option>
-                            <option value="warning">Avertissement</option>
-                            <option value="error">Erreur</option>
+                            <option value="info">Info (Bleu)</option>
+                            <option value="success">Ok (Vert)</option>
+                            <option value="warning">Warn (Orange)</option>
+                            <option value="error">Panic (Rouge)</option>
                           </select>
                         </div>
                       </div>
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Message</label>
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest px-2">Message</label>
                         <textarea
-                          placeholder="Votre message ici..."
-                          rows={3}
+                          placeholder="Contenu de la notification..."
+                          rows={4}
                           value={notifData.message}
                           onChange={(e) => setNotifData({ ...notifData, message: e.target.value })}
-                          className="w-full bg-white dark:bg-gray-800 border-none rounded-xl px-4 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red resize-none"
+                          className="w-full bg-white dark:bg-gray-800 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-zoya-red resize-none"
                         />
                       </div>
                       <button
                         type="button"
                         onClick={handleSendNotif}
                         disabled={sendingNotif || !notifData.title || !notifData.message}
-                        className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all disabled:opacity-50"
+                        className="w-full flex items-center justify-center gap-3 py-4 bg-zoya-red text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:opacity-90 transition-all disabled:opacity-50 shadow-lg shadow-zoya-red/20"
                       >
                         {sendingNotif ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
-                        Envoyer la Notification
+                        Transmettre l'Alerte
                       </button>
                     </div>
                   </div>
                 )}
-
-                <div className="flex items-center justify-between pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible.")) {
-                        onDelete(user.id);
-                        onClose();
-                      }
-                    }}
-                    className="flex items-center gap-2 text-rose-500 font-bold text-sm hover:bg-rose-50 dark:hover:bg-rose-900/20 px-4 py-2 rounded-xl transition-all"
-                  >
-                    <Trash2 size={18} /> Supprimer l'utilisateur
-                  </button>
-                  
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-6 py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-2xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
-                  >
-                    Fermer
-                  </button>
-                </div>
               </div>
+            </div>
+          </div>
+
+          <div className="p-5 md:p-8 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 shrink-0">
+               <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                 <button
+                   type="button"
+                   onClick={() => {
+                     if (confirm("Supprimer ce profil définitivement ?")) {
+                       onDelete(user.id);
+                       onClose();
+                     }
+                   }}
+                   className="w-full md:w-auto flex items-center justify-center gap-2 text-rose-500 font-black uppercase text-[10px] tracking-widest hover:bg-rose-50 dark:hover:bg-rose-900/20 px-4 py-3 rounded-xl transition-all"
+                 >
+                   <Trash2 size={16} /> Delete Identity
+                 </button>
+                 
+                 <div className="flex items-center gap-3 w-full md:w-auto">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="flex-1 md:flex-none px-6 py-4 md:py-3 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
+                    >
+                      Fermer
+                    </button>
+                    
+                    {activeTab === 'profile' && (
+                      <button
+                        type="submit"
+                        form="user-profile-form"
+                        disabled={saving}
+                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-8 py-4 md:py-3 bg-zoya-red text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-zoya-red/90 transition-all shadow-lg shadow-zoya-red/20 disabled:opacity-50 min-w-[140px]"
+                      >
+                        {saving ? <RefreshCw className="animate-spin text-white" size={16} /> : <Save size={16} />}
+                        Save Audit
+                      </button>
+                    )}
+                 </div>
+               </div>
             </div>
           </motion.div>
         </div>

@@ -5,6 +5,7 @@ import { cn } from '../../../lib/utils';
 import { useAuth } from '../../../lib/auth';
 import { db } from '../../../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { COUNTRIES } from '../../../lib/countries';
 
 interface ZoyaPayCheckoutProps {
   isOpen: boolean;
@@ -473,11 +474,10 @@ export default function ZoyaPayCheckout({
                           onChange={(e) => setFormData({...formData, country: e.target.value})}
                           className="w-full pl-12 pr-4 py-3 bg-gray-50 dark:bg-gray-800 border-none rounded-2xl font-bold text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red appearance-none"
                         >
-                          <option>DR Congo</option>
-                          <option>Congo Brazzaville</option>
-                          <option>France</option>
-                          <option>Belgique</option>
-                          <option>USA</option>
+                          <option value="">Sélectionner...</option>
+                          {COUNTRIES.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
                         </select>
                       </div>
                     </div>

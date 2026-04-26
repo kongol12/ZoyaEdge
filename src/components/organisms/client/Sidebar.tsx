@@ -98,7 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, classNa
         { name: t.common.support, path: '/support', icon: LifeBuoy },
       ]
     },
-    ...(profile?.role === 'admin' || profile?.role === 'agent' || profile?.email === 'kongolmandf@gmail.com' ? [{
+    ...(profile?.role === 'admin' || profile?.role === 'agent' || profile?.email?.toLowerCase() === import.meta.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL?.toLowerCase() ? [{
       title: "Administration",
       items: [
         { name: "Console Admin", path: '/admin', icon: ShieldCheck },

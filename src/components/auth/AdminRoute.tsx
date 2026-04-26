@@ -17,7 +17,7 @@ export default function AdminRoute({ requiredRole = 'agent' }: { requiredRole?: 
   const isAuthorized = 
     profile?.role === 'admin' || 
     (requiredRole === 'agent' && profile?.role === 'agent') ||
-    profile?.email === 'kongolmandf@gmail.com'; // Emergency fallback for the owner
+    profile?.email?.toLowerCase() === import.meta.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL?.toLowerCase(); // Emergency fallback for the owner
 
   if (!isAuthorized) {
     return <Navigate to="/" replace />;

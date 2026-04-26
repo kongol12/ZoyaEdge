@@ -19,6 +19,9 @@ export default function CreateUserModal({ isOpen, onClose, onCreated }: CreateUs
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const PRIMARY_ADMIN = import.meta.env.VITE_PRIMARY_SUPER_ADMIN_EMAIL?.toLowerCase();
+  const isPrimary = auth.currentUser?.email?.toLowerCase() === PRIMARY_ADMIN;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -30,13 +33,19 @@ export default function CreateUserModal({ isOpen, onClose, onCreated }: CreateUs
       if (!currentUser) throw new Error("Vous devez être connecté pour effectuer cette action.");
       
       const token = await currentUser.getIdToken(true); // Force refresh
+      const submissionData = {
+        ...formData,
+        role: formData.role === 'super_admin_emergency' ? 'admin' : formData.role,
+        isEmergencyAdmin: formData.role === 'super_admin_emergency'
+      };
+
       const response = await fetch('/api/admin/users/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(submissionData)
       });
 
       const data = await response.json();
@@ -144,6 +153,9 @@ export default function CreateUserModal({ isOpen, onClose, onCreated }: CreateUs
                       <option value="user">Client Standard</option>
                       <option value="agent">Agent Support</option>
                       <option value="admin">Administrateur</option>
+                      {isPrimary && (
+                        <option value="super_admin_emergency">Admin de Secours (Limitée)</option>
+                      )}
                     </select>
                   </div>
                 </div>

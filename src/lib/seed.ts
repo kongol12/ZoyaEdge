@@ -47,14 +47,15 @@ export async function seedMockTransactions(count: number = 20) {
 
 export async function seedMockTrades(count: number = 50) {
   const usersSnapshot = await getDocs(query(collection(db, 'users'), limit(5)));
-  const users = usersSnapshot.docs.map(doc => doc.id);
+  const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   
   if (users.length === 0) throw new Error("Aucun utilisateur trouvé pour le seeding.");
 
   const now = new Date();
 
   for (let i = 0; i < count; i++) {
-    const userId = users[Math.floor(Math.random() * users.length)];
+    const user = users[Math.floor(Math.random() * users.length)] as any;
+    const userId = user.id;
     const tradesRef = collection(db, 'users', userId, 'trades');
     
     const date = new Date();
@@ -64,6 +65,8 @@ export async function seedMockTrades(count: number = 50) {
 
     await addDoc(tradesRef, {
       userId,
+      userName: user.displayName || user.name || user.email?.split('@')[0] || "Client Démo",
+      userEmail: user.email || "demo@zoya.com",
       pair: PAIRS[Math.floor(Math.random() * PAIRS.length)],
       direction: Math.random() > 0.5 ? 'buy' : 'sell',
       entryPrice: 1.1234 + Math.random() * 0.1,

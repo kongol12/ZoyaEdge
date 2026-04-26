@@ -104,7 +104,7 @@ export default function Subscription() {
     },
     {
       id: 'pro',
-      name: 'Pro',
+      name: 'Zoya Pro',
       description: '7 jours d\'essai offerts. Pour les traders actifs qui veulent performer.',
       monthlyPriceUSD: dynamicPricing.proMonthlyUSD,
       yearlyPriceUSD: dynamicPricing.proYearlyUSD,
@@ -128,7 +128,7 @@ export default function Subscription() {
     },
     {
       id: 'premium',
-      name: 'Elite',
+      name: 'Zoya Premium',
       description: 'L\'arsenal complet pour les professionnels et prop-firms.',
       monthlyPriceUSD: dynamicPricing.premiumMonthlyUSD,
       yearlyPriceUSD: dynamicPricing.premiumYearlyUSD,

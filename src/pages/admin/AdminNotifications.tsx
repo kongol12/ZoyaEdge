@@ -83,24 +83,24 @@ export default function AdminNotifications() {
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">Centre de Notifications</h1>
-          <p className="text-gray-500 dark:text-gray-400">Alertes système et notifications administratives en temps réel.</p>
+    <div className="space-y-6 md:space-y-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div className="w-full md:w-auto">
+          <h1 className="text-2xl md:text-3xl font-poppins font-black text-gray-900 dark:text-white">Centre de Notifications</h1>
+          <p className="text-sm md:text-base text-gray-500 dark:text-gray-400">Alertes système et notifications administratives en temps réel.</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 w-full md:w-auto">
           <button
             onClick={() => setShowBroadcast(!showBroadcast)}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-3 rounded-2xl shadow-lg shadow-indigo-600/20 font-poppins font-black text-sm hover:bg-indigo-700 transition-all"
+            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-3 rounded-2xl shadow-lg shadow-indigo-600/20 font-poppins font-black text-xs md:text-sm hover:bg-indigo-700 transition-all"
           >
-            <Megaphone size={18} />
-            Diffusion Globale
+            <Megaphone size={16} />
+            <span className="truncate">Diffusion Globale</span>
           </button>
-          <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center gap-2">
-            <Bell size={18} className="text-zoya-red" />
-            <span className="text-sm font-bold text-gray-900 dark:text-white">
-              {notifications.filter(n => !n.read).length} Non lues
+          <div className="flex-1 md:flex-none bg-white dark:bg-gray-800 px-4 py-3 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center justify-center gap-2">
+            <Bell size={16} className="text-zoya-red shrink-0" />
+            <span className="text-xs md:text-sm font-bold text-gray-900 dark:text-white whitespace-nowrap">
+              {notifications.filter(n => !n.read).length} <span className="hidden sm:inline">Non lues</span><span className="sm:hidden">Lues</span>
             </span>
           </div>
         </div>
@@ -112,11 +112,11 @@ export default function AdminNotifications() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="bg-white dark:bg-gray-800 p-8 rounded-[40px] border border-indigo-100 dark:border-indigo-900/20 shadow-2xl space-y-6"
+            className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-[32px] md:rounded-[40px] border border-indigo-100 dark:border-indigo-900/20 shadow-2xl space-y-6"
           >
             <div className="flex items-center gap-3 text-indigo-600">
-              <Megaphone size={24} />
-              <h2 className="text-xl font-poppins font-black">Envoyer un message à TOUS les utilisateurs</h2>
+              <Megaphone size={20} />
+              <h2 className="text-lg md:text-xl font-poppins font-black">Diffusion de message</h2>
             </div>
             <form onSubmit={handleBroadcast} className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
@@ -154,18 +154,18 @@ export default function AdminNotifications() {
                   className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-2xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
                 />
               </div>
-              <div className="md:col-span-2 flex justify-end gap-3">
+              <div className="md:col-span-2 flex flex-col sm:flex-row justify-end gap-3 mt-4">
                 <button
                   type="button"
                   onClick={() => setShowBroadcast(false)}
-                  className="px-6 py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-2xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
+                  className="w-full sm:w-auto px-6 py-3.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-2xl font-bold text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-all"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={sending}
-                  className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white rounded-2xl font-poppins font-black text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3.5 bg-indigo-600 text-white rounded-2xl font-poppins font-black text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50"
                 >
                   {sending ? <RefreshCw className="animate-spin" size={18} /> : <Send size={18} />}
                   Diffuser le message
@@ -186,32 +186,32 @@ export default function AdminNotifications() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
               className={cn(
-                "bg-white dark:bg-gray-800 p-6 rounded-3xl border shadow-lg flex items-center gap-6 transition-all",
+                "bg-white dark:bg-gray-800 p-4 md:p-6 rounded-[24px] md:rounded-3xl border shadow-lg flex items-start md:items-center gap-4 md:gap-6 transition-all",
                 notif.read ? "border-gray-100 dark:border-gray-700 opacity-75" : "border-zoya-red/20 dark:border-zoya-red/30 ring-1 ring-zoya-red/5"
               )}
             >
-              <div className="w-12 h-12 rounded-2xl bg-gray-50 dark:bg-gray-900 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-gray-50 dark:bg-gray-900 flex items-center justify-center shrink-0">
                 {getIcon(notif.type)}
               </div>
 
-              <div className="flex-1">
-                <h3 className={cn("font-poppins font-black text-gray-900 dark:text-white", notif.read ? "opacity-70" : "")}>
+              <div className="flex-1 min-w-0">
+                <h3 className={cn("text-sm md:text-base font-poppins font-black text-gray-900 dark:text-white truncate", notif.read ? "opacity-70" : "")}>
                   {notif.title}
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{notif.message}</p>
-                <p className="text-[10px] font-bold text-gray-400 uppercase mt-2">
+                <p className="text-xs md:text-sm text-gray-500 dark:text-gray-400 line-clamp-2 md:line-clamp-none">{notif.message}</p>
+                <p className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase mt-2">
                   {format(notif.createdAt?.toDate() || new Date(), 'dd MMM, HH:mm:ss')}
                 </p>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col md:flex-row gap-1 md:gap-2 justify-center">
                 {!notif.read && (
                   <button
                     onClick={() => markAsRead(notif.id)}
                     className="p-2 text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all"
                     title="Marquer comme lu"
                   >
-                    <Check size={20} />
+                    <Check size={18} />
                   </button>
                 )}
                 <button
@@ -219,7 +219,7 @@ export default function AdminNotifications() {
                   className="p-2 text-gray-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all"
                   title="Supprimer"
                 >
-                  <Trash2 size={20} />
+                  <Trash2 size={18} />
                 </button>
               </div>
             </motion.div>

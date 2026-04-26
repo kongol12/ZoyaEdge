@@ -7,11 +7,10 @@ import { ClientLayout } from './components/templates/client/ClientLayout';
 import { AdminLayout } from './components/templates/admin/AdminLayout';
 import { db } from './lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Mail } from 'lucide-react';
 
 // Client Pages
 import Auth from './pages/Auth';
-import ActivityAdmin from './pages/admin/ActivityAdmin';
 
 // Existing imports remain as they are below
 import Dashboard from './pages/client/Dashboard';
@@ -45,8 +44,9 @@ import AdminRoute from './components/auth/AdminRoute';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import UserManagement from './pages/admin/UserManagement';
 import ClientManagement from './pages/admin/ClientManagement';
+import EAManagement from './pages/admin/EAManagement';
 import SystemReports from './pages/admin/SystemReports';
-import AdminLogs from './pages/admin/AdminLogs';
+import SystemLogs from './pages/admin/SystemLogs';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminSettings from './pages/admin/AdminSettings';
 import PricingManagement from './pages/admin/PricingManagement';
@@ -74,6 +74,36 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <LoadingScreen />;
   }
   if (!user) return <Navigate to="/home" replace />;
+
+  // Email verification check
+  if (!user.emailVerified && window.location.pathname !== '/onboarding' && window.location.pathname !== '/home') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 p-8 text-center">
+        <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-3xl flex items-center justify-center text-emerald-600 mb-6">
+          <Mail size={40} />
+        </div>
+        <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white mb-2 uppercase italic">Vérifiez votre email.</h1>
+        <p className="text-gray-500 dark:text-gray-400 max-w-md mb-8">
+          Un lien de validation a été envoyé à <strong>{user.email}</strong>. 
+          Veuillez cliquer sur ce lien pour activer votre accès complet à ZoyaEdge.
+        </p>
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-4 bg-zoya-red text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-zoya-red/20"
+          >
+            J'ai vérifié mon email
+          </button>
+          <button 
+            onClick={() => auth.signOut()}
+            className="px-6 py-3 bg-gray-200 dark:bg-gray-800 rounded-2xl font-bold text-gray-700 dark:text-gray-300"
+          >
+            Se déconnecter
+          </button>
+        </div>
+      </div>
+    );
+  }
   
   // Redirect to onboarding if not completed
   if (profile && !profile.onboarded && window.location.pathname !== '/onboarding') {
@@ -83,10 +113,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+import { useActivityTracker } from './hooks/useActivityTracker';
+
 function AppRoutes() {
   const [isSuper, setIsSuper] = React.useState(false);
   const { user, profile, loading, isSuperAdmin } = useAuth();
   const [maintenance, setMaintenance] = React.useState(false);
+
+  // Activate activity tracking
+  useActivityTracker();
 
   React.useEffect(() => {
     const checkSuper = async () => {
@@ -203,16 +238,15 @@ function AppRoutes() {
           <Route path="/admin/finance" element={<FinanceManagement />} />
           <Route path="/admin/pricing" element={<PricingManagement />} />
           <Route path="/admin/transactions" element={<Transactions />} />
-          <Route path="/admin/activities" element={<ActivityAdmin />} />
           <Route path="/admin/trade-reports" element={<TradeReporting />} />
           <Route path="/admin/subscription-reports" element={<SubscriptionReports />} />
           <Route path="/admin/clients" element={<ClientManagement />} />
           <Route path="/admin/users" element={<UserManagement />} />
-          <Route path="/admin/connections" element={<div className="p-8">Gestion des Connexions EA (Global)</div>} />
+          <Route path="/admin/connections" element={<EAManagement />} />
           <Route path="/admin/reports" element={<SystemReports />} />
           <Route path="/admin/notifications" element={<AdminNotifications />} />
           <Route path="/admin/ai" element={<div className="p-8 text-white">Monitoring IA (Connection en cours...)</div>} />
-          <Route path="/admin/logs" element={<AdminLogs />} />
+          <Route path="/admin/logs" element={<SystemLogs />} />
           <Route path="/admin/settings" element={<AdminSettings />} />
         </Route>
       </Route>

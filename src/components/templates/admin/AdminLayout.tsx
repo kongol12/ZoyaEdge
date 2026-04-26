@@ -63,7 +63,11 @@ export const AdminLayout: React.FC = () => {
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               className="fixed left-0 top-0 bottom-0 w-[288px] bg-white dark:bg-gray-900 z-50 md:hidden shadow-2xl"
             >
-              <AdminSidebar isCollapsed={false} onToggle={() => setIsMobileMenuOpen(false)} />
+              <AdminSidebar 
+                isCollapsed={false} 
+                onToggle={() => setIsMobileMenuOpen(false)} 
+                onItemClick={() => setIsMobileMenuOpen(false)}
+              />
             </motion.div>
           </>
         )}
