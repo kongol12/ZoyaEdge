@@ -84,7 +84,7 @@ export interface Trade {
 
   // Métadonnées de trade
   strategy?: string;
-  emotion?: '😐' | '😰' | '🔥';
+  emotion?: '😐' | '🔥' | '😰' | '🧠' | '🤩' | '🤑' | '😤';
   session?: 'London' | 'NY' | 'Asia' | 'other';
   date: Date;
   createdAt?: Date;
@@ -120,6 +120,7 @@ export interface NotebookEntry {
   userId: string;
   date: Date;
   content: string;
+  emotion?: '😐' | '🔥' | '😰' | '🧠' | '🤩' | '🤑' | '😤';
   imageUrl?: string;
   createdAt?: Date;
 }
@@ -423,33 +424,33 @@ export const sendGlobalNotification = async (notif: Omit<Notification, 'id' | 'c
   }
 };
 
-export const softDeleteAllTrades = async (userId: string) => {
-  const path = `users/${userId}/trades (soft-delete-all)`;
+export const hardDeleteAllTrades = async (userId: string) => {
+  const path = `users/${userId}/trades (delete-all)`;
   try {
     const tradesRef = collection(db, 'users', userId, 'trades');
     const snapshot = await getDocs(tradesRef);
     const batch = writeBatch(db);
     snapshot.docs.forEach((doc) => {
-      batch.update(doc.ref, { hiddenByClient: true, updatedAt: serverTimestamp() });
+      batch.delete(doc.ref);
     });
     await batch.commit();
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
+    handleFirestoreError(error, OperationType.DELETE, path);
     throw error;
   }
 };
 
-export const softDeleteTrades = async (userId: string, tradeIds: string[]) => {
-  const path = `users/${userId}/trades (soft-delete-batch)`;
+export const hardDeleteTrades = async (userId: string, tradeIds: string[]) => {
+  const path = `users/${userId}/trades (delete-batch)`;
   try {
     const batch = writeBatch(db);
     tradeIds.forEach((id) => {
       const tradeRef = doc(db, 'users', userId, 'trades', id);
-      batch.update(tradeRef, { hiddenByClient: true, updatedAt: serverTimestamp() });
+      batch.delete(tradeRef);
     });
     await batch.commit();
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
+    handleFirestoreError(error, OperationType.DELETE, path);
     throw error;
   }
 };

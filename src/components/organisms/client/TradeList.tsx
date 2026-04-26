@@ -33,6 +33,16 @@ export default function TradeList({ trades, onTradeClick }: { trades: Trade[], o
       : 'bg-rose-50 dark:bg-rose-900/30 text-zoya-red';
   };
 
+  const emotionLabels: Record<string, string> = {
+    '😐': 'Neutre',
+    '🔥': 'Confiance',
+    '😰': 'Peur',
+    '🧠': 'Concentration',
+    '🤩': 'Excitation',
+    '🤑': 'Avidité',
+    '😤': 'Frustration'
+  };
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-6 p-0 md:p-6">
       {trades.map((trade, idx) => {
@@ -64,7 +74,7 @@ export default function TradeList({ trades, onTradeClick }: { trades: Trade[], o
                   </span>
                 </div>
               </div>
-              <span className="text-2xl" title="Emotion">{trade.emotion}</span>
+              <span className="text-2xl" title={trade.emotion ? emotionLabels[trade.emotion] : 'Emotion'}>{trade.emotion}</span>
             </div>
 
             <div className="space-y-3">

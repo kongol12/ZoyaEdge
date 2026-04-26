@@ -25,7 +25,7 @@ export const StatCard: React.FC<StatCardProps> = ({ title, value, icon, trend, c
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
       className={cn(
-        'p-5 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-md hover:shadow-xl transition-all duration-300 group',
+        'p-4 lg:p-5 bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-md hover:shadow-xl transition-all duration-300 group',
         className
       )}
     >

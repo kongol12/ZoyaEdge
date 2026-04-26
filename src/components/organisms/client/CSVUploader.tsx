@@ -9,6 +9,8 @@ import * as XLSX from 'xlsx';
 import { UploadCloud, AlertCircle, CheckCircle2, ChevronLeft } from 'lucide-react';
 import { useTranslation } from '../../../lib/i18n';
 import { cn } from '../../../lib/utils';
+import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../../../lib/firebase';
 
 type Platform = 'MT4' | 'MT5' | 'TradeLocker' | 'CTrader' | 'TradingView' | 'Tradovate' | 'NinjaTrader';
 
@@ -371,7 +373,6 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
       pnl: netPnl,
       type,
       strategy: type === 'trade' ? `Import ${platform}` : 'Balance Movement',
-      emotion: '😐',
       session: 'other',
       date,
       platform,
@@ -434,21 +435,63 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
         throw new Error(t.dashboard.emptyFile || "Le fichier est vide ou invalide.");
       }
 
-      const trades: Omit<Trade, 'id' | 'userId' | 'createdAt'>[] = [];
+      // Fetch existing trades to prevent duplicates
+      const existingTradesSnapshot = await getDocs(collection(db, 'users', user.uid, 'trades'));
+      
+      const generateTradeSignature = (t: any) => {
+        if (t.positionId) {
+          return `pos_${String(t.positionId).trim()}`;
+        }
+        
+        let timeMs = 0;
+        if (t.date && typeof t.date.toDate === 'function') {
+          timeMs = t.date.toDate().getTime();
+        } else if (t.date instanceof Date) {
+          timeMs = t.date.getTime();
+        } else if (t.date) {
+          timeMs = new Date(t.date).getTime();
+        }
+        
+        // Use 1 minute precision to tolerate slight parsing differences in timestamps
+        const timeKey = Math.floor(timeMs / 60000);
+        
+        if (t.type !== 'trade') {
+           return `mov_${t.type}_${Number(t.pnl).toFixed(2)}_${timeKey}`;
+        }
+        
+        return `trade_${t.pair}_${t.direction}_${Number(t.entryPrice).toFixed(5)}_${Number(t.lotSize).toFixed(2)}_${timeKey}`;
+      };
+
+      const existingSignatures = new Set<string>();
+      existingTradesSnapshot.forEach(doc => {
+        existingSignatures.add(generateTradeSignature(doc.data()));
+      });
+
+      const uniqueTrades: Omit<Trade, 'id' | 'userId' | 'createdAt'>[] = [];
+      const skippedCount = { val: 0 };
 
       for (const row of rawData) {
         const tradeData = extractTradeData(row, selectedPlatform);
         if (tradeData && tradeData.pair !== 'UNKNOWN') {
-          trades.push(tradeData as Omit<Trade, 'id' | 'userId' | 'createdAt'>);
+           const sig = generateTradeSignature(tradeData);
+           if (!existingSignatures.has(sig)) {
+             existingSignatures.add(sig); // deduplicate within the file too!
+             uniqueTrades.push(tradeData as Omit<Trade, 'id' | 'userId' | 'createdAt'>);
+           } else {
+             skippedCount.val++;
+           }
         }
       }
 
-      if (trades.length === 0) {
+      if (uniqueTrades.length === 0) {
+        if (skippedCount.val > 0) {
+           throw new Error(`Tous les ${skippedCount.val} éléments de ce fichier existent déjà. Importation ignorée pour éviter les doublons.`);
+        }
         throw new Error(t.dashboard.noValidTrades || "Aucun trade valide trouvé dans ce fichier.");
       }
 
-      await importTrades(user.uid, trades);
-      setSuccess(`${trades.length} trades importés avec succès !`);
+      await importTrades(user.uid, uniqueTrades);
+      setSuccess(`${uniqueTrades.length} éléments importés ! ${skippedCount.val > 0 ? `(${skippedCount.val} doublons ignorés)` : ''}`);
       
       if (onSuccess) {
         setTimeout(onSuccess, 1500);
@@ -566,9 +609,77 @@ export default function CSVUploader({ onSuccess }: { onSuccess?: () => void }) {
       </label>
       
       <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-700">
-        <p className="text-xs text-gray-400 dark:text-gray-500">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
           Les données importées seront automatiquement analysées et ajoutées à vos statistiques ZoyaEdge.
         </p>
+        <button
+          onClick={async () => {
+            if (!user) return;
+            setLoading(true);
+            setError(null);
+            setSuccess(null);
+            try {
+              const tradesRef = collection(db, 'users', user.uid, 'trades');
+              const snapshot = await getDocs(tradesRef);
+              
+              const signatures = new Set<string>();
+              const toDelete: string[] = [];
+        
+              const generateTradeSignature = (t: any) => {
+                if (t.positionId) {
+                  return `pos_${String(t.positionId).trim()}`;
+                }
+                
+                let timeMs = 0;
+                if (t.date && typeof t.date.toDate === 'function') {
+                  timeMs = t.date.toDate().getTime();
+                } else if (t.date instanceof Date) {
+                  timeMs = t.date.getTime();
+                } else if (t.date) {
+                  timeMs = new Date(t.date).getTime();
+                }
+                
+                const timeKey = Math.floor(timeMs / 60000);
+                
+                if (t.type !== 'trade') {
+                   return `mov_${t.type}_${Number(t.pnl).toFixed(2)}_${timeKey}`;
+                }
+                
+                return `trade_${t.pair}_${t.direction}_${Number(t.entryPrice).toFixed(5)}_${Number(t.lotSize).toFixed(2)}_${timeKey}`;
+              };
+        
+              snapshot.forEach(d => {
+                const data = d.data();
+                const sig = generateTradeSignature(data);
+                if (signatures.has(sig)) {
+                  toDelete.push(d.id);
+                } else {
+                  signatures.add(sig);
+                }
+              });
+        
+              if (toDelete.length > 0) {
+                let count = 0;
+                for (const id of toDelete) {
+                   await deleteDoc(doc(db, 'users', user.uid, 'trades', id));
+                   count++;
+                }
+                setSuccess(`${count} doublons nettoyés avec succès.`);
+              } else {
+                setSuccess("Aucun doublon détecté.");
+              }
+        
+            } catch (err: any) {
+              setError(err.message || "Erreur lors du nettoyage.");
+            } finally {
+              setLoading(false);
+            }
+          }}
+          disabled={loading}
+          className="text-xs font-semibold text-gray-500 hover:text-zoya-red transition-colors underline decoration-dotted"
+        >
+          Nettoyer les données existantes (Supprimer les doublons)
+        </button>
       </div>
     </div>
   );

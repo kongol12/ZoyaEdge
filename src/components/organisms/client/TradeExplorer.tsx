@@ -16,10 +16,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTranslation } from '../../../lib/i18n';
-import TradeList from './TradeList';
 import { useAuth } from '../../../lib/auth';
 
-type ViewMode = 'list' | 'table' | 'calendar';
+type ViewMode = 'table' | 'calendar';
 
 interface TradeExplorerProps {
   trades: Trade[];
@@ -28,7 +27,7 @@ interface TradeExplorerProps {
   onTradeClick?: (trade: Trade) => void;
 }
 
-export default function TradeExplorer({ trades, notebookEntries = [], defaultView = 'list', onTradeClick }: TradeExplorerProps) {
+export default function TradeExplorer({ trades, notebookEntries = [], defaultView = 'calendar', onTradeClick }: TradeExplorerProps) {
   const { t, language } = useTranslation();
   const { profile } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
@@ -200,6 +199,16 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
     );
   };
 
+  const emotionLabels: Record<string, string> = {
+    '😐': 'Neutre',
+    '🔥': 'Confiance',
+    '😰': 'Peur',
+    '🧠': 'Concentration',
+    '🤩': 'Excitation',
+    '🤑': 'Avidité',
+    '😤': 'Frustration'
+  };
+
   const renderTable = () => (
     <div className="bg-white dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700 overflow-hidden shadow-lg">
       <div className="overflow-x-auto">
@@ -208,6 +217,7 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
             <tr className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-100 dark:border-gray-700">
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Asset</th>
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
+              <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Emotion</th>
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Lots</th>
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">R:R</th>
               <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Pips</th>
@@ -238,6 +248,9 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
                      trade.direction}
                   </span>
                 </td>
+                <td className="px-6 py-4 text-lg" title={trade.emotion ? emotionLabels[trade.emotion] : undefined}>
+                  {trade.emotion || '-'}
+                </td>
                 <td className="px-6 py-4 text-xs font-bold text-gray-600 dark:text-gray-400">
                   {(!trade.type || trade.type === 'trade') ? trade.lotSize : '-'}
                 </td>
@@ -254,8 +267,11 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
                   {formatCurrency(trade.pnl)}
                 </td>
                 <td className="px-6 py-4 text-xs font-medium text-gray-500">{trade.session}</td>
-                <td className="px-6 py-4 text-xs text-gray-400">
+                <td className="px-6 py-4 text-xs font-bold text-gray-500">
                   {format(trade.date, 'dd/MM/yyyy')}
+                  {notebookByDay[format(trade.date, 'yyyy-MM-dd')] && (
+                    <BookOpen size={12} className="inline ml-2 text-zoya-red" title="Journée journalisée" />
+                  )}
                 </td>
               </tr>
             ))}
@@ -282,14 +298,14 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
 
         <div className="flex items-center gap-2 p-1.5 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm w-fit">
           <button 
-            onClick={() => setViewMode('list')}
+            onClick={() => setViewMode('calendar')}
             className={cn(
               "p-2 rounded-xl transition-all duration-300",
-              viewMode === 'list' ? "bg-zoya-red text-white shadow-lg shadow-zoya-red/20" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              viewMode === 'calendar' ? "bg-zoya-red text-white shadow-lg shadow-zoya-red/20" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
             )}
-            title="List View"
+            title="Calendar View"
           >
-            <List size={20} />
+            <CalendarIcon size={20} />
           </button>
           <button 
             onClick={() => setViewMode('table')}
@@ -300,16 +316,6 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
             title="Table View"
           >
             <TableIcon size={20} />
-          </button>
-          <button 
-            onClick={() => setViewMode('calendar')}
-            className={cn(
-              "p-2 rounded-xl transition-all duration-300",
-              viewMode === 'calendar' ? "bg-zoya-red text-white shadow-lg shadow-zoya-red/20" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-            )}
-            title="Calendar View"
-          >
-            <CalendarIcon size={20} />
           </button>
         </div>
       </div>
@@ -341,9 +347,8 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {viewMode === 'list' && <TradeList trades={filteredData} onTradeClick={onTradeClick} />}
-          {viewMode === 'table' && renderTable()}
           {viewMode === 'calendar' && renderCalendar()}
+          {viewMode === 'table' && renderTable()}
         </motion.div>
       </AnimatePresence>
 

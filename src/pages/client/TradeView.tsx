@@ -73,8 +73,8 @@ export default function TradeView() {
   const avgRatio = summary.avgRR;
 
   return (
-    <div className="w-full space-y-8 pb-12">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="w-full space-y-2 pb-12">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-2">
         <div>
           <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white">
             {language === 'fr' ? 'Vue des Trades' : 'Trade View'}
@@ -110,7 +110,7 @@ export default function TradeView() {
       </header>
 
       {/* Top Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Net Cumulative P&L */}
         <PnlVolumeChart 
           data={cumulativePnlData} 
@@ -143,7 +143,7 @@ export default function TradeView() {
 
       {/* Trade History Table */}
       <div className="zoya-card overflow-hidden">
-        <div className="p-6 border-b border-gray-100 dark:border-gray-800">
+        <div className="p-2 border-b border-gray-100 dark:border-gray-800">
           <h2 className="text-xl font-poppins font-black text-gray-900 dark:text-white">Historique détaillé</h2>
         </div>
         <div className="overflow-x-auto">

@@ -32,7 +32,7 @@ export default function TradeForm({ onSuccess }: { onSuccess?: () => void }) {
     lotSize: '',
     pnl: '',
     strategy: 'Breakout',
-    emotion: '😐' as '😐' | '😰' | '🔥',
+    emotion: '' as '😐' | '🔥' | '😰' | '🧠' | '🤩' | '🤑' | '😤' | '',
     session: 'London' as 'London' | 'NY' | 'Asia',
     date: new Date().toISOString().slice(0, 16),
   });
@@ -97,6 +97,10 @@ export default function TradeForm({ onSuccess }: { onSuccess?: () => void }) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    if (!formData.emotion) {
+      alert("Veuillez choisir un état émotionnel avant d'enregistrer.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -426,18 +430,29 @@ export default function TradeForm({ onSuccess }: { onSuccess?: () => void }) {
 
       <div className="space-y-2">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.dashboard.emotion}</label>
-        <div className="flex gap-4">
-          {(['😐', '😰', '🔥'] as const).map((emoji) => (
+        <div className="flex flex-wrap gap-2">
+          {[
+            { emoji: '😐', label: 'Neutre' },
+            { emoji: '🔥', label: 'Confiance' },
+            { emoji: '😰', label: 'Peur' },
+            { emoji: '🧠', label: 'Concentration' },
+            { emoji: '🤩', label: 'Excitation' },
+            { emoji: '🤑', label: 'Avidité' },
+            { emoji: '😤', label: 'Frustration' }
+          ].map((emo) => (
             <button
-              key={emoji}
+              key={emo.emoji}
               type="button"
-              onClick={() => setFormData({ ...formData, emotion: emoji })}
+              title={emo.label}
+              onClick={() => setFormData({ ...formData, emotion: emo.emoji as any })}
               className={cn(
-                "text-4xl p-4 rounded-2xl transition-all hover:scale-110",
-                formData.emotion === emoji ? "bg-gray-100 dark:bg-gray-900 ring-2 ring-zoya-red shadow-lg" : "bg-gray-50 dark:bg-gray-900/50 grayscale opacity-50"
+                "text-2xl p-3 rounded-2xl border transition-all hover:scale-110",
+                formData.emotion === emo.emoji
+                  ? "border-zoya-red bg-zoya-red/10 animate-pulse-soft"
+                  : "border-gray-100 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
               )}
             >
-              {emoji}
+              {emo.emoji}
             </button>
           ))}
         </div>

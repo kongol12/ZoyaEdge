@@ -69,11 +69,11 @@ export default function AICoachDashboard() {
     if (!metrics) return <div className="text-center py-12 text-gray-500">Exécutez l'analyse pour voir les données.</div>;
 
     return (
-      <div className="space-y-8">
+      <div className="space-y-2">
         {/* Bloc 1: Global Analysis */}
         <div>
-          <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Activity className="text-zoya-red" /> Analyse Globale</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><Activity className="text-zoya-red" /> Analyse Globale</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <MetricCard title="Total PnL" value={formatCurrency(metrics.totalPnL)} isPositive={metrics.totalPnL >= 0} infoText="Somme totale des profits et pertes." />
             <MetricCard title="Winrate" value={formatPercentage(metrics.winrate)} infoText="Pourcentage de trades gagnants." />
             <MetricCard title="Profit Factor" value={metrics.profitFactor.toFixed(2)} infoText="Ratio profits totaux / pertes totales." />
@@ -83,8 +83,8 @@ export default function AICoachDashboard() {
 
         {/* Bloc 2: Financial Performance */}
         <div>
-          <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><DollarSign className="text-emerald-500" /> Performance Financière</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><DollarSign className="text-emerald-500" /> Performance Financière</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             <MetricCard title="Avg Daily PnL" value={formatCurrency(metrics.daily.avgDayPnL)} isPositive={metrics.daily.avgDayPnL >= 0} />
             <MetricCard title="Best Day" value={formatCurrency(metrics.daily.bestDay)} isPositive={true} />
             <MetricCard title="Worst Day" value={formatCurrency(metrics.daily.worstDay)} isPositive={false} />
@@ -96,8 +96,8 @@ export default function AICoachDashboard() {
 
         {/* Bloc 3: Trade Statistics */}
         <div>
-          <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Target className="text-blue-500" /> Statistiques de Trades</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><Target className="text-blue-500" /> Statistiques de Trades</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             <MetricCard title="Wins" value={metrics.stats.wins} className="text-emerald-500" />
             <MetricCard title="Losses" value={metrics.stats.losses} className="text-rose-500" />
             <MetricCard title="Breakeven" value={metrics.stats.breakeven} />
@@ -109,8 +109,8 @@ export default function AICoachDashboard() {
 
         {/* Bloc 4: Time & Fees */}
         <div>
-          <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Clock className="text-purple-500" /> Temps & Frais</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><Clock className="text-purple-500" /> Temps & Frais</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             <MetricCard title="Avg Duration" value={`${metrics.time.avgDurationHours.toFixed(1)}h`} />
             <MetricCard title="Avg Win Duration" value={`${metrics.time.avgWinDurationHours.toFixed(1)}h`} />
             <MetricCard title="Avg Loss Duration" value={`${metrics.time.avgLossDurationHours.toFixed(1)}h`} />
@@ -153,8 +153,8 @@ export default function AICoachDashboard() {
     if (trades.length === 0) return <div className="text-center py-12 text-gray-500">Pas assez de données pour les graphiques.</div>;
 
     return (
-      <div className="space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="space-y-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
           <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
             <h4 className="text-sm font-bold mb-4">Equity Curve</h4>
             <div className="h-64">
@@ -224,6 +224,7 @@ export default function AICoachDashboard() {
       { subject: 'Winrate', A: metrics.winrate, fullMark: 100 },
       { subject: 'Avg RR', A: Math.min(metrics.avgRR * 25, 100), fullMark: 100 },
       { subject: 'Discipline', A: aiResponse.score.discipline, fullMark: 100 },
+      { subject: 'Psychologie', A: aiResponse.score.consistency, fullMark: 100 }, // Consistency can be a proxy if AI doesn't have a psych score
       { subject: 'Risk Control', A: Math.max(100 - (metrics.maxDrawdown / 100), 0), fullMark: 100 },
     ];
 
@@ -237,8 +238,8 @@ export default function AICoachDashboard() {
     };
 
     return (
-      <div className="space-y-8">
-        <div className={`p-6 rounded-2xl border-2 flex flex-col md:flex-row items-center gap-6 ${getDecisionColor(aiResponse.decision)}`}>
+      <div className="space-y-2">
+        <div className={`p-4 rounded-2xl border-2 flex flex-col md:flex-row items-center gap-6 ${getDecisionColor(aiResponse.decision)}`}>
           <div className="p-4 bg-white/50 dark:bg-black/20 rounded-full">
             {aiResponse.decision === 'GREEN' && <ShieldCheck size={48} />}
             {aiResponse.decision === 'ORANGE' && <Shield size={48} />}
@@ -254,10 +255,10 @@ export default function AICoachDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
-              <h3 className="text-lg font-bold mb-4 text-center">Radar de Performance</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+          <div className="lg:col-span-1 space-y-2">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+              <h3 className="text-lg font-bold mb-2 text-center">Radar de Performance</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
@@ -269,8 +270,8 @@ export default function AICoachDashboard() {
               </div>
             </div>
 
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-4">
-              <h3 className="text-lg font-bold mb-2">Niveaux d'Évaluation</h3>
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm space-y-2">
+              <h3 className="text-lg font-bold mb-1">Niveaux d'Évaluation</h3>
               {[
                 { label: 'Risk Score', value: aiResponse.score.risk },
                 { label: 'Discipline Score', value: aiResponse.score.discipline },
@@ -296,9 +297,9 @@ export default function AICoachDashboard() {
             </div>
           </div>
 
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Brain className="text-blue-500" /> Insights</h3>
+          <div className="lg:col-span-2 space-y-2">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+              <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><Brain className="text-blue-500" /> Insights</h3>
               <ul className="space-y-2">
                 {aiResponse.insights.map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -307,8 +308,8 @@ export default function AICoachDashboard() {
                 ))}
               </ul>
             </div>
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><AlertTriangle className="text-orange-500" /> Erreurs Détectées</h3>
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+              <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><AlertTriangle className="text-orange-500" /> Erreurs Détectées</h3>
               <ul className="space-y-2">
                 {aiResponse.mistakes.map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -317,8 +318,8 @@ export default function AICoachDashboard() {
                 ))}
               </ul>
             </div>
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Target className="text-emerald-500" /> Recommandations</h3>
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+              <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><Target className="text-emerald-500" /> Recommandations</h3>
               <ul className="space-y-2">
                 {aiResponse.recommendations.map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
@@ -334,8 +335,8 @@ export default function AICoachDashboard() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+    <div className="space-y-2">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-2 bg-white dark:bg-gray-800 p-2 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
         <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-xl">
           {(['ANALYSE', 'GRAPHS', 'RECOMMENDATIONS'] as const).map((tab) => (
             <button

@@ -15,7 +15,7 @@ import {
 
 const PAIRS = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'BTCUSD', 'ETHUSD'];
 const STRATEGIES = ['Breakout', 'Trend Follow', 'Scalping', 'SMC', 'ICT', 'Momentum'];
-const EMOTIONS = ['😐', '😰', '🔥'];
+const EMOTIONS = ['🤩', '😕', '🧠', '😰', '🤑', '😤', '😊', '😐', '🔥'];
 const SESSIONS = ['London', 'NY', 'Asia'];
 
 export async function seedMockTransactions(count: number = 20) {

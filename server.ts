@@ -198,7 +198,6 @@ app.post('/api/webhook/mt5', webhookLimiter, express.raw({ type: 'application/js
       pnl: Number(pnl || 0),
       ticket: ticket ? String(ticket) : null,
       strategy: "EA Sync",
-      emotion: "😐",
       session: "EA",
       type: 'trade',
       isDemo: false,

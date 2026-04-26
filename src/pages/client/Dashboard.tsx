@@ -117,7 +117,7 @@ export default function Dashboard() {
     }
   };
 
-  const zoyaScores = useMemo(() => calculateZoyaScores(trades), [trades]);
+  const zoyaScores = useMemo(() => calculateZoyaScores(trades, notebookEntries), [trades, notebookEntries]);
 
   useEffect(() => {
     if (!user) return;
@@ -282,10 +282,10 @@ export default function Dashboard() {
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="w-full space-y-6 pb-12"
+      className="w-full space-y-2 pb-12"
     >
       {/* Header & Quick Actions */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-2">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-2 pb-2">
         <div className="space-y-1">
           {hasHiddenTrades && (
             <motion.div 
@@ -421,12 +421,12 @@ export default function Dashboard() {
       </div>
 
       {/* Zoya Behavior Score Overlay */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
           <div className="lg:col-span-2 bg-gray-900 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 border border-gray-800 shadow-2xl overflow-hidden relative group">
               <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
                   <BrainCircuit size={120} />
               </div>
-              <div className="relative z-10 space-y-6">
+              <div className="relative z-10 space-y-2">
                   <div className="flex items-center gap-3">
                       <div className={cn(
                         "w-3 h-3 rounded-full animate-pulse",
@@ -450,7 +450,7 @@ export default function Dashboard() {
                              </span>
                           </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-8 flex-1">
+                      <div className="grid grid-cols-3 gap-2 flex-1">
                           {[
                             { label: 'Risk', val: zoyaScores.risk_score, color: 'text-rose-500' },
                             { label: 'Discipline', val: zoyaScores.discipline_score, color: 'text-amber-500' },
@@ -470,7 +470,7 @@ export default function Dashboard() {
           </div>
           
           <div className="bg-rose-500/10 border border-rose-500/20 rounded-3xl md:rounded-[2.5rem] p-6 md:p-8 flex flex-col justify-between pt-8 md:pt-8 min-h-[300px] md:min-h-0">
-              <div className="space-y-4">
+              <div className="space-y-2">
                   <div className="flex items-center gap-3 text-rose-500">
                       <AlertTriangle size={24} />
                       <span className="font-poppins font-black uppercase tracking-tight">System Pressure</span>
@@ -522,8 +522,8 @@ export default function Dashboard() {
       )}
 
       {/* Primary Analytics Section (Trade View Models for Harmony) */}
-      <section className="mb-8 md:mb-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <section className="mb-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
           <PnlVolumeChart 
             data={cumulativePnlData} 
             totalPnl={totalPnL} 
@@ -549,7 +549,7 @@ export default function Dashboard() {
       </section>
 
       {/* Secondary Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8 md:mb-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
         <StatCard
           title={t.dashboard.balance}
           value={formatCurrency(currentBalance)}
@@ -586,7 +586,7 @@ export default function Dashboard() {
 
       {/* Charts Section */}
       {filteredTrades.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-2">
           <div className="lg:col-span-1">
             <PerformanceRadarChart 
               trades={filteredTrades} 
@@ -610,7 +610,7 @@ export default function Dashboard() {
       )}
 
       {/* Trade Explorer Section */}
-      <div className="space-y-6">
+      <div className="space-y-2">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-zoya-red/10 rounded-2xl">
             <History className="text-zoya-red" size={20} />

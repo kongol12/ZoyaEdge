@@ -87,6 +87,8 @@ export function computeRiskReward(trades: Trade[]) {
   };
 }
 
+import { calculateZoyaScores } from './scoring';
+
 export function computePerformanceMetrics(trades: Trade[]) {
   const realTrades = trades.filter(t => !t.type || t.type === 'trade');
   
@@ -120,36 +122,17 @@ export function computePerformanceMetrics(trades: Trade[]) {
     };
   }
 
-  const totalPnL = realTrades.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
-  const avgReturn = totalPnL / realTrades.length;
+  const totalPnL = trades.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
+  const avgReturn = totalPnL / Math.max(1, realTrades.length);
 
   const winRate = calculateWinrate(realTrades);
   const profitFactor = calculateProfitFactor(realTrades);
   const rr = calculateAvgRR(realTrades);
   const maxDrawdown = calculateMaxDrawdown(realTrades);
 
-  // Consistency Calculation
-  const calculateConsistency = (trades: Trade[]) => {
-    if (trades.length < 5) return 50;
-    const journaledCount = trades.filter(t => t.strategy && t.strategy !== 'Autre' && t.strategy !== 'Other').length;
-    const journalScore = (journaledCount / trades.length) * 100;
-    const lots = trades.map(t => t.lotSize || 0);
-    const avgLot = lots.reduce((a, b) => a + b, 0) / lots.length;
-    const lotVariance = lots.reduce((a, b) => a + Math.pow(b - avgLot, 2), 0) / lots.length;
-    const lotCV = avgLot > 0 ? Math.sqrt(lotVariance) / avgLot : 1;
-    const lotScore = Math.max(0, 100 - (lotCV * 50));
-    const risks = trades.map(t => t.risk || 0).filter(r => r > 0);
-    let riskScore = 70;
-    if (risks.length > 0) {
-      const avgRisk = risks.reduce((a, b) => a + b, 0) / risks.length;
-      const riskVariance = risks.reduce((a, b) => a + Math.pow(a - avgRisk, 2), 0) / risks.length;
-      const riskCV = avgRisk > 0 ? Math.sqrt(riskVariance) / avgRisk : 1;
-      riskScore = Math.max(0, 100 - (riskCV * 50));
-    }
-    return (journalScore * 0.4) + (lotScore * 0.3) + (riskScore * 0.3);
-  };
-
-  const consistency = calculateConsistency(realTrades);
+  // Consistency Calculation from Zoya Engine
+  const zoyaScores = calculateZoyaScores(realTrades as any);
+  const consistency = zoyaScores.consistency_score;
 
   const wins = realTrades.filter(t => t.pnl > 0);
   const losses = realTrades.filter(t => t.pnl < 0);
@@ -164,7 +147,27 @@ export function computePerformanceMetrics(trades: Trade[]) {
   const scoreAvgReturn = Math.max(0, Math.min(100, 50 + (avgReturn / maxMove) * 50));
   const scoreMaxDD = Math.max(0, 100 - (Math.abs(maxDrawdown) / Math.max(grossProfit || 1, 1)) * 100);
 
-  const overallScore = Math.round((scorePF + scoreRR + scoreAvgReturn + scoreMaxDD + consistency) / 5);
+  // Psychology Score based on emotion fill rate and balance
+  const tradesWithEmotion = realTrades.filter(t => t.emotion && typeof t.emotion === 'string' && t.emotion.trim() !== '');
+  const positiveEmotions = ['🔥', '🤩', '🧠', '😊', 'confidence'];
+  const negativeEmotions = ['😰', '😕', '🤑', '😤', 'fear'];
+  
+  let psychologyScore = 0;
+  if (tradesWithEmotion.length > 0) {
+    const positives = tradesWithEmotion.filter(t => positiveEmotions.includes(t.emotion as string)).length;
+    const negatives = tradesWithEmotion.filter(t => negativeEmotions.includes(t.emotion as string)).length;
+    // Ratio of positive to total non-neutral
+    const activeEmotions = positives + negatives;
+    if (activeEmotions > 0) {
+      psychologyScore = (positives / activeEmotions) * 100;
+    } else {
+      psychologyScore = 100; // All neutral is good discipline
+    }
+  } else {
+    psychologyScore = 0; // Empty psychology if not filled
+  }
+
+  const overallScore = Math.round((scorePF + scoreRR + scoreAvgReturn + scoreMaxDD + consistency + psychologyScore) / 6);
 
   let status = 'Faible';
   let color = 'text-rose-500';
@@ -193,7 +196,8 @@ export function computePerformanceMetrics(trades: Trade[]) {
       avgWin,
       avgLoss,
       consistency,
-      avgReturn
+      avgReturn,
+      psychologyScore
     },
     metrics: [
       { subject: 'Profit Factor', A: Math.round(scorePF), fullMark: 100, value: profitFactor.toFixed(2) },
@@ -201,6 +205,7 @@ export function computePerformanceMetrics(trades: Trade[]) {
       { subject: 'Avg Return', A: Math.round(scoreAvgReturn), fullMark: 100, value: `$${avgReturn.toFixed(2)}` },
       { subject: 'Max DD', A: Math.round(scoreMaxDD), fullMark: 100, value: `$${Math.abs(maxDrawdown).toFixed(2)}` },
       { subject: 'Consistency', A: Math.round(consistency), fullMark: 100, value: `${Math.round(consistency)}%` },
+      { subject: 'Psychologie', A: Math.round(psychologyScore), fullMark: 100, value: tradesWithEmotion.length > 0 ? `${Math.round(psychologyScore)}%` : 'N/A' },
     ],
     overallScore,
     status,
@@ -224,8 +229,16 @@ export function calculateTradeZoyaScore(trade: Trade) {
   else if (trade.rr && trade.rr >= 1) score += 5;
 
   // 4. Psychology: Emotion
-  if (trade.emotion === '🔥' || trade.emotion === 'confidence') score += 10;
-  if (trade.emotion === '😰' || trade.emotion === 'fear') score -= 15;
+  const positiveEmotions = ['🔥', '🤩', '🧠', '😊', 'confidence'];
+  const negativeEmotions = ['😰', '😕', '🤑', '😤', 'fear'];
+  
+  if (trade.emotion && trade.emotion.trim() !== '') {
+    if (positiveEmotions.includes(trade.emotion as string)) score += 10;
+    if (negativeEmotions.includes(trade.emotion as string)) score -= 15;
+  } else {
+    // Neural score for missing emotion
+    score += 0;
+  }
 
   // 5. Discipline: Strategy
   if (trade.strategy && trade.strategy !== 'Autre' && trade.strategy !== 'Other') score += 10;

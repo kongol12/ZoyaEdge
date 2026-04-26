@@ -35,7 +35,8 @@ export function computeTradingStats(trades: Trade[]) {
   const worstSession = getWorst(bySession);
 
   // Emotional Loss Rate
-  const emotionalTrades = trades.filter(t => t.emotion === '😰');
+  const negativeEmotions = ['😰', '😕', '🤑', '😤', 'fear'];
+  const emotionalTrades = trades.filter(t => t.emotion && negativeEmotions.includes(t.emotion));
   const emotionalLosses = emotionalTrades.filter(t => t.pnl < 0);
   const emotionalLossRate = emotionalTrades.length > 0 ? (emotionalLosses.length / emotionalTrades.length) * 100 : 0;
 

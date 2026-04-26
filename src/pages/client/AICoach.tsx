@@ -45,9 +45,9 @@ export default function AICoach() {
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-8"
+      className="space-y-2"
     >
-      <header className="flex items-center gap-4">
+      <header className="flex items-center gap-2">
         <div className="p-3 bg-zoya-red rounded-2xl text-white shadow-lg shadow-zoya-red/20">
           <BrainCircuit size={32} />
         </div>
@@ -98,7 +98,7 @@ export default function AICoach() {
           </button>
         </div>
       ) : trades.length > 0 ? (
-        <div className="space-y-8">
+        <div className="space-y-2">
           <AICoachDashboard />
         </div>
       ) : (

@@ -19,6 +19,7 @@ export default function Notebook() {
   const [formData, setFormData] = useState({
     content: '',
     date: new Date().toISOString().slice(0, 10),
+    emotion: '' as NotebookEntry['emotion'],
   });
 
   useEffect(() => {
@@ -38,7 +39,10 @@ export default function Notebook() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !formData.emotion) {
+      alert("Veuillez choisir un état émotionnel avant d'enregistrer.");
+      return;
+    }
     setSaving(true);
     
     let imageUrl = '';
@@ -57,6 +61,7 @@ export default function Notebook() {
       await addNotebookEntry(user.uid, {
         content: formData.content,
         imageUrl: imageUrl || undefined,
+        emotion: formData.emotion,
         date: new Date(formData.date),
       });
       setShowForm(false);
@@ -64,6 +69,7 @@ export default function Notebook() {
       setFormData({
         content: '',
         date: new Date().toISOString().slice(0, 10),
+        emotion: '' as NotebookEntry['emotion'],
       });
     } catch (error) {
       console.error("Error saving notebook entry", error);
@@ -169,6 +175,36 @@ export default function Notebook() {
               />
             </div>
 
+            <div className="space-y-2">
+              <label className="text-sm font-poppins font-bold text-gray-700 dark:text-gray-300">État Émotionnel</label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { emoji: '🤩', label: 'Excitation' },
+                  { emoji: '😕', label: 'Incertitude' },
+                  { emoji: '🧠', label: 'Concentration' },
+                  { emoji: '😰', label: 'Peur' },
+                  { emoji: '🤑', label: 'Avidité (Sur-exposition)' },
+                  { emoji: '😤', label: 'Frustration' },
+                  { emoji: '😊', label: 'Satisfaction' }
+                ].map((emo) => (
+                  <button
+                    key={emo.emoji}
+                    type="button"
+                    title={emo.label}
+                    onClick={() => setFormData({ ...formData, emotion: emo.emoji as NotebookEntry['emotion'] })}
+                    className={cn(
+                      "text-2xl p-3 rounded-2xl border transition-all hover:scale-110",
+                      formData.emotion === emo.emoji
+                        ? "border-zoya-red bg-zoya-red/10 animate-pulse-soft"
+                        : "border-gray-100 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    )}
+                  >
+                    {emo.emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={saving || uploading}
@@ -203,6 +239,9 @@ export default function Notebook() {
                   <div className="flex items-center gap-2 text-zoya-red font-poppins font-bold">
                     <Calendar size={18} />
                     {entry.date.toLocaleDateString()}
+                    {entry.emotion && (
+                      <span className="text-xl ml-2 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">{entry.emotion}</span>
+                    )}
                   </div>
                   <button
                     onClick={() => entry.id && handleDelete(entry.id)}

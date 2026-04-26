@@ -1,5 +1,5 @@
-import React from 'react';
-import { Trade } from '../../../lib/db';
+import React, { useState } from 'react';
+import { Trade, handleFirestoreError, OperationType } from '../../../lib/db';
 import { formatCurrency, cn, formatRR } from '../../../lib/utils';
 import { format } from 'date-fns';
 import { 
@@ -17,6 +17,10 @@ import {
 import { motion } from 'motion/react';
 import { useTranslation } from '../../../lib/i18n';
 import { Link } from 'react-router';
+import { useAuth } from '../../../lib/auth';
+import { db } from '../../../lib/firebase';
+import { doc, updateDoc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 
 interface TradeDetailProps {
   trade: Trade;
@@ -26,7 +30,24 @@ interface TradeDetailProps {
 
 export default function TradeDetail({ trade, allTrades = [], onBack }: TradeDetailProps) {
   const { t, language } = useTranslation();
+  const { user } = useAuth();
   const isWin = trade.pnl >= 0;
+  const [updatingEmotion, setUpdatingEmotion] = useState(false);
+
+  const handleUpdateEmotion = async (emotionVal: string) => {
+    if (!user || !trade.id) return;
+    setUpdatingEmotion(true);
+    try {
+      const tradeRef = doc(db, 'users', user.uid, 'trades', trade.id);
+      await updateDoc(tradeRef, { emotion: emotionVal });
+      toast.success("Émotion ajoutée ! L'analyse psychologique a été mise à jour.");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${user.uid}/trades/${trade.id}`);
+      toast.error("Erreur lors de la mise à jour");
+    } finally {
+      setUpdatingEmotion(false);
+    }
+  };
 
   // Real strategy analysis
   const strategyTrades = allTrades.filter(t => t.strategy === trade.strategy);
@@ -34,6 +55,16 @@ export default function TradeDetail({ trade, allTrades = [], onBack }: TradeDeta
   const strategyWinrate = strategyTrades.length > 0 
     ? Math.round((strategyWins / strategyTrades.length) * 100) 
     : 0;
+
+  const emotionLabels: Record<string, string> = {
+    '😐': 'Neutre',
+    '🔥': 'Confiance',
+    '😰': 'Peur',
+    '🧠': 'Concentration',
+    '🤩': 'Excitation',
+    '🤑': 'Avidité',
+    '😤': 'Frustration'
+  };
 
   return (
     <motion.div 
@@ -96,9 +127,28 @@ export default function TradeDetail({ trade, allTrades = [], onBack }: TradeDeta
               </div>
               
               <div className="flex items-center gap-8">
-                <div className="text-center">
-                  <div className="text-4xl">{trade.emotion}</div>
+                <div className="text-center relative group cursor-pointer" title={trade.emotion ? emotionLabels[trade.emotion] : undefined}>
+                  {updatingEmotion ? (
+                     <div className="text-4xl animate-pulse">⏳</div>
+                  ) : (
+                     <div className="text-4xl">{trade.emotion || '➕'}</div>
+                  )}
                   <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">Emotion</div>
+                  
+                  {/* Emotion Picker Tooltip */}
+                  <div className="hidden group-hover:flex absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white dark:bg-gray-800 p-2 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 gap-2 z-50">
+                    {Object.entries(emotionLabels).map(([emoji, label]) => (
+                      <button
+                        key={emoji}
+                        onClick={() => handleUpdateEmotion(emoji)}
+                        disabled={updatingEmotion}
+                        className="text-3xl hover:scale-125 transition-transform px-1"
+                        title={label}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="h-10 w-px bg-gray-100 dark:bg-gray-700" />
                 <div className="text-center">

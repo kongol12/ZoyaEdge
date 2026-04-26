@@ -1,24 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Book, Plus, Filter, History, Calendar, LayoutGrid, List } from 'lucide-react';
+import { Book, Plus, Filter, History, Calendar, LayoutGrid, List, Sparkles } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n';
 import { subscribeToTrades, subscribeToNotebook, Trade, NotebookEntry } from '../../lib/db';
 import { useAuth } from '../../lib/auth';
 import { cn } from '../../lib/utils';
 import TradeExplorer from '../../components/organisms/client/TradeExplorer';
 import TradeDetail from '../../components/organisms/client/TradeDetail';
+import NotebookEntryModal from '../../components/organisms/client/NotebookEntryModal';
 import { useFilteredTrades } from '../../hooks/useFilteredTrades';
 import { Button } from '../../components/atoms/Button';
 import { Link } from 'react-router';
 
 export default function Journal() {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { user } = useAuth();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [notebookEntries, setNotebookEntries] = useState<NotebookEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [isNotebookOpen, setIsNotebookOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -58,7 +60,7 @@ export default function Journal() {
   }
 
   return (
-    <div className="w-full space-y-8 pb-12">
+    <div className="w-full space-y-2 pb-12">
       <AnimatePresence mode="wait">
         {!selectedTrade ? (
           <motion.div 
@@ -66,10 +68,10 @@ export default function Journal() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="space-y-8"
+            className="space-y-4"
           >
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-2 border-b border-gray-100 dark:border-gray-800">
               <div>
                 <h1 className="text-3xl font-poppins font-black text-gray-900 dark:text-white flex items-center gap-3">
                   <div className="p-3 bg-zoya-red/10 rounded-2xl">
@@ -77,29 +79,38 @@ export default function Journal() {
                   </div>
                   {t.common.journal}
                 </h1>
-                <p className="text-gray-500 dark:text-gray-400 mt-2">Analysez chaque trade pour optimiser votre rentabilité.</p>
+                <p className="text-gray-500 dark:text-gray-400 mt-2 text-sm max-w-xl">
+                  {(t.common as any).journalDesc}
+                </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button 
+                  onClick={() => setIsNotebookOpen(true)}
+                  variant="outline"
+                  className="rounded-2xl h-12 px-6 border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex items-center gap-2 group transition-all"
+                >
+                  <Sparkles size={18} className="group-hover:rotate-12 transition-transform" />
+                  {language === 'fr' ? 'Journal de Bord' : 'Notebook'}
+                </Button>
+
                 <Link to="/add">
                   <Button className="rounded-2xl h-12 px-6 shadow-lg shadow-zoya-red/20 flex items-center gap-2">
                     <Plus size={18} />
                     {t.common.addTrade}
                   </Button>
                 </Link>
-                <div className="relative group">
-                   <div className="absolute -inset-0.5 bg-gradient-to-r from-zoya-red to-orange-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
-                   <button 
-                     onClick={() => setShowFilters(!showFilters)}
-                     className={cn(
-                       "relative flex items-center gap-2 px-5 py-3.5 bg-white dark:bg-gray-800 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-sm",
-                       showFilters ? "border-zoya-red text-zoya-red" : "border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200"
-                     )}
-                   >
-                      <Filter size={14} className={showFilters ? "text-zoya-red shadow-[0_0_10px_rgba(235,59,90,0.3)]" : "text-gray-400"} />
-                      Filtres {showFilters ? 'ouvert' : 'avancés'}
-                   </button>
-                </div>
+                
+                <button 
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={cn(
+                    "flex items-center gap-2 px-5 py-3 h-12 bg-white dark:bg-gray-800 border rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-sm",
+                    showFilters ? "border-zoya-red text-zoya-red" : "border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200"
+                  )}
+                >
+                  <Filter size={14} className={showFilters ? "text-zoya-red shadow-[0_0_10px_rgba(235,59,90,0.3)]" : "text-gray-400"} />
+                  {showFilters ? 'Fermer' : 'Filtres'}
+                </button>
               </div>
             </div>
 
@@ -189,6 +200,11 @@ export default function Journal() {
           />
         )}
       </AnimatePresence>
+
+      <NotebookEntryModal 
+        isOpen={isNotebookOpen} 
+        onClose={() => setIsNotebookOpen(false)} 
+      />
     </div>
   );
 }

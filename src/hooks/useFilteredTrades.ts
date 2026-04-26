@@ -18,13 +18,13 @@ export function useFilteredTrades(trades: Trade[]) {
     platform: 'all'
   });
 
-  // On extrait d'abord UNIQUEMENT les vrais trades (on exclut les dépôts, retraits, ajustements)
+  // On extrait d'abord UNIQUEMENT les vrais trades (on exclut les dépôts, retraits, ajustements) pour les filtres
   const realTrades = useMemo(() => {
     return trades.filter(t => !t.type || t.type === 'trade');
   }, [trades]);
 
   const filteredTrades = useMemo(() => {
-    return realTrades.filter(t => {
+    return trades.filter(t => {
       // Date filter
       if (filters.dateRange !== 'all') {
         const tMonth = `${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`;
@@ -45,7 +45,7 @@ export function useFilteredTrades(trades: Trade[]) {
       
       return true;
     });
-  }, [realTrades, filters]);
+  }, [trades, filters]);
 
   const uniqueMonths = useMemo(() => {
     const months = new Set<string>();

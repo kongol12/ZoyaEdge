@@ -162,33 +162,33 @@ export default function LandingPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="max-w-4xl space-y-8 md:space-y-12"
+          className="max-w-4xl space-y-6 md:space-y-8"
         >
-          <div className="space-y-4">
-            <span className="px-3 py-1 md:px-4 md:py-1.5 bg-zoya-red/10 text-zoya-red rounded-full text-[10px] md:text-sm font-bold uppercase tracking-widest border border-zoya-red/20 shadow-sm animate-pulse">
+          <div className="space-y-6 md:space-y-8">
+            <span className="px-3 py-1 md:px-4 md:py-1.5 bg-zoya-red/10 text-zoya-red rounded-full text-[10px] md:text-xs font-bold uppercase tracking-widest border border-zoya-red/20 shadow-sm animate-pulse">
               {t.landing.dataIsEdge}
             </span>
-            <h1 className="text-3xl md:text-6xl lg:text-7xl font-poppins font-black text-gray-900 dark:text-white tracking-tighter leading-normal md:leading-snug">
+            <h1 className="text-xl md:text-3xl lg:text-4xl font-poppins font-black text-gray-900 dark:text-white tracking-tighter leading-tight md:leading-snug">
               <span className="block">{t.landing.heroTitle}</span>
-              <span className="block md:mt-2 text-zoya-red">{t.landing.heroTitleSub}</span>
+              <span className="block mt-2 md:mt-3 text-zoya-red">{t.landing.heroTitleSub}</span>
             </h1>
           </div>
           
-          <p className="text-base md:text-xl text-gray-500 dark:text-gray-400 max-w-2xl mx-auto leading-relaxed font-medium">
+          <p className="text-sm md:text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto leading-relaxed font-medium px-4">
             {t.landing.heroSubtitle}
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link 
               to={user ? "/" : "/auth"} 
-              className="zoya-button-primary w-full sm:w-72 px-6 py-4 md:px-8 md:py-5 text-base md:text-lg flex items-center justify-center gap-3 shadow-2xl shadow-zoya-red/40 hover:-translate-y-1 transition-transform"
+              className="zoya-button-primary w-full sm:w-auto px-10 py-4 md:px-12 md:py-4 text-base md:text-lg flex items-center justify-center gap-3 shadow-2xl shadow-zoya-red/40 hover:-translate-y-1 transition-transform"
             >
               {t.landing.ctaAnalyze}
               <ArrowRight size={20} className="md:w-6 md:h-6" />
             </Link>
           </div>
 
-          <div className="pt-8 md:pt-12 text-gray-400 dark:text-gray-600 font-bold uppercase tracking-[0.2em] text-[10px] md:text-xs">
+          <div className="pt-4 md:pt-6 text-gray-400 dark:text-gray-600 font-bold uppercase tracking-[0.2em] text-[9px] md:text-[10px]">
             {t.landing.liability}
           </div>
         </motion.div>

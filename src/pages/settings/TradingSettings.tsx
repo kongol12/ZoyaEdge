@@ -6,7 +6,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { Settings as SettingsIcon, Save, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import { cn } from '../../lib/utils';
-import { softDeleteAllTrades } from '../../lib/db';
+import { hardDeleteAllTrades } from '../../lib/db';
 
 export default function TradingSettings() {
   const { user, updateProfile } = useAuth();
@@ -42,8 +42,8 @@ export default function TradingSettings() {
     if (!user) return;
     setResetting(true);
     try {
-      await softDeleteAllTrades(user.uid);
-      setMessage({ type: 'success', text: 'Journal réinitialisé avec succès.' });
+      await hardDeleteAllTrades(user.uid);
+      setMessage({ type: 'success', text: 'Journal réinitialisé (tous les trades ont été supprimés définitivement).' });
       setShowConfirmReset(false);
     } catch (error) {
       console.error("Error resetting journal:", error);
@@ -274,7 +274,7 @@ export default function TradingSettings() {
             <div>
               <h3 className="font-bold text-rose-900 dark:text-rose-100">Réinitialiser le Journal</h3>
               <p className="text-xs text-rose-700 dark:text-rose-400 mt-1">
-                Cette action masquera tous vos trades actuels. Les données ne seront plus visibles dans vos statistiques ni votre dashboard.
+                Cette action supprimera définitivement tous vos trades actuels de la base de données. Cette opération est irréversible.
               </p>
             </div>
             {!showConfirmReset ? (

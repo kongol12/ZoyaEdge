@@ -109,9 +109,14 @@ export default function ClientTradeReports() {
   ).map(([name, value]) => ({ name, value })).slice(0, 6);
 
   const emotionData = [
-    { name: 'Calme', value: trades.filter(t => t.emotion === '😐').length },
-    { name: 'Anxieux', value: trades.filter(t => t.emotion === '😰').length },
-    { name: 'Overtrade', value: trades.filter(t => t.emotion === '🔥').length },
+    { name: 'Excitation', value: trades.filter(t => t.emotion === '🤩' || t.emotion === '🔥').length },
+    { name: 'Incertitude', value: trades.filter(t => t.emotion === '😕').length },
+    { name: 'Concentration', value: trades.filter(t => t.emotion === '🧠').length },
+    { name: 'Peur/Anxiété', value: trades.filter(t => t.emotion === '😰' || t.emotion === 'fear').length },
+    { name: 'Avidité', value: trades.filter(t => t.emotion === '🤑').length },
+    { name: 'Frustration', value: trades.filter(t => t.emotion === '😤').length },
+    { name: 'Satisfaction', value: trades.filter(t => t.emotion === '😊').length },
+    { name: 'Neutre', value: trades.filter(t => t.emotion === '😐').length },
   ].filter(d => d.value > 0);
 
   const handleSeed = async () => {

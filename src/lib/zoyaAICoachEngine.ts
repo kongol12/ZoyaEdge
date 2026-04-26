@@ -1,6 +1,6 @@
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { Trade } from './db';
+import { Trade, NotebookEntry } from './db';
 import { computeZoyaMetrics, ZoyaMetrics } from './zoyaMetrics';
 
 export type AnalysisMode = "CONCISE" | "STANDARD" | "DETAILED";
@@ -34,7 +34,21 @@ export async function runZoyaAICoach(userId: string, mode: AnalysisMode = "STAND
       date: data.date?.toDate() || new Date(),
       createdAt: data.createdAt?.toDate(),
       closedAt: data.closedAt?.toDate(),
-    } as Trade);
+    } as unknown as Trade);
+  });
+
+  // Fetch notebook entries for psychology context
+  const notebookRef = collection(db, 'users', userId, 'notebook');
+  const nq = query(notebookRef, orderBy('date', 'desc'), limit(30));
+  const nSnapshot = await getDocs(nq);
+  const notebookEntries: NotebookEntry[] = [];
+  nSnapshot.forEach(doc => {
+    const data = doc.data();
+    notebookEntries.push({
+      id: doc.id,
+      ...data,
+      date: data.date?.toDate?.() ? data.date.toDate() : (data.date instanceof Date ? data.date : new Date(data.date)),
+    } as any);
   });
 
   // 2. Compute real metrics
@@ -42,7 +56,9 @@ export async function runZoyaAICoach(userId: string, mode: AnalysisMode = "STAND
 
   // 3. Format AI input
   const emotionsCount = trades.reduce((acc, t) => {
-    acc[t.emotion] = (acc[t.emotion] || 0) + 1;
+    if (t.emotion && t.emotion.trim() !== '') {
+      acc[t.emotion] = (acc[t.emotion] || 0) + 1;
+    }
     return acc;
   }, {} as Record<string, number>);
 
@@ -60,7 +76,13 @@ export async function runZoyaAICoach(userId: string, mode: AnalysisMode = "STAND
       streaks: {
         maxWinStreak: metrics.stats.maxWinStreak,
         maxLossStreak: metrics.stats.maxLossStreak
-      }
+      },
+      journalFrequency: notebookEntries.length,
+      latestJournalEntries: notebookEntries.map(e => ({
+        date: e.date,
+        content: e.content,
+        emotion: e.emotion
+      }))
     }
   };
 

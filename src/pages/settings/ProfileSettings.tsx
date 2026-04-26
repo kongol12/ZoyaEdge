@@ -3,7 +3,7 @@ import { useAuth, UserProfile } from '../../lib/auth';
 import { useTranslation } from '../../lib/i18n';
 import { db } from '../../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { Trade, softDeleteAllTrades, softDeleteTrades, subscribeToTrades } from '../../lib/db';
+import { Trade, hardDeleteAllTrades, hardDeleteTrades, subscribeToTrades } from '../../lib/db';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Save, Loader2, Languages, Trash2, AlertTriangle, Filter, Check, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../../lib/utils';
@@ -62,8 +62,8 @@ export default function ProfileSettings() {
     if (!user) return;
     setDeleting(true);
     try {
-      await softDeleteAllTrades(user.uid);
-      setMessage({ type: 'success', text: 'Tous les trades ont été masqués avec succès.' });
+      await hardDeleteAllTrades(user.uid);
+      setMessage({ type: 'success', text: 'Tous les trades ont été supprimés de façon permanente.' });
       setShowConfirmDelete(false);
     } catch (error) {
       console.error("Error deleting trades:", error);
@@ -77,8 +77,8 @@ export default function ProfileSettings() {
     if (!user || selectedTrades.length === 0) return;
     setDeleting(true);
     try {
-      await softDeleteTrades(user.uid, selectedTrades);
-      setMessage({ type: 'success', text: `${selectedTrades.length} trades ont été masqués.` });
+      await hardDeleteTrades(user.uid, selectedTrades);
+      setMessage({ type: 'success', text: `${selectedTrades.length} trades ont été supprimés de façon permanente.` });
       setSelectedTrades([]);
       setIsBulkMode(false);
     } catch (error) {
@@ -229,7 +229,7 @@ export default function ProfileSettings() {
               Gestion des Données
             </h3>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Ces actions masquent les trades de votre vue client mais conservent l'historique pour l'administration et les audits.
+              Ces actions suppriment définitivement les trades de la base de données. Cette action est irréversible.
             </p>
           </div>
 
@@ -362,7 +362,7 @@ export default function ProfileSettings() {
                         className="flex-1 py-3 rounded-2xl font-poppins font-bold bg-rose-600 text-white shadow-lg shadow-rose-600/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                       >
                         {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 size={16} />}
-                        Masquer la sélection
+                        Supprimer la sélection
                       </button>
                       <button
                         onClick={() => {
@@ -406,7 +406,7 @@ export default function ProfileSettings() {
                   className="flex-1 py-3 rounded-2xl font-poppins font-bold bg-rose-600 text-white shadow-lg shadow-rose-600/20 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 size={16} />}
-                  Tout masquer (Soft Delete)
+                  Tout supprimer définitivement
                 </button>
               </div>
             </div>

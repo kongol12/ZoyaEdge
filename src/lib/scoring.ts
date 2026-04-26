@@ -20,12 +20,14 @@ export interface ZoyaScores {
   consistency_score: number;
   total_score: number;
   status: 'red' | 'orange' | 'green';
+  journal_score: number;
 }
 
-export function calculateZoyaScores(trades: Trade[]): ZoyaScores {
+export function calculateZoyaScores(trades: Trade[], notebookEntries: any[] = []): ZoyaScores {
   let risk = 100;
   let discipline = 100;
   let consistency = 100;
+  let journalScore = 0;
 
   if (trades.length === 0) {
     return {
@@ -33,8 +35,23 @@ export function calculateZoyaScores(trades: Trade[]): ZoyaScores {
       discipline_score: 100,
       consistency_score: 100,
       total_score: 100,
-      status: 'green'
+      status: 'green',
+      journal_score: 0
     };
+  }
+
+  // 0. JOURNAL ANALYSIS
+  // If user has at least 1 journal entry for every 5 trades, they get full journal score
+  const journalRatio = Math.min(1, notebookEntries.length / Math.max(1, trades.length / 5));
+  journalScore = Math.round(journalRatio * 100);
+
+  // Journaling improves discipline and consistency
+  if (journalScore > 50) {
+    discipline += 10; 
+    consistency += 10;
+  } else if (journalScore === 0 && trades.length > 10) {
+    discipline -= 10;
+    consistency -= 10;
   }
 
   // 1. RISK ANALYSIS
@@ -81,7 +98,8 @@ export function calculateZoyaScores(trades: Trade[]): ZoyaScores {
 
   // 2. DISCIPLINE ANALYSIS
   // Emotional instability
-  const emotionalTrades = trades.filter(t => t.emotion === '😰');
+  const negativeEmotions = ['😰', '😕', '🤑', '😤', 'fear'];
+  const emotionalTrades = trades.filter(t => negativeEmotions.includes(t.emotion));
   if (emotionalTrades.length > 0) {
     const emotionalLossrate = emotionalTrades.filter(t => t.pnl < 0).length / emotionalTrades.length;
     if (emotionalLossrate > 0.5) {
@@ -141,6 +159,7 @@ export function calculateZoyaScores(trades: Trade[]): ZoyaScores {
     discipline_score: Math.round(discipline),
     consistency_score: Math.round(consistency),
     total_score: Math.round(total),
-    status
+    status,
+    journal_score: journalScore
   };
 }

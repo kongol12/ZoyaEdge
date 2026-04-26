@@ -87,8 +87,8 @@ export default function Statistics() {
   }
 
   return (
-    <div className="w-full space-y-12 pb-12">
-      <header className="flex items-center gap-3 mb-8">
+    <div className="w-full space-y-2 pb-12">
+      <header className="flex items-center gap-3 mb-2">
         <div className="p-2 bg-zoya-red-accent text-zoya-red rounded-xl">
           <BarChart2 size={24} />
         </div>
@@ -138,9 +138,9 @@ export default function Statistics() {
       </div>
 
       {/* SECTION 1: Risk Metrics (Unified Visual Models) */}
-      <section className="space-y-4 md:space-y-6">
-        <h2 className="text-xl md:text-2xl font-poppins font-bold text-gray-900 dark:text-white">Risk Metrics</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <section className="space-y-2">
+        <h2 className="text-xl font-poppins font-bold text-gray-900 dark:text-white">Risk Metrics</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
           <ProfitFactorGauge 
             value={summary.profitFactor} 
             infoText="Indicateur de rentabilité. Ratio entre vos profits totaux et vos pertes totales (Cible > 1.5)."
@@ -167,9 +167,9 @@ export default function Statistics() {
       </section>
 
       {/* SECTION 2: Performance Overview */}
-      <section className="space-y-4 md:space-y-6">
-        <h2 className="text-xl md:text-2xl font-poppins font-bold text-gray-900 dark:text-white">Performance Overview</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+      <section className="space-y-2">
+        <h2 className="text-xl font-poppins font-bold text-gray-900 dark:text-white">Performance Overview</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
           <div className="lg:col-span-2">
             <EquityChart 
               data={equityData} 
@@ -183,7 +183,7 @@ export default function Statistics() {
             />
           </div>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
           <DrawdownChart 
             data={drawdownData} 
             infoText="Mesure de la baisse de votre capital par rapport à son point le plus haut (Peak)."
@@ -196,9 +196,9 @@ export default function Statistics() {
       </section>
 
       {/* SECTION 3: Performance Breakdown */}
-      <section className="space-y-4 md:space-y-6">
-        <h2 className="text-xl md:text-2xl font-poppins font-bold text-gray-900 dark:text-white">Performance Breakdown</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
+      <section className="space-y-2">
+        <h2 className="text-xl font-poppins font-bold text-gray-900 dark:text-white">Performance Breakdown</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-2">
           <BarChartCard 
             title="PnL by Strategy" 
             data={strategyData} 
@@ -239,9 +239,9 @@ export default function Statistics() {
       </section>
 
       {/* SECTION 4: Behavior Analysis */}
-      <section className="space-y-4 md:space-y-6">
-        <h2 className="text-xl md:text-2xl font-poppins font-bold text-gray-900 dark:text-white">Behavior Analysis</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+      <section className="space-y-2">
+        <h2 className="text-xl font-poppins font-bold text-gray-900 dark:text-white">Behavior Analysis</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
           <BarChartCard 
             title="PnL by Emotion" 
             data={emotionData} 
