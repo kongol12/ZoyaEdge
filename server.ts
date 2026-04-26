@@ -9,6 +9,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import cors from 'cors';
+import { AIPipeline } from './src/ai-engine/pipeline';
 
 const app = express();
 const PORT = 3000;
@@ -529,7 +530,7 @@ async function finalizePayment(txId: string, resultData: any) {
       subscriptionCycle: paymentData.cycle || 'monthly',
       subscriptionStatus: 'active',
       subscriptionEndDate: admin.firestore.Timestamp.fromDate(endDate),
-      aiCredits: paymentData.plan === 'pro' ? 30 : 9999,
+      aiCredits: paymentData.plan === 'pro' ? 30 : (paymentData.plan === 'discovery' ? 3 : 9999),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
@@ -1021,40 +1022,51 @@ function getTradeLimit(mode: string): number {
   return 100; // DETAILED
 }
 
+export function getQuotaForSubscription(subscription: string): number {
+  if (subscription === 'premium') return 9999;
+  if (subscription === 'pro') return 30;
+  return 3; // free, discovery
+}
+
 async function checkAndDeductAICredit(
   userId: string,
   db: admin.firestore.Firestore,
   mode: string = 'STANDARD'
-): Promise<{ allowed: boolean; reason?: string }> {
+): Promise<{ allowed: boolean; reason?: string; remaining?: number; limit?: number }> {
   const userRef = db.collection('users').doc(userId);
   return db.runTransaction(async (transaction) => {
     const userDoc = await transaction.get(userRef);
     if (!userDoc.exists) return { allowed: false, reason: "User not found" };
     const userData = userDoc.data()!;
     const subscription = userData.subscription || 'free';
+    const limit = getQuotaForSubscription(subscription);
 
     // DETAILED réservé Premium uniquement
     if (mode === 'DETAILED' && subscription !== 'premium') {
       return {
         allowed: false,
-        reason: "L'analyse DETAILED est réservée au plan Premium. Passez à Premium pour y accéder."
+        reason: "L'analyse DETAILED est réservée au plan Premium. Passez à Premium pour y accéder.",
+        remaining: userData.aiCredits ?? 0,
+        limit
       };
     }
 
-    if (subscription === 'premium') return { allowed: true };
+    if (subscription === 'premium') return { allowed: true, remaining: 9999, limit: 9999 };
 
     const credits = userData.aiCredits ?? 0;
     if (credits <= 0) {
       const planLabel = subscription === 'pro' ? 'Premium' : 'Pro';
       return {
         allowed: false,
-        reason: `Vous avez atteint votre limite d'analyses IA ce mois-ci. Passez à ${planLabel} pour continuer.`
+        reason: `Vous avez atteint votre limite d'analyses IA ce mois-ci (${limit} analyses). Passez à ${planLabel} pour continuer.`,
+        remaining: 0,
+        limit
       };
     }
     transaction.update(userRef, {
       aiCredits: admin.firestore.FieldValue.increment(-1)
     });
-    return { allowed: true };
+    return { allowed: true, remaining: credits - 1, limit };
   });
 }
 
@@ -1240,7 +1252,13 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
       console.error("[AI Coach] Failed to save report:", saveError);
     }
 
-    res.json(aiAnalysis);
+    res.json({
+      ...aiAnalysis,
+      usage: {
+        remaining: creditCheck.remaining,
+        limit: creditCheck.limit
+      }
+    });
   } catch (error: any) {
     handleGeminiError(error, res);
   }
@@ -1316,9 +1334,53 @@ STRICT JSON OUTPUT ONLY:
     // Sauvegarder en cache
     await setAICache(req.user.uid, tradesHash, result, db);
 
-    res.json(result);
+    res.json({
+      ...result,
+      usage: {
+        remaining: creditCheck.remaining,
+        limit: creditCheck.limit
+      }
+    });
   } catch (error: any) {
     handleGeminiError(error, res);
+  }
+});
+
+// Admin Monthly Credit Reset
+let aiPipeline: AIPipeline | null = null;
+
+app.post('/api/ai-engine/orchestrate', verifyUser, async (req: any, res: any) => {
+  if (!aiPipeline && db) {
+    aiPipeline = new AIPipeline(db);
+  }
+
+  const { trades, mode = 'STANDARD' } = req.body;
+  if (!db) return res.status(503).json({ error: "Service de base de données indisponible" });
+
+  try {
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
+    const subscription = userDoc.data()?.subscription || 'free';
+    
+    // Check and deduct credits using existing system
+    const creditCheck = await checkAndDeductAICredit(req.user.uid, db, mode);
+    if (!creditCheck.allowed) {
+      return res.status(402).json({ error: creditCheck.reason });
+    }
+
+    // Using the AI Engine
+    const result = await aiPipeline.execute(req.user.uid, subscription, mode, trades);
+    
+    // Inject credit check details into result
+    res.json({
+      ...result,
+      usage: {
+        remaining: creditCheck.remaining,
+        limit: creditCheck.limit
+      }
+    });
+  } catch (error: any) {
+    console.error("[ZoyaAI Engine Error]:", error);
+    res.status(500).json({ error: "Erreur lors du traitement multi-modèles IA" });
   }
 });
 
@@ -1326,13 +1388,22 @@ STRICT JSON OUTPUT ONLY:
 app.post('/api/admin/reset-monthly-credits', verifySuperAdmin, async (req: any, res: any) => {
   if (!db) return res.status(503).json({ error: "Database unavailable" });
   try {
-    const usersSnapshot = await db.collection('users').where('subscription', '==', 'pro').get();
     const batch = db.batch();
-    usersSnapshot.docs.forEach(doc => {
+    
+    // Reset Pro Users to 30
+    const proUsers = await db.collection('users').where('subscription', '==', 'pro').get();
+    proUsers.docs.forEach(doc => {
       batch.update(doc.ref, { aiCredits: 30 });
     });
+
+    // Reset Discovery/Free Users to 3
+    const freeUsers = await db.collection('users').where('subscription', 'in', ['free', 'discovery']).get();
+    freeUsers.docs.forEach(doc => {
+      batch.update(doc.ref, { aiCredits: 3 });
+    });
+
     await batch.commit();
-    res.json({ success: true, updated: usersSnapshot.size });
+    res.json({ success: true, updatedPro: proUsers.size, updatedFree: freeUsers.size });
   } catch (error) {
     console.error("Monthly reset error:", error);
     res.status(500).json({ error: "Reset failed" });

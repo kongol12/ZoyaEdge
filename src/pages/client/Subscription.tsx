@@ -92,7 +92,7 @@ export default function Subscription() {
         { label: '30 trades manuels / mois', included: true },
         { label: 'Dashboard & Statistiques de base', included: true },
         { label: 'Journal de trading basique', included: true },
-        { label: '3 analyses AI Coach offertes', included: true },
+        { label: '3 analyses AI Coach / mois', included: true },
         { label: 'Support communautaire', included: true },
         { label: 'Synchronisation MT5 (EA)', included: false },
         { label: 'Export / Import CSV', included: false },

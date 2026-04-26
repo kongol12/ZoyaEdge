@@ -320,91 +320,91 @@ export default function EAManagement() {
   }
 
   return (
-    <div className="space-y-6 md:space-y-8 pb-20">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-white dark:bg-gray-800 p-6 md:p-8 rounded-[32px] shadow-sm border border-gray-100 dark:border-gray-700">
+    <div className="space-y-3 md:space-y-6 pb-20">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 xl:gap-6 bg-white dark:bg-gray-800 p-4 md:p-8 rounded-[24px] md:rounded-[32px] shadow-sm border border-gray-100 dark:border-gray-700">
         <div>
-          <h1 className="text-2xl md:text-4xl font-poppins font-black text-gray-900 dark:text-white tracking-tight">Console EAs</h1>
-          <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mt-2 max-w-2xl">
+          <h1 className="text-2xl md:text-3xl lg:text-4xl font-poppins font-black text-gray-900 dark:text-white tracking-tight">Console EAs</h1>
+          <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 mt-1 md:mt-2 max-w-2xl">
             Supervision, maintenance et contrôle global de tous les Expert Advisors clients connectés au système. Visualisez le flux d'informations en temps réel.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-           <button onClick={() => pingGroup('ALL')} className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors">
+        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+           <button onClick={() => pingGroup('ALL')} className="flex-1 md:flex-none justify-center flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 px-3 md:px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-colors">
               <Zap size={16} /> Ping Global
            </button>
-           <button onClick={() => pingGroup('MT4')} className="flex items-center gap-2 bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/60 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors">
+           <button onClick={() => pingGroup('MT4')} className="flex-1 md:flex-none justify-center flex items-center gap-2 bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/60 px-3 md:px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-colors">
               <Wifi size={16} /> Ping MT4
            </button>
-           <button onClick={() => pingGroup('MT5')} className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors">
+           <button onClick={() => pingGroup('MT5')} className="flex-1 md:flex-none justify-center flex items-center gap-2 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 px-3 md:px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-colors">
               <Wifi size={16} /> Ping MT5
            </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-6">
-        <div className="bg-white dark:bg-gray-800 p-5 md:p-6 rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-between">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-4 text-blue-600 dark:text-blue-400">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 md:gap-4">
+        <div className="col-span-2 lg:col-span-1 bg-white dark:bg-gray-800 p-4 rounded-[20px] md:rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm flex flex-row lg:flex-col items-center lg:items-start justify-between">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center lg:mb-4 text-blue-600 dark:text-blue-400">
             <Server size={20} />
           </div>
-          <div>
+          <div className="text-right lg:text-left">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">EAs Distants</p>
-            <p className="text-2xl md:text-3xl font-poppins font-black text-gray-900 dark:text-white mt-1">{metrics.total}</p>
+            <p className="text-2xl md:text-3xl font-poppins font-black text-gray-900 dark:text-white mt-0.5">{metrics.total}</p>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 p-5 md:p-6 rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-between">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400">
-            <SignalHigh size={20} />
+        <div className="bg-white dark:bg-gray-800 p-3 md:p-4 rounded-[20px] md:rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+          <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center mb-2 md:mb-4 text-emerald-600 dark:text-emerald-400">
+            <SignalHigh size={16} className="md:w-5 md:h-5" />
           </div>
           <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">MT4</p>
-            <div className="mt-1 flex items-baseline gap-2">
-               <span className="text-2xl md:text-3xl font-poppins font-black text-emerald-600">{metrics.mt4Active}</span>
-               <span className="text-sm font-bold text-gray-400">/ {metrics.mt4Inactive} inact</span>
+            <p className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest pt-1">MT4 Actifs</p>
+            <div className="mt-0.5 flex flex-col md:flex-row md:items-baseline gap-0 md:gap-2">
+               <span className="text-xl md:text-3xl font-poppins font-black text-emerald-600 leading-tight">{metrics.mt4Active}</span>
+               <span className="text-[10px] md:text-sm font-bold text-gray-400 leading-none">/ {metrics.mt4Inactive} inc.</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 p-5 md:p-6 rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-between">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center mb-4 text-indigo-600 dark:text-indigo-400">
-            <SignalHigh size={20} />
+        <div className="bg-white dark:bg-gray-800 p-3 md:p-4 rounded-[20px] md:rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-between">
+          <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center mb-2 md:mb-4 text-indigo-600 dark:text-indigo-400">
+            <SignalHigh size={16} className="md:w-5 md:h-5" />
           </div>
           <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">MT5</p>
-            <div className="mt-1 flex items-baseline gap-2">
-               <span className="text-2xl md:text-3xl font-poppins font-black text-indigo-600">{metrics.mt5Active}</span>
-               <span className="text-sm font-bold text-gray-400">/ {metrics.mt5Inactive} inact</span>
+            <p className="text-[9px] md:text-[10px] font-black text-gray-400 uppercase tracking-widest pt-1">MT5 Actifs</p>
+            <div className="mt-0.5 flex flex-col md:flex-row md:items-baseline gap-0 md:gap-2">
+               <span className="text-xl md:text-3xl font-poppins font-black text-indigo-600 leading-tight">{metrics.mt5Active}</span>
+               <span className="text-[10px] md:text-sm font-bold text-gray-400 leading-none">/ {metrics.mt5Inactive} inc.</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 p-5 md:p-6 rounded-[24px] shadow-lg flex flex-col justify-between text-white relative overflow-hidden group">
-          <div className="absolute right-0 top-0 p-4 opacity-20 group-hover:scale-110 transition-transform">
+        <div className="col-span-2 lg:col-span-1 bg-gradient-to-br from-indigo-600 to-indigo-800 p-4 rounded-[20px] md:rounded-[24px] shadow-lg flex flex-row lg:flex-col items-center lg:items-start justify-between text-white relative overflow-hidden group">
+          <div className="absolute right-0 top-0 p-4 opacity-20 group-hover:scale-110 transition-transform hidden md:block">
              <Database size={80} />
           </div>
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center mb-4 backdrop-blur-md">
+          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center lg:mb-4 backdrop-blur-md">
             <Activity size={20} />
           </div>
-          <div className="relative z-10">
-            <p className="text-[10px] font-black text-indigo-200 uppercase tracking-widest">Flux Total (Req)</p>
-            <p className="text-2xl md:text-3xl font-poppins font-black mt-1">{metrics.totalDataFlow}</p>
+          <div className="relative z-10 text-right lg:text-left">
+            <p className="text-[10px] font-black text-indigo-200 uppercase tracking-widest">Flux Req.</p>
+            <p className="text-2xl md:text-3xl font-poppins font-black mt-0.5">{metrics.totalDataFlow}</p>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 p-5 md:p-6 rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm flex flex-col justify-between">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center mb-4 text-amber-600 dark:text-amber-400">
+        <div className="col-span-2 lg:col-span-1 bg-white dark:bg-gray-800 p-4 rounded-[20px] md:rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm flex flex-row lg:flex-col justify-between items-center lg:items-start">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center lg:mb-4 text-amber-600 dark:text-amber-400">
             <BarChart3 size={20} />
           </div>
-          <div>
+          <div className="text-right lg:text-left max-w-[60%] lg:max-w-full">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Top Broker</p>
-            <p className="text-lg md:text-xl font-poppins font-black text-gray-900 dark:text-white mt-1 truncate">{metrics.topBroker}</p>
+            <p className="text-lg md:text-xl font-poppins font-black text-gray-900 dark:text-white mt-0.5 truncate">{metrics.topBroker}</p>
           </div>
         </div>
       </div>
 
       {/* FILTER & SEARCH */}
-      <div className="bg-white dark:bg-gray-800 p-4 md:p-6 rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm">
-        <div className="flex flex-col md:flex-row gap-4 items-center">
+      <div className="bg-white dark:bg-gray-800 p-3 md:p-6 rounded-[20px] md:rounded-[24px] border border-gray-100 dark:border-gray-700 shadow-sm">
+        <div className="flex flex-col md:flex-row gap-3 items-center">
           <div className="flex-1 relative w-full">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input 

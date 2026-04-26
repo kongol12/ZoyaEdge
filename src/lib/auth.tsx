@@ -124,6 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // If the profile doesn't exist yet, it's likely a new signup
           const userRef = doc(db, 'users', currentUser.uid);
           
+          let initialLoad = true;
           unsubscribeProfile = onSnapshot(userRef, async (userSnap) => {
             if (userSnap.exists()) {
               setProfile(userSnap.data() as UserProfile);
@@ -151,15 +152,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 console.error("Error creating profile:", createError);
               }
             }
+            if (initialLoad) {
+              initialLoad = false;
+              setLoading(false);
+            }
           });
         } else {
           setUser(null);
           setProfile(null);
           if (unsubscribeProfile) unsubscribeProfile();
+          setLoading(false);
         }
       } catch (err) {
         console.error("Auth state change error:", err);
-      } finally {
         setLoading(false);
       }
     });

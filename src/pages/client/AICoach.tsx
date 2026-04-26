@@ -38,7 +38,8 @@ export default function AICoach() {
     );
   }
 
-  const isLocked = profile?.subscription === 'free';
+  // Access is allowed for everyone who has credits or a subscription
+  const isLocked = false; 
   const hasNoCredits = (profile?.aiCredits || 0) <= 0 && profile?.subscription !== 'premium';
 
   return (
@@ -57,9 +58,14 @@ export default function AICoach() {
         </div>
         {profile?.subscription !== 'premium' && (
           <div className="bg-white dark:bg-gray-800 px-4 py-2 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center gap-2">
-            <span className="text-xs font-black text-gray-400 uppercase tracking-widest">Crédits AI:</span>
-            <span className={cn("font-poppins font-black", (profile?.aiCredits || 0) > 0 ? "text-emerald-600" : "text-rose-600")}>
+            <span className="text-xs font-black text-gray-400 uppercase tracking-widest">
+              Crédits AI ({profile?.subscription === 'pro' ? 'Pro' : 'Discovery'}):
+            </span>
+            <span className={cn("font-poppins font-black text-lg", (profile?.aiCredits || 0) > 0 ? "text-emerald-600" : "text-rose-600")}>
               {profile?.aiCredits || 0}
+            </span>
+            <span className="text-xs font-medium text-gray-500">
+              / {profile?.subscription === 'pro' ? 30 : 3}
             </span>
           </div>
         )}
