@@ -10,6 +10,7 @@ import { adminRoutes } from '../modules/admin';
 import { aiRoutes } from '../modules/ai';
 import { usersRoutes } from '../modules/users';
 import { paymentsRoutes } from '../modules/payments';
+import { signalsRoutes } from '../modules/signals';
 
 const app = express();
 
@@ -95,6 +96,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api', usersRoutes);     // contains /connections/..., /ea/...
 app.use('/api', paymentsRoutes);  // contains /user/sync-status, /user/sync-settings
+app.use('/api/signals', signalsRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
