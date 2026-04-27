@@ -16,20 +16,16 @@ service cloud.firestore {
       return isSignedIn() && 
              'email' in request.auth.token && 
              request.auth.token.email != null && 
-             (
-               request.auth.token.email.lower() == 'kongolmandf@gmail.com' || // Fallback during migration
-               (exists(/databases/$(database)/documents/app_settings/global) && 
-                (request.auth.token.email.lower() == get(/databases/$(database)/documents/app_settings/global).data.primarySuperAdmin ||
-                 request.auth.token.email.lower() in get(/databases/$(database)/documents/app_settings/global).data.superAdmins))
-             );
+             exists(/databases/$(database)/documents/app_settings/global) && 
+             (request.auth.token.email.lower() == get(/databases/$(database)/documents/app_settings/global).data.primarySuperAdmin ||
+              request.auth.token.email.lower() in get(/databases/$(database)/documents/app_settings/global).data.superAdmins);
     }
     
     function isPrimarySuperAdmin() {
       return isSignedIn() && 
              'email' in request.auth.token && 
-             (request.auth.token.email.lower() == 'kongolmandf@gmail.com' ||
-              (exists(/databases/$(database)/documents/app_settings/global) && 
-               request.auth.token.email.lower() == get(/databases/$(database)/documents/app_settings/global).data.primarySuperAdmin));
+             exists(/databases/$(database)/documents/app_settings/global) && 
+             request.auth.token.email.lower() == get(/databases/$(database)/documents/app_settings/global).data.primarySuperAdmin;
     }
     
     // Admin check via RBAC document

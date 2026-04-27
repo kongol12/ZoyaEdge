@@ -16,9 +16,12 @@
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": [
-        "./*"
-      ]
+      "@/*": ["./apps/web/src/*"],
+      "@features/*": ["./apps/web/src/features/*"],
+      "@shared/*": ["./apps/web/src/shared/*"],
+      "@shared-types/*": ["./packages/shared-types/src/*"],
+      "@shared-utils/*": ["./packages/shared-utils/src/*"],
+      "@server/*": ["./apps/server/src/*"]
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
