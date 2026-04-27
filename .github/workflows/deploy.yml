@@ -7,21 +7,35 @@ on:
   push:
     branches: [ main ] # Only deploy on push to main
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # 1. Deploy Frontend to Firebase Hosting
   deploy-frontend:
     runs-on: ubuntu-latest
     steps:
+      - name: Check required secrets
+        if: ${{ !secrets.FIREBASE_TOKEN || !secrets.GCP_SA_KEY }}
+        run: |
+          echo "::warning::Required secrets (FIREBASE_TOKEN, GCP_SA_KEY) are not configured. Deployment skipped."
+          exit 0
+
       - uses: actions/checkout@v4
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
       - uses: actions/setup-node@v4
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         with:
           node-version: '20'
           cache: 'npm'
       - name: Install dependencies
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         run: npm ci
       - name: Build
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         run: npm run build
       - name: Deploy to Firebase
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
@@ -33,24 +47,35 @@ jobs:
   deploy-backend:
     runs-on: ubuntu-latest
     steps:
+      - name: Check required secrets
+        if: ${{ !secrets.FIREBASE_TOKEN || !secrets.GCP_SA_KEY }}
+        run: |
+          echo "::warning::Required secrets (FIREBASE_TOKEN, GCP_SA_KEY) are not configured. Deployment skipped."
+          exit 0
+
       - uses: actions/checkout@v4
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
       - name: Auth with Google Cloud
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         # uses: google-github-actions/auth@v2
         # with:
         #   credentials_json: '${{ secrets.GCP_SA_KEY }}'
         run: echo "Authenticate with GCP"
 
       - name: Set up Cloud SDK
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         # uses: google-github-actions/setup-gcloud@v2
         run: echo "Setup gcloud"
 
       - name: Build and Push Docker Image
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         run: |
           # docker build -t gcr.io/zoyaedge-prod/server:latest .
           # docker push gcr.io/zoyaedge-prod/server:latest
           echo "Docker build and push"
 
       - name: Deploy to Cloud Run
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         run: |
           # gcloud run deploy zoyaedge-server \
           #   --image gcr.io/zoyaedge-prod/server:latest \
