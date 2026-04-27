@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "node apps/web/dist/server.cjs",
-    "build": "vite build -c apps/web/vite.config.ts && esbuild server.ts --bundle --platform=node --target=node20 --packages=external --outfile=apps/web/dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "build": "vite build -c apps/web/vite.config.ts && esbuild server.ts --bundle --platform=node --target=node20 --packages=external --outfile=dist/server.cjs",
     "preview": "vite preview -c apps/web/vite.config.ts",
-    "clean": "rm -rf apps/web/dist",
+    "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -33,8 +33,7 @@ async function startServer() {
       }
     });
   } else {
-    // Note: If you migrate the frontend to apps/web, change this path to apps/web/dist
-    const distPath = path.resolve(process.cwd(), 'apps/web/dist');
+    const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       const indexPath = path.join(distPath, 'index.html');
