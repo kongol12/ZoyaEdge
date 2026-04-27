@@ -1,3 +1,3 @@
-export * from './hooks/useAuth';
-export * from './services/auth.service';
-export * from './types';
+// Auth feature index
+// Placeholder for future exports
+export {};

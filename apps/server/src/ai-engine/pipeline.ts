@@ -58,18 +58,20 @@ export class AIPipeline {
 
     if (this.ai) {
       try {
-        const model = this.ai.getGenerativeModel({ model: "gemini-2.0-flash" });
-        
         const prompt = this.buildPrompt(normalizedTrades, mathScores, mode);
         
-        const aiResult = await model.generateContent({
+        const aiResult = await this.ai.models.generateContent({
+          model: "gemini-2.0-flash",
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig: {
+          config: {
             responseMimeType: "application/json",
           }
         });
 
-        const text = aiResult.response.text();
+        const text = aiResult.text;
+        if (!text) {
+          throw new Error('AI produced empty content');
+        }
         const cleanedText = text.replace(/```json\n?|```/g, '').trim();
         const parsed = JSON.parse(cleanedText);
         
