@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '@shared/lib/firebase';
-import { collectionGroup, onSnapshot, query, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collectionGroup, onSnapshot, query, orderBy, limit, Timestamp, getDocs, collection } from 'firebase/firestore';
 import { OperationType, handleFirestoreError } from '@shared/lib/db';
 import { 
   BarChart2, 
@@ -83,7 +83,6 @@ export default function ClientTradeReports() {
       
       try {
         // Fetch users to map information
-        const { getDocs, collection } = await import('firebase/firestore');
         const usersSnap = await getDocs(collection(db, 'users'));
         const userMap: Record<string, any> = {};
         usersSnap.docs.forEach(d => {

@@ -3,7 +3,7 @@ import admin from 'firebase-admin';
 import { verifyHMACSignature } from '@shared-utils/security';
 
 export const mt5WebhookService = async (parsedBody: any, signature: string | undefined, rawBody: string) => {
-  const { syncKey, action, pair, direction, lotSize, entryPrice, exitPrice, pnl, timestamp, ticket, reqTime } = parsedBody;
+  const { syncKey, type, action, pair, direction, lotSize, entryPrice, exitPrice, pnl, timestamp, ticket, reqTime, trades, balance } = parsedBody;
   const now = Math.floor(Date.now() / 1000);
 
   if (!syncKey) throw { code: 400, message: "Missing syncKey" };
@@ -52,11 +52,25 @@ export const mt5WebhookService = async (parsedBody: any, signature: string | und
     throw { code: 403, message: "Abonnement expiré ou invalide." };
   }
 
+  // Handle Balance Update
+  if (type === 'balance_update') {
+    console.log(`[Webhook] Balance update for user ${userId}: ${balance}`);
+    await connectionDoc.ref.update({
+      balance: Number(balance),
+      status: 'active',
+      lastSync: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return { success: true };
+  }
+
+  // Handle Heartbeat
   if (action === 'heartbeat') {
     const updates: any = {
       status: 'active',
       lastSync: admin.firestore.FieldValue.serverTimestamp()
     };
+    if (balance !== undefined) updates.balance = Number(balance);
+    
     let pushMessage = "";
     if (connectionData.pendingPush && connectionData.pendingPush.status === 'pending') {
        pushMessage = connectionData.pendingPush.message;
@@ -77,6 +91,61 @@ export const mt5WebhookService = async (parsedBody: any, signature: string | und
   }
 
   const tradesRef = db.collection('users').doc(userId).collection('trades');
+
+  const parseTimestamp = (ts: any, fallbackSecs: number) => {
+    const num = Number(ts);
+    if (isNaN(num) || num === 0) return fallbackSecs * 1000;
+    if (num > 10000000000) return num;
+    return num * 1000;
+  };
+
+  // Handle Initial History Batch
+  if (type === 'initial_history' && Array.isArray(trades)) {
+    console.log(`[Webhook] Processing initial_history batch for user ${userId} (${trades.length} trades)`);
+    
+    // 1. Clear previous EA Sync trades for this user to avoid duplication during initial resync
+    const existingSyncTrades = await tradesRef.where('strategy', '==', 'EA Sync').get();
+    const deleteBatch = db.batch();
+    existingSyncTrades.docs.forEach(doc => deleteBatch.delete(doc.ref));
+    await deleteBatch.commit();
+
+    // 2. Insert new trades in batches of 500 (Firestore limit)
+    let count = 0;
+    for (let i = 0; i < trades.length; i += 500) {
+      const chunk = trades.slice(i, i + 500);
+      const writeBatch = db.batch();
+      
+      chunk.forEach((t: any) => {
+        const tradeData = {
+          userId,
+          pair: t.pair ? String(t.pair).toUpperCase() : 'UNKNOWN',
+          direction: (String(t.direction).toLowerCase().includes('buy') || String(t.direction) === '0') ? 'buy' : 'sell',
+          entryPrice: Number(t.entryPrice || t.exitPrice || 0),
+          exitPrice: Number(t.exitPrice || t.entryPrice || 0),
+          lotSize: Number(t.lotSize || 0),
+          pnl: Number(t.pnl || 0),
+          ticket: t.ticket ? String(t.ticket) : null,
+          strategy: "EA Sync",
+          session: "EA",
+          type: 'trade',
+          isDemo: false,
+          hiddenByClient: false,
+          date: admin.firestore.Timestamp.fromMillis(parseTimestamp(t.timestamp, now)),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        writeBatch.set(tradesRef.doc(), tradeData);
+        count++;
+      });
+      await writeBatch.commit();
+    }
+
+    await connectionDoc.ref.update({
+      status: 'active',
+      lastSync: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { success: true, count };
+  }
   
   if (ticket) {
     const existing = await tradesRef.where('ticket', '==', String(ticket)).limit(1).get();
@@ -97,15 +166,6 @@ export const mt5WebhookService = async (parsedBody: any, signature: string | und
       return { success: true, skipped: true, reason: "ticket already synced" };
     }
   }
-
-  const parseTimestamp = (ts: any, fallbackSecs: number) => {
-    const num = Number(ts);
-    if (isNaN(num) || num === 0) return fallbackSecs * 1000;
-    if (num > 10000000000) {
-      return num;
-    }
-    return num * 1000;
-  };
 
   const tradeData = {
     userId,

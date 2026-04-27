@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { db } from '@shared/lib/firebase';
+import { db, auth } from '@shared/lib/firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, query, where, setDoc } from 'firebase/firestore';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { Users, User as UserIcon, Trash2, CheckCircle, XCircle, Settings, UserPlus, Power, Key } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@shared/lib/utils';
@@ -92,10 +93,6 @@ export default function ClientManagement() {
   const handleResetPassword = async (email: string) => {
     if (confirm(`Envoyer un lien de réinitialisation de mot de passe à ${email} ?`)) {
       try {
-        // We can't directly call sendPasswordResetEmail from admin without the user's context easily,
-        // but we can trigger a cloud function or just use the client SDK if auth is initialized.
-        const { sendPasswordResetEmail } = await import('firebase/auth');
-        const { auth } = await import('@shared/lib/firebase');
         await sendPasswordResetEmail(auth, email);
         toast.success('Email de réinitialisation envoyé avec succès.');
       } catch (error: any) {
