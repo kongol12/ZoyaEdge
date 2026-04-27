@@ -34,14 +34,22 @@ jobs:
       - name: Build
         if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         run: npm run build
+      - name: Upload frontend build artifacts
+        if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: dist/
+          retention-days: 1
       - name: Deploy to Firebase
         if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_ZOYAEDGE }}'
           channelId: live
           projectId: zoyaedge-prod # Replace with your project ID
+          entryPoint: dist
 
   # 2. Deploy Backend to Cloud Run
   deploy-backend:
