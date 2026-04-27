@@ -38,6 +38,7 @@ jobs:
         with:
           name: frontend-build
           path: dist/
+          retention-days: 3
 
       - name: Deploy to Firebase Hosting
         if: ${{ secrets.FIREBASE_TOKEN && secrets.GCP_SA_KEY }}

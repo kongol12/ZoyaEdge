@@ -47,7 +47,7 @@ jobs:
       with:
         name: npm-audit-report
         path: audit.json
-        retention-days: 7
+        retention-days: 3
 
     - name: Run Tests
       run: npm run test
