@@ -25,9 +25,10 @@ interface TradeExplorerProps {
   notebookEntries?: NotebookEntry[];
   defaultView?: ViewMode;
   onTradeClick?: (trade: Trade) => void;
+  onNotebookClick?: (date: Date) => void;
 }
 
-export default function TradeExplorer({ trades, notebookEntries = [], defaultView = 'calendar', onTradeClick }: TradeExplorerProps) {
+export default function TradeExplorer({ trades, notebookEntries = [], defaultView = 'calendar', onTradeClick, onNotebookClick }: TradeExplorerProps) {
   const { t, language } = useTranslation();
   const { profile } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
@@ -146,11 +147,18 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
                             {format(date, 'd')}
                           </span>
                           {notebookByDay[dayKey] && (
-                            <div className={cn(
-                              "text-zoya-red dark:text-zoya-red-light bg-white dark:bg-gray-800 rounded-md p-0.5 shadow-sm",
+                            <div 
+                              onClick={(e) => {
+                                if (onNotebookClick) {
+                                  e.stopPropagation();
+                                  onNotebookClick(date);
+                                }
+                              }}
+                              className={cn(
+                              "text-zoya-red dark:text-zoya-red-light bg-white dark:bg-gray-800 rounded-md p-0.5 shadow-sm hover:scale-110 transition-transform cursor-pointer",
                               dayTrades.length > 0 && "text-white bg-transparent shadow-none"
                             )}>
-                              <BookOpen size={10} />
+                              <BookOpen size={13} />
                             </div>
                           )}
                         </div>
@@ -270,7 +278,17 @@ export default function TradeExplorer({ trades, notebookEntries = [], defaultVie
                 <td className="px-6 py-4 text-xs font-bold text-gray-500">
                   {format(trade.date, 'dd/MM/yyyy')}
                   {notebookByDay[format(trade.date, 'yyyy-MM-dd')] && (
-                    <BookOpen size={12} className="inline ml-2 text-zoya-red" title="Journée journalisée" />
+                    <div 
+                      onClick={(e) => {
+                        if (onNotebookClick) {
+                          e.stopPropagation();
+                          onNotebookClick(trade.date);
+                        }
+                      }}
+                      className="inline-block"
+                    >
+                      <BookOpen size={14} className="inline ml-2 text-zoya-red cursor-pointer hover:scale-110 transition-transform" title="Journée journalisée (Cliquez pour voir)" />
+                    </div>
                   )}
                 </td>
               </tr>

@@ -30,7 +30,11 @@ export const orchestrate = async (req: AuthenticatedRequest, res: Response) => {
     return res.json(result);
   } catch (error: any) {
     console.error("[ZoyaAI Engine Error]:", error);
-    return res.status(error.code || 500).json({ error: process.env.NODE_ENV === 'production' ? "Erreur lors du traitement multi-modèles IA" : error.message });
+    const status = error.code || error.status || 500;
+    const message = (process.env.NODE_ENV === 'production' && status === 500)
+      ? "Erreur lors du traitement multi-modèles IA"
+      : (error.message || "Erreur lors du traitement multi-modèles IA");
+    return res.status(status).json({ error: message });
   }
 };
 

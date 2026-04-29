@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@shared/lib/auth';
 import { useTranslation } from '@shared/lib/i18n';
 import { addNotebookEntry, subscribeToNotebook, deleteNotebookEntry, NotebookEntry, uploadImage } from '@shared/lib/db';
+import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Trash2, Save, Loader2, Calendar, Image as ImageIcon, BookOpen, X, Upload, Download } from 'lucide-react';
 import { cn, exportToCSV } from '@shared/lib/utils';
@@ -15,6 +16,7 @@ export default function Notebook() {
   const [showForm, setShowForm] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     content: '',
@@ -71,8 +73,10 @@ export default function Notebook() {
         date: new Date().toISOString().slice(0, 10),
         emotion: '' as NotebookEntry['emotion'],
       });
+      toast.success(t.common?.success || 'Enregistré avec succès');
     } catch (error) {
       console.error("Error saving notebook entry", error);
+      toast.error(t.common?.error || 'Erreur lors de l\'enregistrement');
     } finally {
       setSaving(false);
     }
@@ -263,7 +267,7 @@ export default function Notebook() {
                     alt="Trading Screenshot"
                     referrerPolicy="no-referrer"
                     className="w-full h-48 md:h-64 object-cover rounded-2xl border border-gray-100 dark:border-gray-700 shadow-lg hover:scale-[1.02] transition-transform cursor-pointer"
-                    onClick={() => window.open(entry.imageUrl, '_blank')}
+                    onClick={() => setSelectedImage(entry.imageUrl || null)}
                   />
                 </div>
               )}
@@ -271,6 +275,27 @@ export default function Notebook() {
           </motion.div>
         ))}
       </div>
+      <AnimatePresence>
+        {selectedImage && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedImage(null)}>
+            <motion.img 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              src={selectedImage} 
+              alt="Enlarged Journal Image"
+              className="max-w-full max-h-[95vh] rounded-xl object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button 
+              className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-colors"
+              onClick={() => setSelectedImage(null)}
+            >
+              <X size={24} />
+            </button>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@shared/lib/auth';
 import { db, auth } from '@shared/lib/firebase';
-import { collection, addDoc, query, where, onSnapshot, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { ShieldCheck, Server, User, Plus, Trash2, RefreshCw, CheckCircle2, AlertCircle, Download, Key, Copy, Check, Terminal, Eye, EyeOff, Hash } from 'lucide-react';
+import { collection, addDoc, query, where, onSnapshot, deleteDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { ShieldCheck, Server, User, Plus, Trash2, RefreshCw, CheckCircle2, AlertCircle, Download, Key, Copy, Check, Terminal, Eye, EyeOff, Hash, TrendingUp, Zap, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@shared/lib/utils';
 import PaywallModal from '@shared/components/molecules/PaywallModal';
 import { OperationType, handleFirestoreError } from '@shared/lib/db';
 import toast from 'react-hot-toast';
+import { DEFAULT_PACK_FILES } from '../../shared/constants/packFiles';
 
 interface BrokerConnection {
   id: string;
@@ -87,7 +88,47 @@ export default function BrokerConnections() {
   };
 
   // Form State
-  const [platform, setPlatform] = useState<'MT4' | 'MT5' | 'TradeLocker' | 'CTrader' | 'TradingView' | 'Tradovate' | 'NinjaTrader'>('MT5');
+  const downloadFile = async (fileName: string) => {
+    try {
+      setLoading(true);
+      // Try to get from Firestore first (managed by admin)
+      const fileRef = doc(db, 'system_downloads', fileName.replace('.', '_'));
+      const fileSnap = await getDoc(fileRef);
+      
+      let content = '';
+      if (fileSnap.exists()) {
+        content = fileSnap.data().content;
+      } else {
+        // Fallback to local
+        const fileKey = fileName.replace('.', '_') as keyof typeof DEFAULT_PACK_FILES;
+        if (DEFAULT_PACK_FILES[fileKey]) {
+          content = DEFAULT_PACK_FILES[fileKey];
+        } else {
+          toast.error("Fichier non trouvé. Veuillez contacter l'administrateur.");
+          return;
+        }
+      }
+
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      toast.success(`${fileName} prêt !`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Erreur technique lors du téléchargement");
+      handleFirestoreError(err, OperationType.GET, 'system_downloads');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const [platform, setPlatform] = useState< 'MT4' | 'MT5' | 'TradeLocker' | 'CTrader' | 'TradingView' | 'Tradovate' | 'NinjaTrader'>('MT5');
+
   const [connectionType, setConnectionType] = useState<'ea' | 'cloud'>('ea');
   const [accountName, setAccountName] = useState('');
   const [brokerServer, setBrokerServer] = useState('');
@@ -246,54 +287,116 @@ export default function BrokerConnections() {
         </button>
       </div>
 
-      {/* Instructions Banner */}
-      <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="space-y-4 max-w-xl">
-            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-              <ShieldCheck size={14} /> 100% Sécurisé
-            </div>
-            <h3 className="text-2xl font-poppins font-black">ZoyaEdge Pro Pack</h3>
-            <p className="text-indigo-100 text-sm leading-relaxed">
-              Ne donnez plus jamais vos mots de passe. Téléchargez notre Expert Advisor (EA) pour MT4/MT5. Il tourne sur votre graphique et envoie vos trades automatiquement vers votre journal. Inclus : notre indicateur exclusif d'aide à la décision.
-            </p>
-            <div className="flex flex-wrap items-center gap-4 pt-2">
-              <a 
-                href="/api/ea/download?platform=MT5" 
-                className="flex items-center gap-2 bg-white text-indigo-600 px-5 py-2.5 rounded-xl font-bold text-sm hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
-              >
-                <Download size={18} />
-                MT5 EA (.mq5)
-              </a>
-              <a 
-                href="/api/ea/download?platform=MT4" 
-                className="flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-white/30 hover:scale-[1.02] active:scale-[0.98] transition-all border border-white/30"
-              >
-                <Download size={18} />
-                MT4 EA (.mq4)
-              </a>
-              <a href="#" className="text-sm font-medium text-indigo-200 hover:text-white underline underline-offset-4 transition-colors">
-                Tutoriel d'installation
-              </a>
+      {/* ZoyaEdge Pack Pro Section */}
+      <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-blue-900 rounded-[40px] p-8 md:p-12 text-white shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-white opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4"></div>
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-zoya-red opacity-10 rounded-full blur-3xl translate-y-1/3 -translate-x-1/4"></div>
+        
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-2 bg-zoya-red px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-zoya-red/20">
+              <Zap size={14} className="fill-current" /> Pack Pro Exclusif
             </div>
             
-            <div className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl border border-white/20 mt-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-200 mb-2">URL à autoriser dans MetaTrader (WebRequest) :</p>
-              <div className="flex items-center justify-between gap-2">
-                <code className="text-xs font-mono bg-black/20 px-3 py-2 rounded-lg break-all flex-1">{appUrl}</code>
-                <button 
-                  onClick={() => copyToClipboard(appUrl)}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all shrink-0"
-                >
-                  {copiedKey === appUrl ? <Check size={14} /> : <Copy size={14} />}
-                </button>
+            <h3 className="text-3xl md:text-5xl font-poppins font-black leading-[1.1] tracking-tight">
+              ZoyaEdge Pack <br/>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-indigo-200">Pro v2.0</span>
+            </h3>
+            
+            <p className="text-indigo-100/80 text-lg font-medium leading-relaxed max-w-lg">
+              La nouvelle génération de notre suite de trading automatisée. Analyse multi-timeframe (MTF) et gestion multi-actifs avancée pour une exécution institutionnelle.
+            </p>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-5 rounded-3xl hover:bg-white/10 transition-all group">
+                <div className="w-10 h-10 bg-indigo-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Terminal className="text-indigo-300" size={20} />
+                </div>
+                <h4 className="font-bold text-sm mb-1 text-white">EA Multi-Actifs</h4>
+                <p className="text-xs text-indigo-200/60 leading-relaxed">Gérez jusqu'à 15 symboles (SL, TP, Lot) depuis un seul graphique.</p>
               </div>
+              
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-5 rounded-3xl hover:bg-white/10 transition-all group">
+                <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <TrendingUp className="text-emerald-300" size={20} />
+                </div>
+                <h4 className="font-bold text-sm mb-1 text-white">Indicateur MTF</h4>
+                <p className="text-xs text-indigo-200/60 leading-relaxed">Détection Order Blocks, FVG & BOS sur 3 MTF confirmés.</p>
+              </div>
+
+              <div className="bg-white/5 backdrop-blur-sm border border-white/10 p-5 rounded-3xl hover:bg-white/10 transition-all group">
+                <div className="w-10 h-10 bg-sky-500/20 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Activity className="text-sky-300" size={20} />
+                </div>
+                <h4 className="font-bold text-sm mb-1 text-white">Synchro Historique</h4>
+                <p className="text-xs text-indigo-200/60 leading-relaxed">Tracker des données historiques avec connexion directe API.</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 pt-6">
+              <button 
+                onClick={() => downloadFile('ZoyaEdgePackPro_EA.mq5')}
+                className="flex items-center gap-2 bg-white text-indigo-900 px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-white/10"
+              >
+                <Download size={18} /> Télécharger EA
+              </button>
+              <button 
+                onClick={() => downloadFile('ZoyaEdge_History_Sync_EA.mq5')}
+                className="flex items-center gap-2 bg-sky-700 text-white px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-sky-600 hover:scale-105 active:scale-95 transition-all border border-sky-500/50"
+              >
+                <Download size={18} /> Synchro Historique
+              </button>
+              <button 
+                onClick={() => downloadFile('ZoyaEdgePackPro_Indicator.mq5')}
+                className="flex items-center gap-2 bg-indigo-700 text-white px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all border border-indigo-500/50"
+              >
+                <Download size={18} /> Indicateur
+              </button>
+              <button 
+                onClick={() => downloadFile('ZoyaEdgePackPro.tpl')}
+                className="flex items-center gap-2 bg-white/10 backdrop-blur-md text-white px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/20 hover:scale-105 active:scale-95 transition-all border border-white/20"
+              >
+                <Download size={18} /> Template Universel
+              </button>
             </div>
           </div>
 
-          <div className="hidden md:flex items-center justify-center w-32 h-32 bg-white/10 backdrop-blur-md rounded-full border border-white/20 shrink-0">
-            <Terminal size={48} className="text-white opacity-80" />
+          <div className="lg:pl-12">
+            <div className="bg-black/40 backdrop-blur-xl rounded-[32px] p-8 border border-white/10 shadow-3xl">
+              <div className="flex items-center gap-3 mb-8">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Configuration Rapide v2.0</span>
+              </div>
+              
+              <div className="space-y-6">
+                {[
+                  { step: "01", text: "Compilez les 2 EA et l'Indicateur", icon: <CheckCircle2 size={16} /> },
+                  { step: "02", text: "Chargez le template sur 1 graphique", icon: <CheckCircle2 size={16} /> },
+                  { step: "03", text: "Attachez l'EA (Gère les autres symboles auto)", icon: <CheckCircle2 size={16} /> },
+                ].map((s, i) => (
+                  <div key={i} className="flex items-start gap-4">
+                    <span className="text-2xl font-poppins font-black text-white/20">{s.step}</span>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <div className="text-emerald-400">{s.icon}</div>
+                      <p className="text-sm font-medium text-white/80">{s.text}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-10 p-5 bg-zoya-red/10 border border-zoya-red/20 rounded-2xl">
+                 <p className="text-[10px] font-black uppercase tracking-widest text-zoya-red mb-3">URL WebRequest (MT5 Settings) :</p>
+                 <div className="flex items-center justify-between gap-3">
+                    <code className="text-[11px] font-mono text-white/90 break-all">{appUrl}</code>
+                    <button 
+                      onClick={() => copyToClipboard(appUrl)}
+                      className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all shrink-0"
+                    >
+                      {copiedKey === appUrl ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} className="text-white/60" />}
+                    </button>
+                 </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

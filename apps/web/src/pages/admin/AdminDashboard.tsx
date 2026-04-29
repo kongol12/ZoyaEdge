@@ -255,12 +255,22 @@ export default function AdminDashboard() {
       const paymentsData = snapshot.docs.map(doc => {
         const data = doc.data();
         const userName = userMap[data.userId]?.displayName || userMap[data.userId]?.email || 'Client';
-        return {
-          id: `p_${doc.id}`,
-          _source: 'payment',
-          time: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(),
-          text: `Paiement ${data.status === 'completed' ? 'réussi' : 'échoué'} de ${formatCurrency(data.amount || 0)} par ${userName} pour l'abonnement ${data.planId || 'Inconnu'}.`
-        };
+          const planName = data.plan || data.planId || 'Inconnu';
+          const currency = data.currency || 'USD';
+          const symbol = currency === 'CDF' ? 'FC' : '$';
+          const amountDisplay = `${data.amount} ${symbol}`;
+          const failureReason = data.failureReason ? ` (Motif: ${data.failureReason})` : '';
+          
+          let statusText = 'en cours';
+          if (data.status === 'completed') statusText = 'réussi';
+          if (data.status === 'failed') statusText = 'échoué';
+
+          return {
+            id: `p_${doc.id}`,
+            _source: 'payment',
+            time: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(),
+            text: `Paiement ${statusText} de ${amountDisplay} par ${userName} pour l'abonnement ${planName}${failureReason}.`
+          };
       });
       setSystemLogs(prev => {
         const other = prev.filter(l => l._source !== 'payment');

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Book, Plus, Filter, History, Calendar, LayoutGrid, List, Sparkles } from 'lucide-react';
+import { Book, Plus, Filter, History, Calendar, LayoutGrid, List, Sparkles, Image as ImageIcon } from 'lucide-react';
 import { useTranslation } from '@shared/lib/i18n';
 import { subscribeToTrades, subscribeToNotebook, Trade, NotebookEntry } from '@shared/lib/db';
 import { useAuth } from '@shared/lib/auth';
@@ -8,6 +8,7 @@ import { cn } from '@shared/lib/utils';
 import TradeExplorer from '@shared/components/organisms/client/TradeExplorer';
 import TradeDetail from '@shared/components/organisms/client/TradeDetail';
 import NotebookEntryModal from '@shared/components/organisms/client/NotebookEntryModal';
+import NotebookHistoryModal from '@shared/components/organisms/client/NotebookHistoryModal';
 import { useFilteredTrades } from '@features/trades/hooks/useFilteredTrades';
 import { Button } from '@shared/components/atoms/Button';
 import { Link } from 'react-router';
@@ -21,6 +22,9 @@ export default function Journal() {
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [isNotebookOpen, setIsNotebookOpen] = useState(false);
+  const [isNotebookHistoryOpen, setIsNotebookHistoryOpen] = useState(false);
+
+  const [selectedNotebookDate, setSelectedNotebookDate] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -86,12 +90,24 @@ export default function Journal() {
 
               <div className="flex flex-wrap items-center gap-3">
                 <Button 
+                  onClick={() => {
+                    setSelectedNotebookDate(null);
+                    setIsNotebookHistoryOpen(true);
+                  }}
+                  variant="outline"
+                  className="rounded-2xl h-12 px-6 border-sky-100 dark:border-sky-900 bg-sky-50/50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 flex items-center gap-2 group transition-all"
+                >
+                  <History size={18} className="group-hover:scale-110 transition-transform" />
+                  {language === 'fr' ? 'Historique Journal' : 'Journal History'}
+                </Button>
+                
+                <Button 
                   onClick={() => setIsNotebookOpen(true)}
                   variant="outline"
                   className="rounded-2xl h-12 px-6 border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 flex items-center gap-2 group transition-all"
                 >
                   <Sparkles size={18} className="group-hover:rotate-12 transition-transform" />
-                  {language === 'fr' ? 'Journal de Bord' : 'Notebook'}
+                  {language === 'fr' ? 'Ajouter Note' : 'Add Note'}
                 </Button>
 
                 <Link to="/add">
@@ -190,6 +206,10 @@ export default function Journal() {
               notebookEntries={notebookEntries}
               defaultView="calendar" 
               onTradeClick={(trade) => setSelectedTrade(trade)}
+              onNotebookClick={(date) => {
+                setSelectedNotebookDate(date);
+                setIsNotebookHistoryOpen(true);
+              }}
             />
           </motion.div>
         ) : (
@@ -204,6 +224,16 @@ export default function Journal() {
       <NotebookEntryModal 
         isOpen={isNotebookOpen} 
         onClose={() => setIsNotebookOpen(false)} 
+      />
+
+      <NotebookHistoryModal 
+        isOpen={isNotebookHistoryOpen} 
+        onClose={() => {
+          setIsNotebookHistoryOpen(false);
+          setSelectedNotebookDate(null);
+        }}
+        entries={notebookEntries}
+        date={selectedNotebookDate}
       />
     </div>
   );

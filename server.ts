@@ -49,8 +49,12 @@ async function startServer() {
     console.log(`Server running on http://localhost:${PORT}`);
     if (process.env.GEMINI_API_KEY) {
       console.log(`[AI] GEMINI_API_KEY is configured.`);
-    } else {
-      console.warn(`[AI] WARNING: GEMINI_API_KEY is not configured! AI features will not work.`);
+    }
+    if (process.env.DEEPSEEK_API_KEY) {
+      console.log(`[AI] DEEPSEEK_API_KEY is configured.`);
+    }
+    if (!process.env.GEMINI_API_KEY && !process.env.DEEPSEEK_API_KEY) {
+      console.warn(`[AI] WARNING: Neither GEMINI_API_KEY nor DEEPSEEK_API_KEY are configured! AI features will not work.`);
     }
   });
 }

@@ -9,6 +9,8 @@ import { logSystemActivity, logSystemEvent } from '../../infrastructure/logger/l
 // or we can migrate it to `apps/server/src/modules/ai/pipeline.ts`.
 import { AIPipeline } from '../../ai-engine/pipeline';
 
+import { analyzeWithDeepSeek } from '../../ai-engine/providers/deepseek';
+
 const AI_LIMITS = {
   free: 3,
   pro: 30,
@@ -22,10 +24,9 @@ export const getQuotaForSubscription = (subscription: string): number => {
 };
 
 const getGeminiModel = (mode: string, subscription: string): string => {
-  if (subscription === 'premium') return 'gemini-2.0-flash';
-  if (mode === 'DETAILED') return 'gemini-2.0-flash';
-  if (mode === 'CONCISE') return 'gemini-2.0-flash-lite';
-  return 'gemini-2.0-flash';
+  if (subscription === 'premium') return 'models/gemini-3.1-pro-preview';
+  if (mode === 'DETAILED') return 'models/gemini-3.1-pro-preview';
+  return 'models/gemini-3-flash-preview';
 };
 
 const getMaxTokens = (mode: string): number => {
@@ -114,21 +115,30 @@ const checkAndDeductAICredit = async (
 };
 
 export const handleGeminiError = (error: any) => {
-  console.error("Gemini API Error:", error);
+  console.error("Gemini API Error details:", error);
   if (error?.message?.includes('API key not valid')) {
     return { code: 401, message: "La clé API Gemini est invalide. Veuillez la vérifier dans les paramètres de l'application." };
   }
   if (error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED')) {
     return { code: 429, message: "Limite de quota atteinte pour l'IA. Veuillez réessayer dans quelques minutes." };
   }
-  return { code: 500, message: process.env.NODE_ENV === 'production' ? "Une erreur est survenue lors de l'analyse IA." : (error.message || "Une erreur est survenue lors de l'analyse IA.") };
+  if (error?.status === 402 || error?.code === 402) {
+    return { code: 402, message: error.message };
+  }
+  return { code: 500, message: error.message || "Une erreur est survenue lors de l'analyse IA." };
 };
 
 let aiPipeline: AIPipeline | null = null;
 
 export const aiService = {
   coach: async (userId: string, input: any) => {
-    if (!process.env.GEMINI_API_KEY) throw { code: 500, message: "Service IA indisponible: Clé API Gemini manquante." };
+    const hasGemini = !!process.env.GEMINI_API_KEY;
+    const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
+
+    if (!hasGemini && !hasDeepSeek) {
+      throw { code: 500, message: "IA Indisponible: Clé API Gemini ou DeepSeek manquante." };
+    }
+
     const db = getDb();
     if (!db) throw { code: 503, message: "Service de base de données indisponible" };
 
@@ -140,10 +150,47 @@ export const aiService = {
       throw { code: 402, message: creditCheck.reason || "Crédits IA épuisés." };
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    // Fallback to DeepSeek if Gemini is missing
+    if (!hasGemini && hasDeepSeek) {
+      console.log("[AI COACH] Gemini missing, falling back to DeepSeek...");
+      const deepSeekResult = await analyzeWithDeepSeek(input.metrics || []);
+      return {
+        decision: deepSeekResult.patterns?.length > 5 ? "ORANGE" : "GREEN",
+        score: { risk: 80, discipline: 80, consistency: 80 },
+        summary: deepSeekResult.dataReduction || "Analyse DeepSeek effectuée (Gemini indisponible).",
+        insights: deepSeekResult.patterns || [],
+        mistakes: deepSeekResult.anomalies || [],
+        recommendations: ["Configurez la clé Gemini pour une analyse complète."],
+        risk_level: "LOW",
+        usage: {
+          remaining: creditCheck.remaining,
+          limit: creditCheck.limit
+        }
+      };
+    }
+
+    // Multi-model: Pre-analyze with DeepSeek if available
+    let deepSeekContext = "";
+    if (hasDeepSeek) {
+      try {
+        console.log("[AI COACH] Pre-analyzing with DeepSeek...");
+        const dsResult = await analyzeWithDeepSeek(input.metrics?.trades || []);
+        if (dsResult.dataReduction) {
+          deepSeekContext = `\nDEEPSEEK PRE-ANALYSIS:\n${dsResult.dataReduction}\nPATTERNS DETECTED BY DEEPSEEK: ${dsResult.patterns?.join(', ')}\n`;
+        }
+      } catch (e) {
+        console.error("DeepSeek pre-analysis failed:", e);
+      }
+    }
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const model = getGeminiModel(input.mode || 'STANDARD', subscription);
+    console.log(`[AI COACH] Calling Gemini with model: ${model}`);
+    
     const prompt = `
 You are Zoya AI Coach, a professional hedge fund risk analyst, trading performance auditor, and discipline enforcement system.
 Analyze the following trading metrics and behavioral data.
+${deepSeekContext}
 
 INPUT DATA:
 ${JSON.stringify(input, null, 2)}
@@ -170,18 +217,19 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
 `;
 
     const response = await ai.models.generateContent({
-      model: getGeminiModel(input.mode || 'STANDARD', subscription),
-      contents: prompt,
+      model: model,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
+        systemInstruction: "You are Zoya AI Coach, a professional hedge fund risk analyst and trading performance auditor.",
         responseMimeType: "application/json",
       }
     });
 
     const text = response.text;
-    if (!text) throw new Error("Réponse vide de l'IA");
+    if (!text) throw new Error("Réponse vide de l'IA (Coach)");
     
-    const cleanedText = text.replace(/```json\n?|```/g, '').trim();
-    const aiAnalysis = JSON.parse(cleanedText);
+    // SDK with responseMimeType: "application/json" should return clean JSON
+    const aiAnalysis = JSON.parse(text.trim());
 
     if (aiAnalysis.decision === 'RED') {
       await logSystemEvent('error', 'behavioral_analysis', `Critical behavioral risk detected for user ${userId}. Condition: ${aiAnalysis.summary}`, {
@@ -218,7 +266,13 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
 
   ask: async (userId: string, body: any) => {
     const { trades, language, strategies, instruction, mode = 'STANDARD' } = body;
-    if (!process.env.GEMINI_API_KEY) throw { code: 500, message: "Service IA indisponible: Clé API Gemini manquante." };
+    const hasGemini = !!process.env.GEMINI_API_KEY;
+    const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
+
+    if (!hasGemini && !hasDeepSeek) {
+      throw { code: 500, message: "IA Indisponible: Clé API Gemini ou DeepSeek manquante." };
+    }
+
     const db = getDb();
     if (!db) throw { code: 503, message: "Service de base de données indisponible" };
 
@@ -236,7 +290,22 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
       throw { code: 402, message: creditCheck.reason };
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    // Fallback to DeepSeek
+    if (!hasGemini && hasDeepSeek) {
+      console.log("[AI ASK] Gemini missing, falling back to DeepSeek...");
+      const result = await analyzeWithDeepSeek(tradesToAnalyze);
+      return {
+        summary: result.dataReduction || "Analyse effectuée via DeepSeek.",
+        actions: result.patterns?.map((p: string) => ({ priority: 1, action: p, reason: "Detected pattern" })) || [],
+        coach_decision: { status: "orange", action: "reduce_risk" },
+        usage: { remaining: creditCheck.remaining, limit: creditCheck.limit }
+      };
+    }
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+    const model = getGeminiModel(mode, subscription);
+    console.log(`[AI ASK] Calling Gemini with model: ${model}`);
+
     const prompt = `
 Analyze this trading dataset and return structured output only.
 IMPORTANT: All text fields MUST be in ${language === 'fr' ? 'French (Français)' : 'English'}.
@@ -254,19 +323,18 @@ STRICT JSON OUTPUT ONLY:
 `;
 
     const response = await ai.models.generateContent({
-      model: getGeminiModel(mode, subscription),
-      contents: prompt,
+      model: model,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
-        systemInstruction: instruction,
+        systemInstruction: instruction || "You are a professional trading AI assistant.",
         responseMimeType: "application/json",
         maxOutputTokens: getMaxTokens(mode),
       }
     });
 
     const text = response.text;
-    if (!text) throw new Error("Réponse vide de l'IA");
-    const cleanedText = text.replace(/```json\n?|```/g, '').trim();
-    const result = JSON.parse(cleanedText);
+    if (!text) throw new Error("Réponse vide de l'IA (Ask)");
+    const result = JSON.parse(text.trim());
 
     await setAICache(userId, tradesHash, result, db);
 

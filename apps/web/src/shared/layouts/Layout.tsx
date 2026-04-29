@@ -61,6 +61,7 @@ export default function Layout() {
         { name: t.common.addTrade, path: '/add', icon: PlusCircle },
         { name: t.common.journal, path: '/journal', icon: Book },
         { name: t.common.academy, path: '/academy', icon: GraduationCap },
+        { name: t.common.partners, path: '/partners', icon: ShieldCheck },
       ]
     },
     {

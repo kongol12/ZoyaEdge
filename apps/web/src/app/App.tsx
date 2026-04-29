@@ -35,6 +35,7 @@ import Alerts from '@/pages/client_old/Alerts';
 import Subscription from '@/pages/client_old/Subscription';
 import FAQ from '@/pages/client_old/FAQ';
 import Support from '@/pages/client_old/Support';
+import PartnersPage from '@/pages/dashboard/PartnersPage';
 import SecretAdminPortal from '@/pages/SecretAdminPortal';
 import LandingPage from '@/pages/LandingPage';
 
@@ -220,6 +221,7 @@ function AppRoutes() {
         <Route path="subscription" element={<Subscription />} />
         <Route path="faq" element={<FAQ />} />
         <Route path="support" element={<Support />} />
+        <Route path="partners" element={<PartnersPage />} />
         <Route path="settings" element={<Settings />}>
           <Route index element={<Navigate to="profile" replace />} />
           <Route path="profile" element={<ProfileSettings />} />

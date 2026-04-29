@@ -95,6 +95,7 @@ export async function runZoyaAICoach(userId: string, mode: AnalysisMode = "STAND
 async function callGeminiAICoach(input: any): Promise<ZoyaAICoachOutput> {
   try {
     const token = await auth.currentUser?.getIdToken();
+
     const response = await fetch('/api/ai/coach', {
       method: 'POST',
       headers: {

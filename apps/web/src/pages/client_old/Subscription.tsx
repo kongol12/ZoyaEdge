@@ -151,29 +151,52 @@ export default function Subscription() {
   ];
 
   const plans = basePlans.map(plan => {
-    const discountMultiplier = 1 - (dynamicPricing.globalDiscount / 100);
+    const safeVatRate = Number(dynamicPricing.vatRate) || 0;
+    const safeFeeRate = Number(dynamicPricing.transactionFee) || 0;
+    const safeGlobalDiscount = Number(dynamicPricing.globalDiscount) || 0;
+    const safeExchangeRate = Number(exchangeRate) || 2800;
     
+    const discountMultiplier = 1 - (safeGlobalDiscount / 100);
+
+    const roundAmount = (val: number) => {
+      if (isNaN(val)) return 0;
+      return currency === 'USD' ? Math.round(val * 100) / 100 : Math.round(val);
+    };
+
+    const calcTotal = (basePrice: number) => {
+      const price = basePrice || 0;
+      const vat = (price * safeVatRate) / 100;
+      const withVat = price + vat;
+      const fee = (withVat * safeFeeRate) / 100;
+      return roundAmount(withVat + fee);
+    };
+
     // Logic: If CDF + Automatic Conversion is disabled, use fixed CDF price. Otherwise convert from USD.
-    let mPrice: number;
-    let yPrice: number;
+    let mPrice: number = 0;
+    let yPrice: number = 0;
+
+    const baseMonthlyUSD = Number(plan.monthlyPriceUSD) || 0;
+    const baseYearlyUSD = Number(plan.yearlyPriceUSD) || 0;
+    const baseMonthlyCDF = Number(plan.monthlyPriceCDF) || 0;
+    const baseYearlyCDF = Number(plan.yearlyPriceCDF) || 0;
 
     if (currency === 'CDF') {
       if (!dynamicPricing.useAutomaticConversion) {
-        mPrice = plan.monthlyPriceCDF * discountMultiplier;
-        yPrice = plan.yearlyPriceCDF * discountMultiplier;
+        mPrice = calcTotal(baseMonthlyCDF * discountMultiplier);
+        yPrice = calcTotal(baseYearlyCDF * discountMultiplier);
       } else {
-        mPrice = (plan.monthlyPriceUSD * discountMultiplier) * exchangeRate;
-        yPrice = (plan.yearlyPriceUSD * discountMultiplier) * exchangeRate;
+        mPrice = calcTotal((baseMonthlyUSD * discountMultiplier) * safeExchangeRate);
+        yPrice = calcTotal((baseYearlyUSD * discountMultiplier) * safeExchangeRate);
       }
     } else {
-      mPrice = plan.monthlyPriceUSD * discountMultiplier;
-      yPrice = plan.yearlyPriceUSD * discountMultiplier;
+      mPrice = calcTotal(baseMonthlyUSD * discountMultiplier);
+      yPrice = calcTotal(baseYearlyUSD * discountMultiplier);
     }
 
     return {
       ...plan,
-      monthlyPrice: mPrice,
-      yearlyPrice: yPrice,
+      monthlyPrice: mPrice || 0,
+      yearlyPrice: yPrice || 0,
     };
   });
 
@@ -210,10 +233,23 @@ export default function Subscription() {
        return;
     }
 
+    const discountMultiplier = 1 - (dynamicPricing.globalDiscount / 100);
+    let basePrice: number;
+
+    if (currency === 'CDF') {
+      if (!dynamicPricing.useAutomaticConversion) {
+        basePrice = (billingCycle === 'yearly' ? plan.yearlyPriceCDF : plan.monthlyPriceCDF) * discountMultiplier;
+      } else {
+        basePrice = ((billingCycle === 'yearly' ? plan.yearlyPriceUSD : plan.monthlyPriceUSD) * discountMultiplier) * exchangeRate;
+      }
+    } else {
+      basePrice = (billingCycle === 'yearly' ? plan.yearlyPriceUSD : plan.monthlyPriceUSD) * discountMultiplier;
+    }
+
     setSelectedPlan({
       id: plan.id,
       name: plan.name,
-      price: billingCycle === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice
+      price: basePrice // Le Checkout ajoutera la TVA et les frais (qui sont déjà inclus dans l'affichage)
     });
     setShowZoyaPayCheckout(true);
   };

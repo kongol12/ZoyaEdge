@@ -7,6 +7,7 @@ import { useAuth } from '@shared/lib/auth';
 import { Button } from '../../atoms/Button';
 import { format } from 'date-fns';
 import { cn } from '@shared/lib/utils';
+import toast from 'react-hot-toast';
 
 interface NotebookEntryModalProps {
   isOpen: boolean;
@@ -69,8 +70,10 @@ export default function NotebookEntryModal({ isOpen, onClose }: NotebookEntryMod
       setImagePreview(null);
       setEmotion('😐');
       onClose();
+      toast.success(language === 'fr' ? 'Entrée journal ajoutée avec succès !' : 'Journal entry added successfully!');
     } catch (error) {
       console.error('Error adding notebook entry:', error);
+      toast.error(language === 'fr' ? 'Erreur lors de l\'enregistrement.' : 'Error saving entry.');
     } finally {
       setIsSubmitting(false);
     }

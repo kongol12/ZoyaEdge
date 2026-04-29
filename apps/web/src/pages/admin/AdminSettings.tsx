@@ -30,7 +30,7 @@ export default function AdminSettings() {
         const data = snapshot.data();
         setSettings({
           maintenanceMode: data.maintenanceMode || false,
-          aiModel: data.aiModel || 'gemini-1.5-pro',
+          aiModel: data.aiModel || 'gemini-3.1-pro-preview',
           defaultCredits: data.defaultCredits || 10,
           superAdmins: data.superAdmins || [PRIMARY_EMAIL],
           updatedAt: data.updatedAt
@@ -39,7 +39,7 @@ export default function AdminSettings() {
         // Initialize default settings if they don't exist
         const defaultSettings: AppSettings = {
           maintenanceMode: false,
-          aiModel: 'gemini-1.5-pro',
+          aiModel: 'gemini-3.1-pro-preview',
           defaultCredits: 10,
           superAdmins: [PRIMARY_EMAIL],
           updatedAt: serverTimestamp()
@@ -160,9 +160,9 @@ export default function AdminSettings() {
                 onChange={(e) => handleUpdate('aiModel', e.target.value)}
                 className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-xl md:rounded-2xl px-4 py-3 font-bold text-sm md:text-base text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-zoya-red"
               >
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro</option>
+                <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
+                <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash Lite</option>
               </select>
             </div>
 

@@ -67,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, classNa
         { name: t.common.addTrade, path: '/add', icon: PlusCircle, color: 'text-zoya-red bg-zoya-red/10' },
         { name: t.common.journal, path: '/journal', icon: Book, color: 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/20' },
         { name: t.common.academy, path: '/academy', icon: GraduationCap, color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20' },
+        { name: t.common.partners, path: '/partners', icon: ShieldCheck, color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
       ]
     },
     {

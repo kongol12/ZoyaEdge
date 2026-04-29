@@ -11,6 +11,7 @@ import { aiRoutes } from '../modules/ai';
 import { usersRoutes } from '../modules/users';
 import { paymentsRoutes } from '../modules/payments';
 import { signalsRoutes } from '../modules/signals';
+import aiEngineRoutes from '../ai-engine/ai.routes';
 
 const app = express();
 
@@ -94,6 +95,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/trades', tradesRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/ai-engine', aiEngineRoutes);
 app.use('/api', usersRoutes);     // contains /connections/..., /ea/...
 app.use('/api', paymentsRoutes);  // contains /user/sync-status, /user/sync-settings
 app.use('/api/signals', signalsRoutes);

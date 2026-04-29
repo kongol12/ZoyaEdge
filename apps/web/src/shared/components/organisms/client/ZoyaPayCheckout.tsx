@@ -126,6 +126,7 @@ export default function ZoyaPayCheckout({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [pollingAttempt, setPollingAttempt] = useState(0);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const isPolling = useRef(false);
@@ -238,7 +239,25 @@ export default function ZoyaPayCheckout({
     }
   }, [paymentState]);
 
-  // Polling Effect - Correction 3.3
+  // Résilience iPhone : Reprendre le polling au retour de la connexion ou au focus
+  useEffect(() => {
+    const handleReappear = () => {
+      console.log("[ZoyaPay] Browser active or online, ensuring status check...");
+      if (transactionId && !isPolling.current && !['SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'].includes(paymentStateRef.current)) {
+         // Déclencher un check immédiat si possible ou forcer le re-mount du poller
+         // On peut simplement forcer un re-mount en changeant une petite clé d'état
+         setPollingAttempt(prev => prev + 1);
+      }
+    };
+    window.addEventListener('online', handleReappear);
+    window.addEventListener('focus', handleReappear);
+    return () => {
+      window.removeEventListener('online', handleReappear);
+      window.removeEventListener('focus', handleReappear);
+    };
+  }, [transactionId]);
+
+  // Polling Effect - Client side check connected to Server side worker
   useEffect(() => {
     if (!transactionId) return;
     if (isPolling.current) return;
@@ -263,7 +282,8 @@ export default function ZoyaPayCheckout({
         });
         
         if (!response.ok) {
-          console.error('[Polling] HTTP error:', response.status);
+          console.warn('[Polling] Server unreachable or error:', response.status);
+          // On ne fait rien, on attend l'essai suivant (patience réseau)
           return;
         }
 
@@ -273,8 +293,11 @@ export default function ZoyaPayCheckout({
         const rawStatus = data._statusText || data.status;
         const normalized = normalizeStatus(rawStatus);
         const mapped = mapBackendStatus(normalized);
+        const msg = data._statusMessage || data.statusDescription || data.message;
 
-        console.log('[ZoyaPay Polling]', { attempts, rawStatus, normalized, mapped, current });
+        if (msg) setStatusMessage(msg);
+
+        console.log('[ZoyaPay Polling]', { attempts, rawStatus, normalized, mapped, current, msg });
 
         // Dispatch uniquement sur changement ou état terminal
         if (['SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'].includes(mapped)) {
@@ -292,18 +315,53 @@ export default function ZoyaPayCheckout({
         console.error('[Polling] Network error:', err);
       }
 
-      if (attempts >= 60) { // 3 minutes max en production
+      if (attempts >= 120) { // 6 minutes max en production (Araka peut être lent)
         clearInterval(interval);
         isPolling.current = false;
         dispatch({ type: 'STATUS', payload: 'TIMEOUT' });
       }
     }, 3000);
 
+    pollingRef.current = interval;
+
     return () => {
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
       isPolling.current = false;
     };
-  }, [transactionId]);
+  }, [transactionId, pollingAttempt]); // transactionId pour démarrer, pollingAttempt pour forcer un restart si besoin
+
+  const handleUserCancel = () => {
+    setTransactionId(null);
+    isPolling.current = false;
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    dispatch({ type: 'STATUS', payload: 'CANCELLED' });
+    setError("");
+    setStatusMessage(null);
+  };
+
+  const handleRetryAfterNetworkError = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const idToken = await user?.getIdToken();
+      // Check for recent pending payment instead of blindly retrying pay
+      const response = await fetch('/api/user/sync-status/latest', {
+        headers: { 'Authorization': `Bearer ${idToken}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.transactionId) {
+          setTransactionId(data.transactionId);
+          dispatch({ type: 'START', payload: null });
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Recovery failed, falling back to full retry", e);
+    }
+    handlePay();
+  };
 
   const handlePay = async () => {
     setLoading(true);
@@ -329,6 +387,8 @@ export default function ZoyaPayCheckout({
       if (!idToken) {
         throw new Error("Authentification requise. Veuillez vous reconnecter.");
       }
+      
+      setError("");
       
       const response = await fetch('/api/user/sync-settings', {
         method: 'POST',
@@ -360,7 +420,7 @@ export default function ZoyaPayCheckout({
         }
         let errMsg = errData.details || errData.error || "Erreur de paiement";
         if (typeof errMsg === 'string' && errMsg.includes('did not match the expected pattern')) {
-           errMsg = "Le numéro de téléphone n'est pas reconnu par l'opérateur local (ex: format invalide).";
+           errMsg = "Format de requête invalide ou URL malformée. Veuillez contacter le support technique.";
         }
         throw new Error(errMsg);
       }
@@ -375,8 +435,13 @@ export default function ZoyaPayCheckout({
         stack: err.stack,
         url: '/api/user/sync-settings'
       });
-      if (err instanceof TypeError && (err.message === 'Failed to fetch' || err.message === 'Load failed')) {
-         setError("Erreur réseau: Impossible de joindre le serveur. Il se peut qu'un bloqueur de publicité, un proxy, ou le pare-feu Safari interfère. Veuillez vérifier votre connexion.");
+      
+      const isNetworkError = err instanceof TypeError && (err.message === 'Failed to fetch' || err.message === 'Load failed' || err.message === 'NetworkError when attempting to fetch resource');
+      
+      if (isNetworkError) {
+         setStatusMessage("Connexion mobile instable détectée... Synchronisation avec le serveur en cours.");
+         // Tentative de récupération automatique
+         handleRetryAfterNetworkError();
       } else {
          setError(`Erreur lors du paiement: ${err?.message || "Erreur inconnue."}`);
       }
@@ -432,20 +497,8 @@ export default function ZoyaPayCheckout({
                   </div>
                   <div className="text-right">
                     <p className="text-2xl font-black text-gray-900 dark:text-white">
-                      {plan.price.toLocaleString()} {currency}
+                      {totalPrice.toLocaleString()} {currency}
                     </p>
-                    <div className="space-y-0.5">
-                      {safeVatRate > 0 && (
-                        <p className="text-[10px] text-gray-500 font-bold uppercase">
-                          + {vatAmount.toLocaleString()} {currency} (TVA {safeVatRate}%)
-                        </p>
-                      )}
-                      {safeFeeRate > 0 && (
-                        <p className="text-[10px] text-gray-500 font-bold uppercase">
-                          + {transactionFeeAmount.toLocaleString()} {currency} (Frais de transaction {safeFeeRate}%)
-                        </p>
-                      )}
-                    </div>
                   </div>
                 </div>
 
@@ -581,38 +634,67 @@ export default function ZoyaPayCheckout({
                   })()}
                 </div>
 
-                <div className="p-6 bg-gray-50 dark:bg-gray-800/50 rounded-3xl space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500 font-bold">Prix de l'abonnement</span>
-                    <span className="font-black text-gray-900 dark:text-white">{safePrice.toLocaleString()} {currency}</span>
-                  </div>
-                  {safeVatRate > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 font-bold text-xs">Taxes Applicables (TVA {safeVatRate}%)</span>
-                      <span className="font-black text-gray-900 dark:text-white">{vatAmount.toLocaleString()} {currency}</span>
+                <div className="p-6 bg-gray-50 dark:bg-gray-800/50 rounded-3xl space-y-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Abonnement</p>
+                      <p className="text-xs text-gray-500 font-bold">Montant global de la transaction</p>
                     </div>
-                  )}
-                  {safeFeeRate > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500 font-bold text-xs">Frais de transaction ZoyaPay ({safeFeeRate}%)</span>
-                      <span className="font-black text-gray-900 dark:text-white">{transactionFeeAmount.toLocaleString()} {currency}</span>
-                    </div>
-                  )}
-                  <div className="pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-between">
-                    <span className="font-black text-gray-900 dark:text-white uppercase tracking-tighter text-lg">Montant à Payer</span>
                     <span className="font-black text-zoya-red text-2xl">{totalPrice.toLocaleString()} {currency}</span>
                   </div>
-                  <div className="flex items-center gap-2 mt-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/10 rounded-xl border border-amber-100 dark:border-amber-900/30">
-                    <AlertCircle size={14} className="text-amber-500 shrink-0" />
-                    <p className="text-[9px] font-bold text-amber-700 dark:text-amber-400 leading-tight">
-                      Note : Un prompt apparaîtra sur votre téléphone pour confirmer le paiement.
-                    </p>
+                  
+                  <div className="pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
+                    <div className="flex items-start gap-2">
+                      <Shield size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                      <p className="text-[9px] font-bold text-gray-600 dark:text-gray-400 leading-tight">
+                        Un prompt de validation apparaîtra sur votre téléphone pour confirmer la transaction.
+                      </p>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <AlertCircle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                      <p className="text-[9px] font-bold text-amber-700 dark:text-amber-400 leading-tight">
+                        Des frais de service propres à votre opérateur mobile peuvent s’appliquer lors de cette transaction.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
                 {error && (
-                  <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 rounded-2xl text-xs font-bold flex items-center gap-2">
-                    <AlertCircle size={18} /> {error}
+                  <div className="p-6 bg-red-50 dark:bg-red-900/10 rounded-2xl flex flex-col items-center gap-4 text-center border border-red-100 dark:border-red-900/30">
+                    <div className="flex items-center gap-3">
+                       <AlertCircle className="text-red-600 shrink-0" size={20} />
+                       <p className="text-sm font-bold text-red-600 leading-relaxed max-w-sm">
+                         {error}
+                       </p>
+                    </div>
+
+                    <div className="flex flex-wrap justify-center gap-3">
+                      <button
+                        onClick={() => {
+                          isPolling.current = false;
+                          setTransactionId(null);
+                          handleRetryAfterNetworkError();
+                        }}
+                        className="px-6 py-2.5 bg-zoya-red text-white text-xs font-black rounded-full hover:bg-red-600 transition-colors shadow-lg shadow-zoya-red/20 active:scale-95 flex items-center gap-2"
+                      >
+                        <RefreshCw size={14} className={cn(loading && "animate-spin")} />
+                        RÉESSAYER / RÉCUPÉRER
+                      </button>
+                      <button
+                        onClick={() => {
+                          isPolling.current = false;
+                          setTransactionId(null);
+                          handleUserCancel();
+                        }}
+                        className="px-6 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-500 text-xs font-black rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors active:scale-95"
+                      >
+                        ANNULER
+                      </button>
+                    </div>
+
+                    <p className="text-[10px] text-gray-500 font-medium max-w-xs">
+                      Si vous avez déjà reçu le prompt Mobile Money sur votre téléphone, cliquez sur <b>RÉESSAYER / RÉCUPÉRER</b>.
+                    </p>
                   </div>
                 )}
               </div>
@@ -631,6 +713,12 @@ export default function ZoyaPayCheckout({
                   <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Initialisation...</h3>
                   <p className="text-gray-500 font-medium">Connexion au serveur...</p>
                 </div>
+                <button
+                  onClick={handleUserCancel}
+                  className="mt-4 text-sm font-bold text-gray-400 hover:text-zoya-red transition-colors flex items-center gap-2 mx-auto"
+                >
+                  <X size={14} /> Annuler la transaction
+                </button>
               </div>
             )}
             {paymentState === 'AWAITING_USER' && (
@@ -645,7 +733,18 @@ export default function ZoyaPayCheckout({
                 <div className="space-y-2">
                   <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Validez sur votre téléphone</h3>
                   <p className="text-gray-500 font-medium">Entrez votre code secret.</p>
+                  {statusMessage && (
+                    <p className="mt-2 text-xs font-bold text-zoya-red uppercase tracking-widest animate-pulse">
+                      {statusMessage}
+                    </p>
+                  )}
                 </div>
+                <button
+                  onClick={handleUserCancel}
+                  className="mt-4 text-sm font-bold text-gray-400 hover:text-zoya-red transition-colors flex items-center gap-2 mx-auto"
+                >
+                  <X size={14} /> Annuler la transaction
+                </button>
               </div>
             )}
             {paymentState === 'PROCESSING' && (
@@ -660,7 +759,18 @@ export default function ZoyaPayCheckout({
                 <div className="space-y-2">
                   <h3 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Traitement en cours...</h3>
                   <p className="text-gray-500 font-medium">Synchronisation avec l'opérateur.</p>
+                  {statusMessage && (
+                    <p className="mt-2 text-xs font-bold text-zoya-red uppercase tracking-widest animate-pulse">
+                      {statusMessage}
+                    </p>
+                  )}
                 </div>
+                <button
+                  onClick={handleUserCancel}
+                  className="mt-4 text-sm font-bold text-gray-400 hover:text-zoya-red transition-colors flex items-center gap-2 mx-auto"
+                >
+                  <X size={14} /> Annuler la transaction
+                </button>
               </div>
             )}
 
@@ -720,17 +830,25 @@ export default function ZoyaPayCheckout({
                     Si vous avez été débité, votre accès sera activé automatiquement.
                   </p>
                 </div>
-                <button 
-                  onClick={() => { 
-                    isPolling.current = false;
-                    setTransactionId(null); 
-                    setSubStep('payment'); 
-                    dispatch({ type: 'RESET', payload: null }); 
-                  }}
-                  className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-black text-lg transition-transform hover:scale-105"
-                >
-                  Fermer ou réessayer
-                </button>
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={() => { 
+                      isPolling.current = false;
+                      setTransactionId(null); 
+                      setSubStep('payment'); 
+                      dispatch({ type: 'RESET', payload: null }); 
+                    }}
+                    className="w-full py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-2xl font-black text-lg transition-transform hover:scale-105"
+                  >
+                    Réessayer la vérification
+                  </button>
+                  <button 
+                    onClick={onClose}
+                    className="w-full py-3 text-gray-500 font-bold text-xs uppercase tracking-widest hover:text-zoya-red transition-colors"
+                  >
+                    Retour aux abonnements
+                  </button>
+                </div>
               </div>
             )}
 
@@ -780,17 +898,25 @@ export default function ZoyaPayCheckout({
                     Vous pouvez réessayer immédiatement.
                   </p>
                 </div>
-                <button 
-                  onClick={() => { 
-                    isPolling.current = false;
-                    setTransactionId(null); 
-                    setSubStep('payment'); 
-                    dispatch({ type: 'RESET', payload: null }); 
-                  }}
-                  className="w-full py-4 bg-zoya-red text-white rounded-2xl font-black text-lg transition-transform hover:scale-105"
-                >
-                  Réessayer
-                </button>
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={() => { 
+                      isPolling.current = false;
+                      setTransactionId(null); 
+                      setSubStep('payment'); 
+                      dispatch({ type: 'RESET', payload: null }); 
+                    }}
+                    className="w-full py-4 bg-zoya-red text-white rounded-2xl font-black text-lg transition-transform hover:scale-105"
+                  >
+                    Réessayer
+                  </button>
+                  <button 
+                    onClick={onClose}
+                    className="w-full py-3 text-gray-500 font-bold text-xs uppercase tracking-widest hover:text-zoya-red transition-colors"
+                  >
+                    Retour aux abonnements
+                  </button>
+                </div>
               </div>
             )}
 
@@ -805,17 +931,25 @@ export default function ZoyaPayCheckout({
                     Cette session de paiement a expiré. Veuillez recommencer.
                   </p>
                 </div>
-                <button
-                  onClick={() => { 
-                    isPolling.current = false;
-                    setTransactionId(null); 
-                    setSubStep('info'); 
-                    dispatch({ type: 'RESET', payload: null }); 
-                  }}
-                  className="w-full py-4 bg-zoya-red text-white rounded-2xl font-black text-lg"
-                >
-                  Recommencer
-                </button>
+                <div className="flex flex-col gap-3">
+                  <button
+                    onClick={() => { 
+                      isPolling.current = false;
+                      setTransactionId(null); 
+                      setSubStep('info'); 
+                      dispatch({ type: 'RESET', payload: null }); 
+                    }}
+                    className="w-full py-4 bg-zoya-red text-white rounded-2xl font-black text-lg transition-transform hover:scale-105"
+                  >
+                    Recommencer
+                  </button>
+                  <button 
+                    onClick={onClose}
+                    className="w-full py-3 text-gray-500 font-bold text-xs uppercase tracking-widest hover:text-zoya-red transition-colors"
+                  >
+                    Retour aux abonnements
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -823,10 +957,15 @@ export default function ZoyaPayCheckout({
           {/* Footer Actions */}
           {paymentState === 'IDLE' && (
             <div className="p-6 bg-gray-50 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-gray-500">
-                <Shield size={14} />
-                <span className="text-[10px] font-bold uppercase tracking-widest">ZoyaPay | Sécurisé</span>
-              </div>
+              <button
+                onClick={subStep === 'info' ? onClose : () => setSubStep('info')}
+                className="flex items-center gap-2 text-gray-500 hover:text-zoya-red transition-colors active:scale-95"
+              >
+                <ChevronRight size={16} className="rotate-180" />
+                <span className="text-[10px] font-black uppercase tracking-widest">
+                  {subStep === 'info' ? 'Abonnements' : 'Précédent'}
+                </span>
+              </button>
               <button
                 onClick={subStep === 'info' ? handleNext : handlePay}
                 disabled={loading}

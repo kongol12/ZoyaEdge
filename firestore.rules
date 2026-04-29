@@ -196,8 +196,7 @@ service cloud.firestore {
     }
 
     match /payments/{paymentId} {
-      allow list: if isAdmin();
-      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list, get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn() && isOwner(incoming().userId) && isValidPayment(incoming());
       allow update, delete: if isAdmin();
     }
@@ -206,6 +205,11 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isSignedIn();
       allow update, delete: if isAdmin();
+    }
+
+    match /system_downloads/{fileId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // --- Admin & Global Config ---
