@@ -4,12 +4,23 @@ export type AICoachResponse = {
   summary: {
     total_pnl: number;
     winrate: number;
+    avg_win?: number;
+    avg_loss?: number;
+    largest_win?: number;
+    largest_loss?: number;
   };
   scores: {
     risk_score: number;
     discipline_score: number;
     consistency_score: number;
   };
+  metric_analysis: {
+    risk: { comment: string, recommendation: string };
+    discipline: { comment: string, recommendation: string };
+    consistency: { comment: string, recommendation: string };
+  };
+  global_recommendation: string;
+  premiumReport?: string;
   alerts: {
     type: string;
     severity: string;
@@ -28,11 +39,11 @@ export type AICoachResponse = {
 
 export const askAICoach = async (trades: Trade[], language: 'fr' | 'en' = 'en', strategies: Strategy[] = []): Promise<AICoachResponse> => {
   // 1. Fetch system instructions from backend
-  const instructionsResponse = await fetch("/api/config/coach-instructions");
+  const instructionsResponse = await fetch("/api/ai/config/coach-instructions");
   if (!instructionsResponse.ok) {
     throw new Error("Failed to fetch coach instructions");
   }
-  const { instruction } = await instructionsResponse.json();
+  const { instructions } = await instructionsResponse.json();
 
   // 2. Format trades
   const formattedTrades = trades.slice(-50).map(t => ({ // Limit to last 50 trades to save tokens/quota
@@ -58,7 +69,7 @@ export const askAICoach = async (trades: Trade[], language: 'fr' | 'en' = 'en', 
         trades: formattedTrades,
         language,
         strategies,
-        instruction
+        instruction: instructions
       }),
     });
 

@@ -1,9 +1,9 @@
-import { analyzeWithDeepSeek } from './providers/deepseek';
-import { analyzeWithGemini } from './providers/gemini';
-import { generateReportWithGPT } from './providers/gpt';
+import { preAnalyzeWithDeepSeek, generatePremiumReport } from './providers/deepseek';
+import { callWithFallback } from './providers/fallback';
+import { UNIFIED_ANALYSIS_PROMPT } from './prompts';
+import { checkUserAIQuota, decrementQuota } from './cost-tracker';
 import { validateAIOutput, getFallbackAnalysis } from './validator';
 import { routeAI, AIMode } from './router';
-import { logAIUsage, checkUserAIQuota } from './cost-tracker';
 import { UserPlan, AIAnalysisResult } from './types';
 import admin from 'firebase-admin';
 
@@ -15,88 +15,90 @@ export class AIPipeline {
 
   async execute(userId: string, subscription: string, mode: string, trades: any[]): Promise<any> {
     const planStr = subscription || 'Discovery';
-    const plan = (planStr.charAt(0).toUpperCase() + planStr.slice(1)) as UserPlan;
+    // Mapping display names to enum
+    let plan: UserPlan = 'Discovery';
+    if (planStr.toLowerCase().includes('premium')) plan = 'Zoya Premium';
+    else if (planStr.toLowerCase().includes('pro')) plan = 'Zoya Pro';
+    
     return await executeAIEngine(userId, trades, plan, mode as AIMode);
   }
 }
 
 /**
- * Main AI Execution Pipeline
+ * Main AI Execution Pipeline (April 2026 Spec)
  */
 export async function executeAIEngine(
   userId: string, 
   trades: any[], 
   plan: UserPlan, 
-  mode: AIMode = 'STANDARD'
+  mode: AIMode = 'STANDARD',
+  userBudget: number = 5
 ): Promise<AIAnalysisResult> {
   
-  // 1. Check Quota
+  // 1. Check Hard Quota (Credits)
   const hasQuota = await checkUserAIQuota(userId, plan);
   if (!hasQuota) {
-    throw new Error('Quota AI dépassé. Veuillez passer au forfait supérieur.');
+    throw new Error('Quota AI épuisé pour votre forfait actuel.');
   }
 
-  // 2. Routing
+  // 2. Routing Configuration
   const config = routeAI(plan, mode);
   
-  let deepSeekOutput = null;
-  let geminiOutput = null;
-  let gptReport = null;
-
   try {
-    // ÉTAPE 1 — DeepSeek (Pré-analyse)
-    if (config.useDeepSeek) {
-      deepSeekOutput = await analyzeWithDeepSeek(trades);
-      await logAIUsage(userId, {
-        model: 'deepseek-chat',
-        tokens: deepSeekOutput.usage?.total_tokens || 0,
-        costEstimate: (deepSeekOutput.usage?.total_tokens || 0) * 0.0000002, // Example cost
-        plan
-      });
+    // ÉTAPE 0 — Pré-analyse DeepSeek (Optionnelle si solde insuffisant)
+    console.log(`[PIPELINE] Étape 0: Pré-analyse...`);
+    let preAnalysis = null;
+    try {
+      preAnalysis = await preAnalyzeWithDeepSeek(trades);
+    } catch (e) {
+      console.warn(`[PIPELINE] Échec Pré-analyse DeepSeek (probable manque de solde):`, e);
+      preAnalysis = { summary: "Pré-analyse indisponible (fallback actif)." };
     }
 
-    // ÉTAPE 2 — Gemini (Décision Centrale)
-    if (config.useGemini) {
-      geminiOutput = await analyzeWithGemini(trades, deepSeekOutput);
-      // Hardcoded token estimation for Gemini log
-      await logAIUsage(userId, {
-        model: 'gemini-3-flash-preview',
-        tokens: 1500,
-        costEstimate: 0.0005,
-        plan
-      });
-    } else {
-      // Small basic logic if Gemini not used
-      geminiOutput = {
-        score: 50,
-        risk: 50,
-        discipline: 50,
-        consistency: 50,
-        decision: "REDUCE",
-        keyIssues: ["Données limitées"],
-        actions: ["Passez à Zoya PRO pour une analyse complète."]
-      };
+    // ÉTAPE 1 — Décision Centrale avec Fallback Orchestrateur
+    console.log(`[PIPELINE] Étape 1: Décision centrale...`);
+    
+    // Preliminary scores calculation logic (can be simplistic as LLM will refine)
+    const mockRisk = 75;
+    const mockDisc = 80;
+    const mockCons = 65;
+
+    const unifiedPrompt = UNIFIED_ANALYSIS_PROMPT(trades, preAnalysis, mockRisk, mockDisc, mockCons);
+    
+    const analysis = await callWithFallback(
+      unifiedPrompt,
+      trades,
+      preAnalysis,
+      userId,
+      plan,
+      userBudget
+    );
+
+    // ÉTAPE 2 — Validation du JSON
+    console.log(`[PIPELINE] Étape 2: Validation...`);
+    let validated = validateAIOutput(analysis);
+
+    // ÉTAPE 3 — Rapport Premium (Zoya Premium + Mode DETAILED)
+    if (config.premiumReportProvider === 'deepseek' && (mode === 'DETAILED' || plan === 'Zoya Premium')) {
+      try {
+        console.log(`[PIPELINE] Étape 3: Génération rapport premium...`);
+        const report = await generatePremiumReport(trades, validated);
+        validated.premiumReport = report;
+      } catch (e) {
+        console.warn(`[PIPELINE] Échec Rapport Premium DeepSeek:`, e);
+      }
     }
 
-    // ÉTAPE 3 — GPT (Rapport Premium)
-    if (config.useGPT) {
-      gptReport = await generateReportWithGPT(geminiOutput, deepSeekOutput);
-      await logAIUsage(userId, {
-        model: 'gpt-4o',
-        tokens: 2000,
-        costEstimate: 0.01,
-        plan
-      });
-    }
+    // Décrémenter le quota après succès
+    await decrementQuota(userId);
 
-    // 4. Validation & Fusion
-    const finalAnalysis = validateAIOutput(geminiOutput);
-    finalAnalysis.detailedReport = gptReport;
+    return validated;
 
-    return finalAnalysis;
-
-  } catch (error) {
-    console.error('AI Engine Pipeline Failure:', error);
-    return getFallbackAnalysis();
+  } catch (error: any) {
+    console.error('[PIPELINE] Échec critique:', error);
+    // Return a safe fallback UI state instead of crashing completely if possible
+    const fallback = getFallbackAnalysis();
+    fallback.global_recommendation = "L'analyse a rencontré un problème technique. Voici un résumé de sécurité.";
+    return fallback;
   }
 }

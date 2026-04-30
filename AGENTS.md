@@ -138,17 +138,27 @@ STEP 6 — OUTPUT FORMAT (STRICT JSON ONLY)
 {
   "summary": {
     "total_pnl": number,
-    "winrate": number
+    "winrate": number,
+    "avg_win": number,
+    "avg_loss": number,
+    "largest_win": number,
+    "largest_loss": number
   },
   "scores": {
     "risk_score": number,
     "discipline_score": number,
     "consistency_score": number
   },
+  "metric_analysis": {
+    "risk": { "comment": string, "recommendation": string },
+    "discipline": { "comment": string, "recommendation": string },
+    "consistency": { "comment": string, "recommendation": string }
+  },
+  "global_recommendation": string,
   "alerts": [
     {
-      "type": string,
-      "severity": string,
+      "type": "risk" | "behavior" | "strategy" | "discipline",
+      "severity": "low" | "medium" | "high",
       "message": string
     }
   ],

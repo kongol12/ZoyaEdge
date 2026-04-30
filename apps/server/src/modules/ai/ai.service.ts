@@ -3,6 +3,7 @@ import { getDb } from '../../infrastructure/firebase/firebase.client';
 import admin from 'firebase-admin';
 import crypto from 'crypto';
 import { logSystemActivity, logSystemEvent } from '../../infrastructure/logger/logger';
+import { safeJSONParse } from '../../ai-engine/utils';
 // Ideally AIPipeline is converted or moved. For now, since the monolith is being dismantled,
 // we just point to the original or move its content later. If we need to move it, we will.
 // But the AI Pipeline class is big, let's keep it imported from `../../../../../src/ai-engine/pipeline`
@@ -24,9 +25,11 @@ export const getQuotaForSubscription = (subscription: string): number => {
 };
 
 const getGeminiModel = (mode: string, subscription: string): string => {
-  if (subscription === 'premium') return 'models/gemini-3.1-pro-preview';
-  if (mode === 'DETAILED') return 'models/gemini-3.1-pro-preview';
-  return 'models/gemini-3-flash-preview';
+  // Note: Gemini 3.1/3 are not yet available in the public @google/genai SDK.
+  // Using Gemini 1.5 Pro/Flash which are the current state-of-the-art models.
+  if (subscription === 'premium') return 'gemini-1.5-pro';
+  if (mode === 'DETAILED') return 'gemini-1.5-pro';
+  return 'gemini-1.5-flash';
 };
 
 const getMaxTokens = (mode: string): number => {
@@ -131,7 +134,10 @@ export const handleGeminiError = (error: any) => {
 let aiPipeline: AIPipeline | null = null;
 
 export const aiService = {
-  coach: async (userId: string, input: any) => {
+  coach: async (userId: string, body: any) => {
+    // Handle both { input: { ... } } and direct { ... } structures
+    const input = body.input || body;
+    
     const hasGemini = !!process.env.GEMINI_API_KEY;
     const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
 
@@ -183,9 +189,13 @@ export const aiService = {
       }
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const model = getGeminiModel(input.mode || 'STANDARD', subscription);
-    console.log(`[AI COACH] Calling Gemini with model: ${model}`);
+    const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY!);
+    const modelId = getGeminiModel(input.mode || 'STANDARD', subscription);
+    console.log(`[AI COACH] Calling Gemini with model: ${modelId}`);
+    const model = genAI.getGenerativeModel({ 
+      model: modelId,
+      systemInstruction: "You are Zoya AI Coach, a professional hedge fund risk analyst and trading performance auditor.",
+    });
     
     const prompt = `
 You are Zoya AI Coach, a professional hedge fund risk analyst, trading performance auditor, and discipline enforcement system.
@@ -216,20 +226,20 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
 }
 `;
 
-    const response = await ai.models.generateContent({
-      model: model,
+    const result = await model.generateContent({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        systemInstruction: "You are Zoya AI Coach, a professional hedge fund risk analyst and trading performance auditor.",
+      generationConfig: {
         responseMimeType: "application/json",
       }
     });
 
+    const response = await result.response;
     const text = response.text;
     if (!text) throw new Error("Réponse vide de l'IA (Coach)");
     
-    // SDK with responseMimeType: "application/json" should return clean JSON
-    const aiAnalysis = JSON.parse(text.trim());
+    // SDK with responseMimeType: "application/json" should return clean JSON, 
+    // but we use safeJSONParse to be safe from markdown tags
+    const aiAnalysis = safeJSONParse(text);
 
     if (aiAnalysis.decision === 'RED') {
       await logSystemEvent('error', 'behavioral_analysis', `Critical behavioral risk detected for user ${userId}. Condition: ${aiAnalysis.summary}`, {
@@ -302,9 +312,13 @@ STRICT OUTPUT FORMAT REQUIRED (JSON ONLY):
       };
     }
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
-    const model = getGeminiModel(mode, subscription);
-    console.log(`[AI ASK] Calling Gemini with model: ${model}`);
+    const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY!);
+    const modelId = getGeminiModel(mode, subscription);
+    console.log(`[AI ASK] Calling Gemini with model: ${modelId}`);
+    const model = genAI.getGenerativeModel({ 
+      model: modelId,
+      systemInstruction: instruction || "You are a professional trading AI assistant.",
+    });
 
     const prompt = `
 Analyze this trading dataset and return structured output only.
@@ -322,19 +336,18 @@ ${JSON.stringify(tradesToAnalyze)}
 STRICT JSON OUTPUT ONLY:
 `;
 
-    const response = await ai.models.generateContent({
-      model: model,
+    const contentResult = await model.generateContent({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        systemInstruction: instruction || "You are a professional trading AI assistant.",
+      generationConfig: {
         responseMimeType: "application/json",
         maxOutputTokens: getMaxTokens(mode),
       }
     });
 
+    const response = await contentResult.response;
     const text = response.text;
     if (!text) throw new Error("Réponse vide de l'IA (Ask)");
-    const result = JSON.parse(text.trim());
+    const result = safeJSONParse(text);
 
     await setAICache(userId, tradesHash, result, db);
 

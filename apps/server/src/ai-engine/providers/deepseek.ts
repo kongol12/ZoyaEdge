@@ -1,53 +1,87 @@
 import OpenAI from 'openai';
-import { DEEPSEEK_PRE_ANALYSIS_PROMPT } from '../prompts';
+import { safeJSONParse } from '../utils';
 
 const apiKey = process.env.DEEPSEEK_API_KEY;
 const client = apiKey ? new OpenAI({
   apiKey,
-  baseURL: 'https://api.deepseek.com',
+  baseURL: 'https://api.deepseek.com/v1', // Updated base URL
 }) : null;
 
+const MODEL = 'deepseek-v4-flash'; // Optimized April 2026 model
+
 /**
- * DeepSeek Provider (Step 1: Pre-analysis & Data Reduction)
+ * CORE LLM Call
+ */
+export async function callDeepSeek(prompt: string, jsonMode: boolean = false): Promise<string> {
+  if (!client) throw new Error('DEEPSEEK_API_KEY non configuré');
+  
+  const response = await client.chat.completions.create({
+    model: MODEL,
+    messages: [{ role: 'user', content: prompt }],
+    response_format: jsonMode ? { type: 'json_object' } : undefined,
+    temperature: 0.3
+  });
+  return response.choices[0].message.content || '';
+}
+
+/**
+ * Étape 0 – Pré‑analyse (toujours active)
+ */
+export async function preAnalyzeWithDeepSeek(trades: any[]): Promise<any> {
+  const prompt = `Analyse ces trades et retourne un JSON strict:
+{
+  "overtrading_detected": boolean,
+  "emotional_pattern": "calme|impulsif|frustré",
+  "max_consecutive_losses": number,
+  "risk_reward_consistency": "faible|moyen|élevé",
+  "summary": "phrase résumant la session"
+}
+Trades: ${JSON.stringify(trades)}`;
+  
+  const result = await callDeepSeek(prompt, true);
+  return safeJSONParse(result);
+}
+
+/**
+ * Legacy wrapper
  */
 export async function analyzeWithDeepSeek(trades: any[]) {
-  if (!client) {
-    console.warn('DeepSeek API Key missing, skipping pre-analysis');
-    return {
-      patterns: [],
-      anomalies: [],
-      dataReduction: "No pre-analysis available.",
-      rawStats: {}
-    };
-  }
+  return preAnalyzeWithDeepSeek(trades);
+}
 
-  try {
-    const response = await client.chat.completions.create({
-      model: 'deepseek-chat',
-      messages: [
-        {
-          role: 'system',
-          content: DEEPSEEK_PRE_ANALYSIS_PROMPT
-        },
-        {
-          role: 'user',
-          content: `Analyze these trades: ${JSON.stringify(trades)}`
-        }
-      ],
-      response_format: { type: 'json_object' }
-    });
+/**
+ * Décision de secours (quand Gemini échoue)
+ */
+export async function deepSeekDecision(trades: any[], preAnalysis: any): Promise<any> {
+  const { UNIFIED_ANALYSIS_PROMPT } = await import('../prompts');
+  // Baseline scores for prompt structure
+  const risk = 70;
+  const disc = 70;
+  const cons = 70;
+  
+  const prompt = UNIFIED_ANALYSIS_PROMPT(trades, preAnalysis, risk, disc, cons);
+  const result = await callDeepSeek(prompt, true);
+  return safeJSONParse(result);
+}
 
-    const content = response.choices[0].message.content || '{}';
-    const result = JSON.parse(content);
+/**
+ * Rapport premium (remplace GPT)
+ */
+export async function generatePremiumReport(trades: any[], analysis: any): Promise<string> {
+  const prompt = `Génère un rapport de trading personnalisé en français (style professionnel, fluide). Utilise ces données :
+- Trades : ${JSON.stringify(trades)}
+- Scores : ${JSON.stringify(analysis.scores)}
+- Analyse détaillée : ${JSON.stringify(analysis.metric_analysis)}
+- Décision : ${JSON.stringify(analysis.coach_decision)}
 
-    return {
-      patterns: result.patterns || [],
-      anomalies: result.anomalies || [],
-      dataReduction: result.summary || "Summary generated.",
-      usage: response.usage
-    };
-  } catch (error) {
-    console.error('DeepSeek Error:', error);
-    throw error;
-  }
+Structure : intro (bilan global), analyse risque, discipline, constance, conclusion avec 3 actions prioritaires. Maximum 600 tokens.`;
+  
+  return callDeepSeek(prompt, false);
+}
+
+/**
+ * Legacy Support
+ */
+export async function analyzeCoreWithDeepSeek(trades: any[], deepSeekOutput: any) {
+  return deepSeekDecision(trades, deepSeekOutput);
 }
