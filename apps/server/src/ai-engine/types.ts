@@ -1,15 +1,31 @@
 export type UserPlan = 'Discovery' | 'Zoya PRO' | 'Zoya PREMIUM';
 
 export interface AIAnalysisResult {
-  score: number;
-  risk: number;
-  discipline: number;
-  consistency: number;
-  decision: "STOP" | "REDUCE" | "GO";
-  keyIssues: string[];
-  actions: string[];
-  summary?: string;
+  summary: {
+    total_pnl: number;
+    winrate: number;
+  };
+  scores: {
+    risk_score: number;
+    discipline_score: number;
+    consistency_score: number;
+  };
+  alerts: {
+    type: 'risk' | 'behavior' | 'strategy' | 'discipline';
+    severity: 'low' | 'medium' | 'high';
+    message: string;
+  }[];
+  actions: {
+    priority: number;
+    action: string;
+    reason: string;
+  }[];
+  coach_decision: {
+    status: 'green' | 'orange' | 'red';
+    action: 'continue' | 'reduce_risk' | 'stop_trading';
+  };
   detailedReport?: GPTReport;
+  deepSeekSummary?: DeepSeekSummary;
 }
 
 export interface GPTReport {

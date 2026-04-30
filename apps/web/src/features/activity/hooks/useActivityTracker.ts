@@ -97,10 +97,12 @@ export function useActivityTracker() {
           }
         }
 
-        // Sanitize label to prevent log injection
+        // Sanitize label to prevent log injection and XSS in logs
         const sanitizedLabel = rawLabel
+           .replace(/<\/?[^>]+(>|$)/g, "") // Strip HTML tags
            .replace(/[^\x20-\x7E\p{L}\p{N}]/gu, '') // Keep only printable characters
-           .substring(0, 50);
+           .trim()
+           .substring(0, 100); // Limit to 100 characters
 
         logActivity({
           type: 'action',

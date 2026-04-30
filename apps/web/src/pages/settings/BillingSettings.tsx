@@ -66,33 +66,52 @@ export default function BillingSettings() {
   const isExpired = profile?.subscriptionStatus === 'expired' || (endDate && daysRemaining === 0);
 
   const handleDownloadInvoice = (tx: Transaction) => {
-    // Calculer le sous-total HT si non enregistré (pour compatibilité ancienne)
-    const vatRate = tx.vatRate || 16;
-    const feeRate = tx.feeRate || 2;
-    
-    // Reverse calculation if fields are missing
-    const totalAmount = tx.amount;
-    const feeAmount = tx.fee || (totalAmount * feeRate) / (100 + feeRate);
-    const amountAfterFees = totalAmount - feeAmount;
-    const vatAmount = tx.vat || (amountAfterFees * vatRate) / (100 + vatRate);
-    const subtotal = amountAfterFees - vatAmount;
+    try {
+      // Calculer le sous-total HT si non enregistré (pour compatibilité ancienne)
+      const vatRate = tx.vatRate || 16;
+      const feeRate = tx.feeRate || 2;
+      
+      // Reverse calculation if fields are missing
+      const totalAmount = tx.amount;
+      const feeAmount = tx.fee || (totalAmount * feeRate) / (100 + feeRate);
+      const amountAfterFees = totalAmount - feeAmount;
+      const vatAmount = tx.vat || (amountAfterFees * vatRate) / (100 + vatRate);
+      const subtotal = amountAfterFees - vatAmount;
 
-    generateInvoicePDF({
-      invoiceNumber: `ZE-${new Date().getFullYear()}-${tx.id.slice(0, 8).toUpperCase()}`,
-      date: format(tx.createdAt.toDate(), 'dd/MM/yyyy'),
-      clientName: profile?.displayName || user?.email?.split('@')[0] || 'Client ZoyaEdge',
-      clientEmail: user?.email || '',
-      planName: tx.plan,
-      subtotal: subtotal,
-      vat: vatAmount,
-      vatRate: vatRate,
-      fee: feeAmount,
-      feeRate: feeRate,
-      amount: tx.amount,
-      currency: tx.currency,
-      status: tx.status,
-      paymentMethod: tx.method
-    });
+      // Robust date extraction
+      let dateStr = 'N/A';
+      try {
+        if (tx.createdAt?.toDate) {
+          dateStr = format(tx.createdAt.toDate(), 'dd/MM/yyyy');
+        } else if (tx.createdAt instanceof Date) {
+          dateStr = format(tx.createdAt, 'dd/MM/yyyy');
+        } else if (typeof tx.createdAt === 'string') {
+          dateStr = format(new Date(tx.createdAt), 'dd/MM/yyyy');
+        }
+      } catch (e) {
+        console.error('Date formatting error:', e);
+      }
+
+      generateInvoicePDF({
+        invoiceNumber: `ZE-${new Date().getFullYear()}-${tx.id.slice(0, 8).toUpperCase()}`,
+        date: dateStr,
+        clientName: profile?.displayName || user?.email?.split('@')[0] || 'Client ZoyaEdge',
+        clientEmail: user?.email || '',
+        planName: tx.plan,
+        subtotal: subtotal,
+        vat: vatAmount,
+        vatRate: vatRate,
+        fee: feeAmount,
+        feeRate: feeRate,
+        amount: tx.amount,
+        currency: tx.currency,
+        status: tx.status,
+        paymentMethod: tx.method
+      });
+    } catch (err) {
+      console.error('Invoice download failed:', err);
+      alert('Impossible de générer la facture pour le moment.');
+    }
   };
 
   return (
@@ -262,13 +281,14 @@ export default function BillingSettings() {
                         {tx.status === 'completed' ? (
                           <button 
                             onClick={() => handleDownloadInvoice(tx)}
-                            className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-xl transition-all"
+                            className="inline-flex items-center gap-2 px-4 py-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 dark:text-indigo-400 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/40 rounded-xl transition-all font-bold text-xs"
                             title="Télécharger la facture"
                           >
-                            <FileText size={18} />
+                            <Download size={14} />
+                            Facture
                           </button>
                         ) : (
-                          <span className="text-[10px] font-black text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-lg">
+                          <span className="text-[10px] font-black text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-lg uppercase tracking-wider">
                             {tx.status}
                           </span>
                         )}

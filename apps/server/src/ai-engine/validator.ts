@@ -4,34 +4,31 @@ import { AIAnalysisResult } from './types';
  * Validates the AI Analysis Result
  */
 export function validateAIOutput(data: any): AIAnalysisResult {
-  const result: AIAnalysisResult = {
-    score: typeof data.score === 'number' ? Math.min(100, Math.max(0, data.score)) : 50,
-    risk: typeof data.risk === 'number' ? Math.min(100, Math.max(0, data.risk)) : 50,
-    discipline: typeof data.discipline === 'number' ? Math.min(100, Math.max(0, data.discipline)) : 50,
-    consistency: typeof data.consistency === 'number' ? Math.min(100, Math.max(0, data.consistency)) : 50,
-    decision: ['STOP', 'REDUCE', 'GO'].includes(data.decision) ? data.decision : 'REDUCE',
-    keyIssues: Array.isArray(data.keyIssues) ? data.keyIssues : [],
-    actions: Array.isArray(data.actions) ? data.actions : []
+  return {
+    summary: {
+      total_pnl: data?.summary?.total_pnl || 0,
+      winrate: data?.summary?.winrate || 0,
+    },
+    scores: {
+      risk_score: data?.scores?.risk_score || 50,
+      discipline_score: data?.scores?.discipline_score || 50,
+      consistency_score: data?.scores?.consistency_score || 50,
+    },
+    alerts: Array.isArray(data?.alerts) ? data.alerts : [],
+    actions: Array.isArray(data?.actions) ? data.actions : [],
+    coach_decision: {
+      status: ['green', 'orange', 'red'].includes(data?.coach_decision?.status) ? data.coach_decision.status : 'orange',
+      action: ['continue', 'reduce_risk', 'stop_trading'].includes(data?.coach_decision?.action) ? data.coach_decision.action : 'reduce_risk',
+    }
   };
-
-  if (result.actions.length === 0) {
-    result.actions = ["Consultez votre journal de trading pour identifier vos erreurs."];
-  }
-
-  return result;
 }
 
-/**
- * Fallback mechanism if AI fails
- */
 export function getFallbackAnalysis(): AIAnalysisResult {
   return {
-    score: 0,
-    risk: 100,
-    discipline: 0,
-    consistency: 0,
-    decision: 'STOP',
-    keyIssues: ["Analyse IA indisponible pour le moment."],
-    actions: ["Réduisez vos positions", "Vérifiez vos paramètres de compte"]
+    summary: { total_pnl: 0, winrate: 0 },
+    scores: { risk_score: 50, discipline_score: 50, consistency_score: 50 },
+    alerts: [{ type: 'risk', severity: 'medium', message: 'Analyse temporairement indisponible' }],
+    actions: [{ priority: 1, action: 'Réduisez vos positions', reason: 'Système indisponible' }],
+    coach_decision: { status: 'orange', action: 'reduce_risk' }
   };
 }

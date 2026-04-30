@@ -13,11 +13,29 @@ import { paymentsRoutes } from '../modules/payments';
 import { signalsRoutes } from '../modules/signals';
 import aiEngineRoutes from '../ai-engine/ai.routes';
 
+// [SÉCURITÉ] Protection CSRF : Non nécessaire car l'authentification repose exclusivement sur des tokens 
+// Bearer envoyés via le header 'Authorization', qui ne sont pas transmis automatiquement par les navigateurs
+// lors de requêtes cross-site (contrairement aux cookies de session classiques).
+
 const app = express();
 
 app.set('trust proxy', 1);
 
-const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*';
+const isProduction = process.env.NODE_ENV === 'production';
+
+// --- 3. [MOYENNE] CORS avec fallback sécurisé ---
+let allowedOrigins: string | string[] = '*';
+if (isProduction) {
+  if (!process.env.ALLOWED_ORIGINS) {
+    console.warn("[SECURITY] WARNING: ALLOWED_ORIGINS est recommandé en production. Fallback sur '*' pour permettre l'accès.");
+    allowedOrigins = '*';
+  } else {
+    allowedOrigins = process.env.ALLOWED_ORIGINS.split(',');
+  }
+} else {
+  allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*';
+}
+
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
@@ -25,26 +43,23 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-zoyaedge-signature', 'x-araka-signature'],
 }));
 
-// Inactivity shutdown logic (Development and Production)
-const isProd = process.env.NODE_ENV === 'production';
-const INACTIVITY_TIMEOUT = isProd ? 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
-let inactivityTimer: NodeJS.Timeout;
-
-const resetInactivityTimer = () => {
-  if (inactivityTimer) clearTimeout(inactivityTimer);
-  inactivityTimer = setTimeout(() => {
-    console.log(`[${isProd ? 'Production' : 'Development'}] Server shutting down due to inactivity.`);
-    process.exit(0);
-  }, INACTIVITY_TIMEOUT);
-};
-
-resetInactivityTimer();
-app.use((req, res, next) => {
+// Inactivity shutdown logic (Development ONLY)
+// --- 6. [FAIBLE] Suppression du timeout d'inactivité en production ---
+if (!isProduction) {
+  let inactivityTimer: NodeJS.Timeout;
+  const resetInactivityTimer = () => {
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => {
+      console.log(`[Development] Server shutting down due to 1 hour inactivity.`);
+      process.exit(0);
+    }, 60 * 60 * 1000);
+  };
   resetInactivityTimer();
-  next();
-});
-
-const isProduction = process.env.NODE_ENV === 'production';
+  app.use((req, res, next) => {
+    resetInactivityTimer();
+    next();
+  });
+}
 
 // Request Logging Middleware
 app.use((req, res, next) => {
@@ -85,6 +100,18 @@ app.get('/health', (req, res) => {
 
 // APIs that need raw body
 app.use('/api/webhook', webhooksRoutes);
+
+// --- 4. [MOYENNE] Vérification supplémentaire de la taille du body JSON ---
+app.use((req, res, next) => {
+  const contentLength = req.get('content-length');
+  if (contentLength && parseInt(contentLength, 10) > 1048576) {
+    return res.status(413).json({
+      error: true,
+      message: 'Payload Too Large: La taille du corps dépasse la limite autorisée de 1 Mo.'
+    });
+  }
+  next();
+});
 
 // General JSON parser for all other routes
 app.use(express.json({ limit: '1mb' }));

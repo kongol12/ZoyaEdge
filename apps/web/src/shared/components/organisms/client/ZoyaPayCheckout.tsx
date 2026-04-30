@@ -74,6 +74,7 @@ function paymentReducer(state: PaymentState, event: any): PaymentState {
   switch (state) {
     case 'IDLE':
       if (event.type === 'START') return 'PENDING';
+      if (event.type === 'STATUS') return event.payload;
       return state;
     case 'PENDING':
     case 'AWAITING_USER':
@@ -168,7 +169,7 @@ export default function ZoyaPayCheckout({
           if (data.mpesaPrefixes || data.orangePrefixes || data.airtelPrefixes) {
             setPrefixes({
               MPESA: data.mpesaPrefixes ? data.mpesaPrefixes.split(',').map((s: string) => s.trim()) : ['81', '82', '83'],
-              ORANGE: data.orangePrefixes ? data.orangePrefixes.split(',').map((s: string) => s.trim()) : ['89', '84', '85'],
+              ORANGE: data.orangePrefixes ? data.orangePrefixes.split(',').map((s: string = '') => s.trim()) : ['89', '84', '85'],
               AIRTEL: data.airtelPrefixes ? data.airtelPrefixes.split(',').map((s: string) => s.trim()) : ['97', '98', '99']
             });
           }
@@ -225,6 +226,7 @@ export default function ZoyaPayCheckout({
   };
 
   useEffect(() => {
+    if (paymentState !== 'IDLE') setSubStep('payment-done');
     if (paymentState === 'SUCCESS') {
       onPaymentSuccess({
         amount: totalPrice,
@@ -247,7 +249,7 @@ export default function ZoyaPayCheckout({
          // Déclencher un check immédiat si possible ou forcer le re-mount du poller
          // On peut simplement forcer un re-mount en changeant une petite clé d'état
          setPollingAttempt(prev => prev + 1);
-      }
+       }
     };
     window.addEventListener('online', handleReappear);
     window.addEventListener('focus', handleReappear);
@@ -283,7 +285,10 @@ export default function ZoyaPayCheckout({
         
         if (!response.ok) {
           console.warn('[Polling] Server unreachable or error:', response.status);
-          // On ne fait rien, on attend l'essai suivant (patience réseau)
+          // Si on a un transactionId, on suppose au moins qu'on attend l'utilisateur
+          if (current === 'PENDING') {
+            dispatch({ type: 'STATUS', payload: 'AWAITING_USER' });
+          }
           return;
         }
 
@@ -297,18 +302,34 @@ export default function ZoyaPayCheckout({
 
         if (msg) setStatusMessage(msg);
 
-        console.log('[ZoyaPay Polling]', { attempts, rawStatus, normalized, mapped, current, msg });
+        console.log('[ZoyaPay Polling Details]', { 
+          attempts, 
+          rawStatus, 
+          normalized, 
+          mapped, 
+          current, 
+          msg,
+          fullResponse: data
+        });
 
         // Dispatch uniquement sur changement ou état terminal
         if (['SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED'].includes(mapped)) {
+          console.log('[ZoyaPay] Terminal Status reached:', mapped);
           clearInterval(interval);
           isPolling.current = false;
           dispatch({ type: 'STATUS', payload: mapped });
           return;
         }
         
-        if (mapped !== current) {
-          dispatch({ type: 'STATUS', payload: mapped });
+        // Si on est encore en PENDING côté client mais qu'on a déjà un ID, 
+        // on devrait au moins être en AWAITING_USER ou PROCESSING
+        let finalMapped = mapped;
+        if (finalMapped === 'PENDING' && transactionId) {
+          finalMapped = 'AWAITING_USER';
+        }
+
+        if (finalMapped !== current) {
+          dispatch({ type: 'STATUS', payload: finalMapped });
         }
 
       } catch (err) {
@@ -427,7 +448,8 @@ export default function ZoyaPayCheckout({
 
       const result = await response.json();
       setTransactionId(result.transactionId);
-      dispatch({ type: 'START', payload: null });
+      setStatusMessage("Requête envoyée. Surveillez votre téléphone...");
+      dispatch({ type: 'STATUS', payload: 'AWAITING_USER' });
     } catch (err: any) {
       console.error("[ZoyaPayCheckout] Fetch Exception detailed:", {
         message: err.message,
@@ -481,7 +503,9 @@ export default function ZoyaPayCheckout({
           </div>
 
           <div className="overflow-y-auto flex-1">
-            {subStep === 'info' && (
+            {paymentState === 'IDLE' ? (
+              <>
+                {subStep === 'info' && (
               <div className="p-8 space-y-6">
                 <div className="space-y-1">
                   <h2 className="text-2xl font-poppins font-black text-gray-900 dark:text-white">Détails de facturation</h2>
@@ -594,7 +618,6 @@ export default function ZoyaPayCheckout({
                 )}
               </div>
             )}
-
             {subStep === 'payment' && (
               <div className="p-8 space-y-8">
                 <div className="text-center space-y-2">
@@ -699,8 +722,10 @@ export default function ZoyaPayCheckout({
                 )}
               </div>
             )}
-
-            {paymentState === 'PENDING' && (
+          </>
+        ) : (
+              <>
+                {paymentState === 'PENDING' && (
               <div className="p-12 text-center space-y-8">
                 <div className="relative w-24 h-24 mx-auto mb-2">
                    <div className="absolute inset-0 border-4 border-zoya-red/10 rounded-full" />
@@ -952,7 +977,9 @@ export default function ZoyaPayCheckout({
                 </div>
               </div>
             )}
-          </div>
+          </>
+        )}
+      </div>
 
           {/* Footer Actions */}
           {paymentState === 'IDLE' && (

@@ -69,31 +69,42 @@ export async function finalizePayment(txId: string, resultData: any) {
   const paymentDoc = q.docs[0];
   const paymentData = paymentDoc.data();
 
-  if (paymentData.status === 'completed') {
-    return { success: true, alreadyProcessed: true };
+  if (paymentData.status === 'completed' || paymentData.status === 'failed') {
+    return { 
+      success: paymentData.status === 'completed', 
+      failed: paymentData.status === 'failed',
+      alreadyProcessed: true 
+    };
   }
 
   // Extraction robuste de tous les champs possibles de réponse Araka
   const getDeepStatus = (obj: any): string => {
     if (!obj || typeof obj !== 'object') return '';
+    
+    // Champs Araka connus (Production & Sandbox)
     const keys = [
       'status', 'statusCode', 'transactionStatus', 'Status', 
       'statusText', 'code', 'responseCode', 'responseMessage',
       'paymentStatus', 'orderStatus', 'state', 'result',
-      'StatusCode', 'StatusMessage', 'TransactionStatus'
+      'StatusCode', 'StatusMessage', 'TransactionStatus',
+      'status_text', 'transaction_status'
     ];
+    
     for (const k of keys) {
       if (obj[k] !== undefined && obj[k] !== null) {
         return String(obj[k]);
       }
     }
-    // Chercher récursivement dans les sous-objets
-    for (const nested of ['data', 'order', 'payment', 'transaction', 'response']) {
+    
+    // Chercher récursivement dans les sous-objets courants
+    const nestedFolders = ['data', 'order', 'payment', 'transaction', 'response', 'details', 'result'];
+    for (const nested of nestedFolders) {
       if (obj[nested] && typeof obj[nested] === 'object') {
         const found = getDeepStatus(obj[nested]);
         if (found) return found;
       }
     }
+    
     if (Array.isArray(obj) && obj.length > 0) return getDeepStatus(obj[0]);
     return '';
   };
@@ -101,36 +112,51 @@ export async function finalizePayment(txId: string, resultData: any) {
   const rawStatus = getDeepStatus(resultData);
   const status = rawStatus.toUpperCase().trim();
   
-  const isSuccess = 
-    // Statuts explicites
+  // LOG de diagnostic étendu en production
+  console.log(`[finalizePayment] Analysing payload:`, JSON.stringify(resultData));
+
+  const isSuccess = !!(
+    // Statuts explicites (Codes Araka 00, 000, 200, 0, 1 ou texte)
     status === 'SUCCESSFUL' || status === 'SUCCESS' || status === 'COMPLETED' ||
     status === 'PAID' || status === 'APPROVED' || status === 'CONFIRMED' ||
-    status === 'ACCEPTED' || status === '00' || status === '000' ||
-    status === '200' || status === 'OK' || status === 'ACTIVE' ||
+    status === 'ACCEPTED' || status === '00' || status === '000' || status === '0' || status === '1' ||
+    status === '200' || status === 'OK' || status === 'ACTIVE' || status === 'PROCESSED' ||
+    status === 'AUTHORIZED' || status === 'AUTHORISED' ||
     // Détection par inclusion
     status.includes('SUCCESS') || status.includes('COMPLET') || 
     status.includes('APPROV') || status.includes('PAID') ||
     status.includes('CONFIRM') || status.includes('ACCEPT') ||
-    // Détection dans description
+    status.includes('AUTHORIZ') || status.includes('AUTHORIS') ||
+    // Détection dans la description de statut (très commun chez Araka)
     (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('SUCCESS')) ||
     (resultData.message && String(resultData.message).toUpperCase().includes('SUCCESS')) ||
     (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('PAID')) ||
-    // Si "Manual override by admin"
-    (resultData.statusDescription === 'Manual override by admin');
+    (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('COMPLETED')) ||
+    (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('APPROV')) ||
+    // Cas spécifique : Manual override
+    (resultData.statusDescription === 'Manual override by admin')
+  );
 
-  const isFailed =
+  const isFailed = !!(
     !isSuccess && (
       status === 'FAILED' || status === 'FAIL' || status === 'REJECTED' ||
       status === 'CANCELLED' || status === 'CANCELED' || status === 'DECLINED' ||
       status === 'ERROR' || status === 'EXPIRED' || status === 'INVALID' ||
-      status === 'DENIED' || status === 'STOPPED' ||
+      status === 'DENIED' || status === 'STOPPED' || status === 'FAILED_TRANSACTION' ||
+      status === 'INSUFFICIENT_FUNDS' || status === 'TIMEOUT' || status === 'USER_TIMEOUT' ||
+      status === 'ABORTED' || status === 'VOIDED' ||
       status.includes('FAIL') || status.includes('REJECT') || 
       status.includes('CANCEL') || status.includes('DECLIN') ||
       status.includes('EXPIR') || status.includes('INVALID') ||
       status.includes('DENI') || status.includes('STOP') ||
+      status.includes('LIMIT') || status.includes('FUNDS') || status.includes('BALANCE') ||
       (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('FAIL')) ||
-      (resultData.message && String(resultData.message).toUpperCase().includes('FAIL'))
-    );
+      (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('REJECT')) ||
+      (resultData.statusDescription && String(resultData.statusDescription).toUpperCase().includes('DECLIN')) ||
+      (resultData.message && String(resultData.message).toUpperCase().includes('FAIL')) ||
+      (resultData.errorMessage && String(resultData.errorMessage).toUpperCase().includes('FAIL'))
+    )
+  );
 
   // Log pour debug production
   console.log(`[finalizePayment] txId=${txId} rawStatus="${rawStatus}" isSuccess=${isSuccess} isFailed=${isFailed}`);
@@ -554,25 +580,44 @@ export const paymentsService = {
     
     // Construct a meaningful status text for the client
     const getDeepProp = (obj: any, keys: string[]): string => {
+      if (!obj) return '';
       for (const k of keys) {
-        if (obj[k] && typeof obj[k] !== 'object') return String(obj[k]);
+        if (obj[k] !== undefined && obj[k] !== null && typeof obj[k] !== 'object') return String(obj[k]);
+      }
+      for (const sub of ['data', 'details', 'result']) {
+        if (obj[sub] && typeof obj[sub] === 'object') {
+           const val = getDeepProp(obj[sub], keys);
+           if (val) return val;
+        }
       }
       return '';
     };
 
-    const statusMsg = getDeepProp(result, ['statusDescription', 'statusText', 'message', 'description']);
+    const statusMsg = getDeepProp(result, ['statusDescription', 'statusText', 'message', 'description', 'responseMessage']);
+    
+    // On extrait le statut du result ou du finalizationResult
     const rawStatus = finalizationResult?.status || result.status || result.statusCode || result.transactionStatus || result.Status || (result.data && result.data.status);
-    const statusStr = (String(rawStatus || '')).toUpperCase();
+    const statusStr = (String(rawStatus || '')).toUpperCase().trim();
     
     let finalStatusText = statusStr;
-    if (finalizationResult?.success) finalStatusText = 'SUCCESS';
-    else if (finalizationResult?.failed) finalStatusText = 'FAILED';
+    if (finalizationResult?.success) {
+      finalStatusText = 'SUCCESS';
+    } else if (finalizationResult?.failed) {
+      finalStatusText = 'FAILED';
+    } else {
+      // Mapping intelligent des statuts intermédiaires Araka vers des états "Attente Utilisateur"
+      if (statusStr.includes('PIN') || statusStr.includes('USER') || statusStr.includes('WAIT') || statusStr.includes('AWAIT') || statusStr.includes('INPUT') || statusStr.includes('PENDING')) {
+        finalStatusText = 'AWAITING_USER';
+      } else if (statusStr.includes('PROCESS')) {
+        finalStatusText = 'PROCESSING';
+      }
+    }
     
     return { 
       ...result, 
       transactionId: effectiveTxId,
       _statusText: finalStatusText,
-      _statusMessage: statusMsg
+      _statusMessage: statusMsg || "En attente de validation..."
     };
   }
 };

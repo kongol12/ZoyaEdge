@@ -13,7 +13,7 @@ service cloud.firestore {
     function isEmailVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
     function isSuperAdmin() { 
-      return isSignedIn() && 
+      return isEmailVerified() && 
              'email' in request.auth.token && 
              request.auth.token.email != null && 
              exists(/databases/$(database)/documents/app_settings/global) && 
@@ -22,7 +22,7 @@ service cloud.firestore {
     }
     
     function isPrimarySuperAdmin() {
-      return isSignedIn() && 
+      return isEmailVerified() && 
              'email' in request.auth.token && 
              exists(/databases/$(database)/documents/app_settings/global) && 
              request.auth.token.email.lower() == get(/databases/$(database)/documents/app_settings/global).data.primarySuperAdmin;
